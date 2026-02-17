@@ -1,0 +1,357 @@
+# TESTING.md — SelfOpt Testing Standards
+
+This document defines the testing philosophy, required coverage, structure, tooling, and CI gates for SelfOpt.
+
+**Core rule:** there is no such thing as too many tests.  
+We test everything: step-by-step, at every layer, with strong determinism and reproducibility.
+
+---
+
+## 1) Testing Philosophy
+
+### 1.1 Non-Negotiables
+- Every module must have direct tests.
+- Every pipeline stage must have pass/fail tests.
+- Every regression must get a test.
+- “It works manually” is never acceptable without tests.
+- No PRs merged without a green test suite.
+
+### 1.2 Determinism First
+SelfOpt is an automation system. Non-determinism kills trust. Tests must:
+- pin inputs (fixtures)
+- mock time and randomness
+- snapshot/golden-test outputs where stability matters
+- avoid flaky asserts (no sleeping; use polling with timeouts)
+
+### 1.3 Evidence-driven system requires evidence-driven testing
+If the product claims “we validated X,” tests must prove:
+- the validation gate works
+- the metric comparison logic is correct
+- the artifact bundle contains the expected evidence
+- the UI only shows PR-ready proposals when all gates pass
+
+---
+
+## 2) Test Layers (Required)
+
+We use four layers. All four must exist.
+
+### 2.1 Unit Tests (largest share; fast)
+Purpose: test pure logic and small modules.
+
+Must cover:
+- detector heuristics (pnpm/yarn/npm)
+- GitHub Actions YAML parsing
+- package.json script selection
+- framework detection (Next/Nest/Express/React)
+- scanner rules (AST + ripgrep heuristics)
+- patch template generation
+- constraint enforcement (max lines/files; no deps/config/tests)
+- validator gate logic (build/typecheck/tests/bench)
+- metric comparison math and thresholds
+- risk scoring
+- proposal packaging schemas
+- signed URL generation logic
+
+### 2.2 Integration Tests (service boundaries)
+Purpose: ensure components work together with real dependencies.
+
+Must cover:
+- FastAPI routes + Supabase Postgres (local)
+- Supabase Storage upload + signed URL retrieval
+- Redis queue enqueue/dequeue
+- Celery task invocation and run state transitions
+- GitHub API integration via mock server or recorded fixtures
+- Runner → API callback contract
+
+### 2.3 End-to-End Tests (small but essential)
+Purpose: validate the “connect → run → propose → PR” flow.
+
+Minimum E2E scenarios:
+- Happy path:
+  - connect repo fixture
+  - baseline run succeeds
+  - at least one proposal appears
+  - evidence can be viewed
+  - “Create PR” triggers PR payload creation
+- Failure paths:
+  - install fails
+  - tests fail
+  - no test command detected (PR disabled)
+  - flaky tests (rerun behavior)
+  - artifact retrieval permission failure
+
+### 2.4 Golden/Snapshot Tests (stability guardrails)
+Purpose: freeze behavior for parts that must not silently drift.
+
+Must include:
+- detector output for each repo fixture
+- scanner output for known code snippets
+- proposal JSON schema outputs
+- risk scoring outputs for known diffs
+
+Golden tests must be easy to update intentionally (explicit update workflow).
+
+---
+
+## 3) Test Structure (Mirrors Source Structure)
+
+All tests must mirror code layout. If a module exists, it must have a corresponding test folder.
+
+### Backend (FastAPI)
+```
+
+apps/api/app/<module>/
+apps/api/tests/<module>/
+
+```
+
+Example:
+```
+
+apps/api/app/repos/
+apps/api/tests/repos/
+
+```
+
+### Runner
+```
+
+apps/runner/runner/<module>/
+apps/runner/tests/<module>/
+
+```
+
+### Frontend (Next.js)
+```
+
+apps/web/app/<route>/
+apps/web/tests/<route>/
+apps/web/components/
+apps/web/tests/components/
+
+```
+
+**Rule:** no giant `test_all_the_things.py`. Tests live next to their conceptual module.
+
+---
+
+## 4) Required Tooling
+
+### Python (API + Runner)
+- `pytest`
+- `pytest-asyncio`
+- `hypothesis` (property-based tests for parsers and scoring)
+- `pytest-cov` (coverage)
+- `respx` or `responses` for HTTP mocking (if needed)
+
+### Frontend
+- `vitest` (or `jest`) for component/unit tests
+- `@testing-library/react`
+- `playwright` for E2E UI tests
+
+### Local Dependencies
+- Supabase CLI (local Postgres + Storage + Auth)
+- Redis (docker)
+- Optional: docker-compose orchestration for integration/e2e
+
+---
+
+## 5) Coverage Standards
+
+### 5.1 Minimum coverage targets (MVP)
+- API: 90% line coverage on non-trivial modules
+- Runner: 90% on detector/scanner/validator/packaging
+- Frontend: focus on behavior coverage (not pure line %)
+
+Coverage is not the goal, but it is a guardrail. Critical logic must be near-total coverage.
+
+### 5.2 What must be covered 100%
+- Metric comparison logic (accept/reject)
+- Constraint enforcement (no deps/config/tests modifications)
+- Signed URL access logic (security)
+- Run state transitions
+- PR payload creation
+
+---
+
+## 6) Fixtures (Non-Negotiable)
+
+### 6.1 Repo fixtures (must exist early)
+Create minimal repos in `fixtures/` (or similar) for:
+- `nextjs-ts`
+- `nestjs-ts`
+- `express-ts`
+- `react-vite-ts`
+
+Fixtures should include:
+- lockfile (pnpm/yarn/npm)
+- package.json scripts
+- minimal test suite
+- optional build script
+- optional bench script
+
+### 6.2 Code snippet fixtures
+For scanner/template tests:
+- small `.ts` / `.js` files with known patterns
+- expected scanner outputs stored as JSON
+
+### 6.3 Diff fixtures
+For validator/risk scoring:
+- known diffs that touch allowed/disallowed files
+- known diff sizes that exceed thresholds
+
+---
+
+## 7) Test Requirements by System Stage
+
+### 7.1 Detector
+Must test:
+- package manager detection by lockfiles
+- CI workflow parsing (YAML edge cases)
+- script selection priority
+- monorepo hints (turbo/nx/workspaces)
+- confidence scoring and evidence attribution
+
+### 7.2 Scanner
+Must test:
+- AST parsing succeeds on TS/JS
+- each rule produces the expected opportunity
+- ranking ordering for multiple opportunities
+- scanner runtime bounds (not too slow on fixtures)
+
+### 7.3 Patch Templates
+Must test for each template:
+- correct diff generation
+- constraint checks (max lines/files)
+- does not modify forbidden paths (config/tests)
+- reversible patch application (apply then revert cleanly)
+
+### 7.4 Validator
+Must test:
+- build gate pass/fail
+- typecheck gate pass/fail
+- tests gate pass/fail
+- flaky rerun behavior
+- benchmark compare correctness
+- acceptance thresholds and noise handling
+
+### 7.5 Packaging & Artifacts
+Must test:
+- proposal schema validation
+- artifact paths are correct
+- upload to Supabase Storage (integration)
+- signed URL generation and expiry behavior
+- DB artifact records match uploaded paths
+
+### 7.6 GitHub PR Creation
+Must test:
+- branch name generation
+- commit creation payload structure
+- PR body contains evidence references
+- DB updated with PR url
+- failures handled gracefully (no partial state)
+
+### 7.7 UI
+Must test:
+- proposals render correctly
+- diff viewer renders
+- PR button disabled when not PR-ready
+- artifact viewer uses signed URLs
+- run status updates (realtime or polling)
+
+---
+
+## 8) Mocking and Isolation Standards
+
+### 8.1 Allowed mocks
+- GitHub API (always mocked in unit/integration)
+- subprocess execution in unit tests (use stubs)
+- time, randomness, environment variables
+
+### 8.2 When NOT to mock
+Integration tests should use real:
+- Supabase local Postgres
+- Supabase local Storage
+- Redis
+
+### 8.3 No network by default
+Tests should not call the internet.
+If a test needs HTTP, it must use a local mock server.
+
+---
+
+## 9) Flake Prevention Rules
+
+- No `sleep()` for synchronization. Use polling with a timeout.
+- Avoid asserting on exact timestamps.
+- Avoid tests that depend on ordering unless explicitly guaranteed.
+- Always pin versions in fixtures (lockfiles).
+- Ensure runner commands are deterministic (no “latest” installs).
+
+---
+
+## 10) CI Gates (Required)
+
+CI must run, in order:
+
+1. Lint + formatting checks
+2. Typecheck (frontend + backend)
+3. Unit tests (API + Runner + Web)
+4. Integration tests (Supabase + Redis)
+5. E2E tests (Playwright)
+6. Coverage thresholds enforced for API + Runner
+
+No merges if any step fails.
+
+---
+
+## 11) Naming and Organization
+
+- Test files named `test_<module>.py` (Python) and `<component>.test.tsx` (web)
+- Use descriptive test names that communicate intent
+- Organize test data in `fixtures/` folders, not inline strings (except tiny cases)
+
+---
+
+## 12) What to Do When Bugs Happen
+
+Required bugfix protocol:
+1. Add failing test that reproduces the bug
+2. Fix bug
+3. Add golden test or regression coverage if applicable
+4. Ensure CI passes
+
+No bugfix PR without a new test, unless truly impossible (must be documented).
+
+---
+
+## 13) “PR-Ready” Definition (Testing-Backed)
+
+A proposal is PR-ready only if tests confirm:
+
+- Constraints satisfied (no forbidden edits)
+- Build/typecheck gates passed (when applicable)
+- Tests passed (including flake rerun rule)
+- Benchmark improvement thresholds met (when benchmark enabled)
+- Artifacts uploaded and retrievable via signed URL
+- Proposal schema valid
+- UI correctly marks it PR-ready
+
+---
+
+## 14) Minimum Test Checklist (MVP)
+
+Before MVP is considered “done,” we must have:
+
+- Unit tests for detector, scanner, validator, packaging
+- Golden tests for each repo fixture detection outputs
+- Integration tests for Supabase Postgres + Storage
+- Integration tests for enqueue/run state transitions
+- E2E test for happy path and at least two failure paths
+- CI that blocks merges on failures
+
+---
+
+SelfOpt is only as trustworthy as its tests.
+We build a system that improves other codebases, so our own must be held to the highest standard.

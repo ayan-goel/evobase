@@ -1,0 +1,369 @@
+# COMMENTS.md — LLM Commenting Standards
+
+This document defines how the LLM should write comments when generating or modifying code in SelfOpt.
+
+SelfOpt is an autonomous engineering system.  
+Clarity, precision, and correctness are more important than verbosity.
+
+Comments must be intentional, structured, and helpful for future engineers.
+
+---
+
+# 1. Core Philosophy
+
+## 1.1 Comments must explain **why**, not just what
+
+Bad:
+```ts
+// Loop through array
+for (const item of items) { ... }
+````
+
+Good:
+
+```ts
+// Use a Set for O(1) membership checks instead of repeated Array.includes()
+// This reduces lookup cost inside hot request handlers.
+```
+
+If the code already clearly states *what*, the comment must clarify:
+
+* Why this approach was chosen
+* What constraints exist
+* What tradeoffs were made
+* What assumptions are required
+
+---
+
+# 2. Types of Comments the LLM May Generate
+
+## 2.1 Optimization Rationale Comments
+
+These explain performance or structural decisions.
+
+Must include:
+
+* What changed
+* Why it improves performance or safety
+* Under what conditions it helps
+* Any tradeoffs
+
+Example:
+
+```ts
+// Replaced Array.includes() with Set membership.
+// This reduces lookup from O(n) to O(1) inside request handler.
+// Safe because the collection is immutable during runtime.
+```
+
+---
+
+## 2.2 Validation / Safety Gate Comments
+
+Used in validator, runner, or orchestration logic.
+
+Must include:
+
+* Why a gate exists
+* What invariant it protects
+* What happens if violated
+
+Example:
+
+```python
+# Enforce max 5 files changed to reduce risk of large refactors.
+# Large diffs increase review burden and potential behavioral drift.
+```
+
+---
+
+## 2.3 Determinism & Reproducibility Comments
+
+Critical in:
+
+* benchmarking
+* metric comparison
+* sandbox execution
+* flake handling
+
+Must include:
+
+* Why determinism matters
+* How noise is mitigated
+
+Example:
+
+```python
+# Run benchmark 5 times and compute median.
+# Median reduces impact of noisy cold-start outliers.
+```
+
+---
+
+## 2.4 Risk & Constraint Comments
+
+Required wherever constraints are enforced.
+
+Must explain:
+
+* Why constraint exists
+* What would happen if removed
+
+Example:
+
+```python
+# Do not allow dependency changes in MVP.
+# Dependency updates introduce uncontrolled behavior changes.
+```
+
+---
+
+## 2.5 Traceability Comments
+
+Used in orchestration layers.
+
+Must clarify:
+
+* Which stage of the pipeline this belongs to
+* What state transition is happening
+
+Example:
+
+```python
+# Transition run from QUEUED -> RUNNING.
+# All further updates must include run_id for trace correlation.
+```
+
+---
+
+## 2.6 Security Comments
+
+Required around:
+
+* Supabase Storage access
+* Signed URL generation
+* GitHub webhook validation
+* Service key usage
+
+Must include:
+
+* Why this is security sensitive
+* What must never change casually
+
+Example:
+
+```python
+# Use service role key only on backend.
+# Never expose this to the frontend or client environment.
+```
+
+---
+
+# 3. Comment Style Rules
+
+## 3.1 Tone
+
+* Professional
+* Direct
+* Neutral
+* No emojis
+* No fluff
+* No marketing language
+
+## 3.2 Length
+
+* Short comments preferred (1–3 lines)
+* Longer blocks only when explaining non-obvious logic
+* Avoid paragraph walls
+
+## 3.3 Formatting
+
+* Use full sentences.
+* No trailing periods required but be consistent.
+* No ALL CAPS except for explicit invariants.
+
+---
+
+# 4. When NOT to Comment
+
+The LLM must NOT:
+
+* Comment obvious syntax
+* Restate function names
+* Over-comment trivial getters/setters
+* Add comments to every line
+* Add comments to satisfy “looks thorough”
+
+Bad:
+
+```ts
+// Declare variable
+const count = 0;
+```
+
+Good:
+(no comment)
+
+---
+
+# 5. Required Comment Zones
+
+The following areas must always include comments:
+
+## 5.1 Metric Comparison Logic
+
+Explain:
+
+* Threshold selection
+* Noise mitigation strategy
+* Why chosen statistic (mean/median/p95)
+
+## 5.2 Constraint Enforcement
+
+Explain:
+
+* Why limits exist (files, lines, forbidden paths)
+* How this protects trust
+
+## 5.3 Run State Transitions
+
+Explain:
+
+* State machine flow
+* Why transition occurs
+* What conditions must be true
+
+## 5.4 Artifact Upload & Retrieval
+
+Explain:
+
+* Storage path structure
+* Security implications
+* Signed URL usage
+
+## 5.5 PR Creation Logic
+
+Explain:
+
+* Branch naming convention
+* Why proposal cannot auto-merge
+* Why PR is explicit user action
+
+---
+
+# 6. LLM-Generated Diff Comments (Inside Proposals)
+
+When the LLM proposes changes, it must include a top-of-diff summary comment.
+
+Example:
+
+```ts
+/**
+ * Optimization Summary:
+ * - Replace repeated Array.includes() with Set membership.
+ * - Reduces membership lookup from O(n) to O(1).
+ * - No behavioral change expected.
+ * - Verified by passing test suite.
+ */
+```
+
+This summary must:
+
+* Describe the change
+* Explain the expected impact
+* State safety assumptions
+* Avoid vague claims like “improves performance”
+
+---
+
+# 7. Commenting Rules for Different Layers
+
+## 7.1 API Layer (FastAPI)
+
+* Explain data contracts
+* Explain state transitions
+* Explain DB writes that change lifecycle state
+
+## 7.2 Runner Layer
+
+* Explain sandbox restrictions
+* Explain subprocess invocation decisions
+* Explain retry logic
+* Explain benchmark methodology
+
+## 7.3 Frontend
+
+* Explain non-obvious UI logic
+* Explain derived state
+* Explain optimistic updates
+* Explain disabled button logic (PR readiness rules)
+
+---
+
+# 8. Prohibited Comment Patterns
+
+The LLM must NOT:
+
+* Use speculative language ("probably", "should work")
+* Claim guarantees without validation evidence
+* Add TODO comments unless explicitly required
+* Add commented-out code
+* Add explanatory comments that duplicate documentation in README
+
+---
+
+# 9. Invariant Comments (Special Category)
+
+In critical systems (validator, constraint enforcement, security), use explicit invariant comments:
+
+Example:
+
+```python
+# INVARIANT: proposals must never modify test files in MVP.
+```
+
+These signal logic that must not be weakened casually.
+
+---
+
+# 10. Comment Density Guidelines
+
+Approximate guidance:
+
+* Core logic modules: 1 meaningful comment per ~10–20 lines
+* Validator/engine modules: more frequent explanatory comments
+* Templates: comment each transformation block
+* UI components: comment only non-obvious state transitions
+
+Never exceed ~20–25% comment-to-code ratio.
+
+---
+
+# 11. LLM Internal Self-Check Before Finalizing Code
+
+Before returning generated code, the LLM must verify:
+
+* Are comments explaining WHY, not WHAT?
+* Are constraints clearly documented?
+* Are security-sensitive sections annotated?
+* Are invariant rules explicit?
+* Are trivial comments removed?
+
+If comments do not add value, remove them.
+
+---
+
+# Final Principle
+
+SelfOpt modifies other people’s codebases automatically.
+
+Our internal code must be:
+
+* Clear
+* Justified
+* Deterministic
+* Transparent
+
+Comments are part of the trust layer.
+
+If a future engineer cannot understand why a decision was made from the comments alone, the LLM has failed its job.
