@@ -4,52 +4,31 @@
 #
 # Services in this project
 # ─────────────────────────
-#  api     FastAPI control-plane server   → Dockerfile
-#  worker  Celery worker + beat scheduler → Dockerfile.worker
+#  backend   FastAPI + Celery worker (combined, start.sh)
 #
 # Hosted elsewhere
-#  • web        Vercel (Next.js)  — set NEXT_PUBLIC_API_URL to the api URL
+#  • web      Vercel (Next.js)  — set NEXT_PUBLIC_API_URL to backend URL
 #
 # External services (provisioned manually)
-#  • Supabase   https://supabase.com  — Postgres + Auth + Storage
-#  • Redis      Railway plugin        — add via Railway dashboard
+#  • Supabase  https://supabase.com  — Postgres + Auth + Storage
+#  • Redis     Railway plugin        — add via Railway dashboard (auto-sets REDIS_URL)
 # =============================================================================
 
 [build]
-# Default build settings inherited by all services unless overridden below.
-# Each service can override dockerfilePath and buildContext.
 builder = "dockerfile"
 
 # ---------------------------------------------------------------------------
-# API service  (FastAPI)
+# Backend  (FastAPI + Celery worker in one container)
 # ---------------------------------------------------------------------------
 [[services]]
-name = "api"
+name = "backend"
 
 [services.build]
 dockerfilePath = "Dockerfile"
-# Build context is the repo root so both apps/api and apps/runner are reachable
-buildContext = "."
+buildContext    = "."
 
 [services.deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "on_failure"
+healthcheckPath        = "/health"
+healthcheckTimeout     = 30
+restartPolicyType      = "on_failure"
 restartPolicyMaxRetries = 3
-
-# ---------------------------------------------------------------------------
-# Worker service  (Celery + Beat)
-# ---------------------------------------------------------------------------
-[[services]]
-name = "worker"
-
-[services.build]
-dockerfilePath = "Dockerfile.worker"
-buildContext = "."
-
-[services.deploy]
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
-# Worker does not serve HTTP — no healthcheck path
-
-# Web is deployed on Vercel — see vercel.json at the repo root.

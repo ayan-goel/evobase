@@ -1,12 +1,12 @@
 # =============================================================================
-# SelfOpt API server
+# SelfOpt — combined API + worker image
 #
 # Build context must be the repository root so both apps/api and apps/runner
 # are available in a single layer.
 #
 # Railway usage:
-#   Service "api"    → this Dockerfile, default CMD
-#   Environment:     PORT is injected automatically by Railway
+#   Single service running start.sh (FastAPI + Celery worker in one container)
+#   PORT is injected automatically by Railway
 # =============================================================================
 
 FROM python:3.12-slim AS base
@@ -26,11 +26,14 @@ WORKDIR /app
 # ---------------------------------------------------------------------------
 COPY apps/runner /app/apps/runner
 COPY apps/api    /app/apps/api
+COPY start.sh    /app/start.sh
 
 WORKDIR /app/apps/api
 
 RUN uv pip install --system -e /app/apps/runner \
  && uv pip install --system .
+
+RUN chmod +x /app/start.sh
 
 # ---------------------------------------------------------------------------
 # Non-root user
@@ -43,4 +46,4 @@ USER appuser
 ENV PORT=8000
 EXPOSE 8000
 
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+CMD ["/app/start.sh"]
