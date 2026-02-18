@@ -130,6 +130,7 @@ class RunService:
                 repo_id = str(repo.id)
                 github_repo_id = repo.github_repo_id
                 github_full_name = repo.github_full_name
+                installation_id = repo.installation_id
                 sha = run.sha
                 install_cmd = repo.install_cmd
                 build_cmd = repo.build_cmd
@@ -156,13 +157,25 @@ class RunService:
                 )
                 return _no_repo_result(run_id)
 
-            repo_url = _build_repo_url(github_full_name, github_repo_id)
+            # Fetch an installation token for private repos
+            clone_token = None
+            if installation_id:
+                try:
+                    from app.github.client import get_installation_token
+                    clone_token = asyncio.run(get_installation_token(installation_id))
+                except Exception as exc:
+                    logger.warning(
+                        "Run %s: could not fetch installation token for clone: %s",
+                        run_id, exc,
+                    )
+
+            repo_url = _build_repo_url(github_full_name, github_repo_id, token=clone_token)
             logger.info("Run %s: cloning %s", run_id, repo_url)
 
             # ----------------------------------------------------------------
             # Step 3: Clone
             # ----------------------------------------------------------------
-            repo_dir = Path(tempfile.mkdtemp(prefix="selfopt-run-"))
+            repo_dir = Path(tempfile.mkdtemp(prefix="coreloop-run-"))
             from runner.sandbox.checkout import clone_repo, checkout_sha
 
             clone_repo(repo_url=repo_url, workspace_dir=repo_dir)
@@ -420,6 +433,11 @@ def _write_proposals_to_db(
 
             # Only accepted candidates become Proposals
             if candidate.is_accepted and proposals_created < max_proposals:
+                decisive = candidate.attempts[-1] if candidate.attempts else None
+                metrics_after_dict = (
+                    decisive.pipeline_result.to_dict()
+                    if decisive and decisive.pipeline_result else None
+                )
                 proposal_row = Proposal(
                     run_id=uuid.UUID(run_id),
                     diff=patch.diff if patch else "",
@@ -427,6 +445,9 @@ def _write_proposals_to_db(
                     risk_score=float(agent_opp.risk_score),
                     confidence=candidate.final_verdict.confidence,
                     metrics_before=_baseline_to_dict(baseline),
+                    metrics_after=metrics_after_dict,
+                    discovery_trace=_discovery_trace_to_dict(agent_opp),
+                    patch_trace=_patch_trace_to_dict(patch),
                 )
                 session.add(proposal_row)
                 proposals_created += 1
@@ -618,15 +639,24 @@ def _update_settings_after_success(repo_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_repo_url(github_full_name: Optional[str], github_repo_id: Optional[int]) -> str:
+def _build_repo_url(
+    github_full_name: Optional[str],
+    github_repo_id: Optional[int],
+    token: Optional[str] = None,
+) -> str:
     """Build the HTTPS clone URL for a GitHub repository.
 
     Prefers the ``owner/repo`` full name when available because GitHub's
     /repositories/:id redirect is not accepted by git-clone.  Falls back to
     the numeric-ID URL so the caller always receives a non-empty string even
     when the column is NULL (repo connected before Phase-17 migration).
+
+    When *token* is provided the URL embeds the GitHub installation token so
+    that git-clone can access private repositories without interactive auth.
     """
     if github_full_name:
+        if token:
+            return f"https://x-access-token:{token}@github.com/{github_full_name}.git"
         return f"https://github.com/{github_full_name}.git"
     if github_repo_id:
         # Fallback: git-clone does NOT support this form in all git versions,
@@ -716,3 +746,30 @@ async def async_enqueue_run(
 
     task = execute_run.delay(str(run.id), trace_id=run.trace_id or "")
     return task.id
+
+
+async def create_and_enqueue_run(
+    db: AsyncSession,
+    repo_id: uuid.UUID,
+    sha: Optional[str] = None,
+    trace_id: str = "",
+) -> Run:
+    """Create a queued Run row and dispatch it to Celery.
+
+    Shared by the manual trigger endpoint and the auto-run-on-connect flow.
+    If Celery is unavailable the run stays queued; the beat scheduler will
+    pick it up on the next tick.
+    """
+    run = Run(repo_id=repo_id, sha=sha, status="queued", trace_id=trace_id)
+    db.add(run)
+    await db.flush()
+    try:
+        await async_enqueue_run(db, run)
+        logger.info("Enqueued run %s for repo %s", run.id, repo_id)
+    except Exception:
+        logger.warning(
+            "Failed to enqueue Celery task for run %s; run remains queued",
+            run.id,
+            exc_info=True,
+        )
+    return run

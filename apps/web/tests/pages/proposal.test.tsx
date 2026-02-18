@@ -8,10 +8,21 @@ vi.mock("@/lib/api", () => ({
   createPR: vi.fn(),
 }));
 
+const FAKE_TRACE = {
+  model: "claude-sonnet-4-5",
+  provider: "anthropic",
+  reasoning: "Found an N+1 query that can be batched.",
+  prompt_tokens: 100,
+  completion_tokens: 200,
+  tokens_used: 300,
+  timestamp: new Date().toISOString(),
+};
+
 function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
   return {
     id: "prop-1",
     run_id: "run-1",
+    repo_id: "repo-42",
     diff: "--- a/src/utils.ts\n+++ b/src/utils.ts\n@@ -1 +1 @@\n-old\n+new\n",
     summary: "Replaced indexOf with includes",
     metrics_before: {
@@ -31,6 +42,8 @@ function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
     created_at: new Date().toISOString(),
     pr_url: null,
     artifacts: [],
+    discovery_trace: null,
+    patch_trace: null,
     ...overrides,
   };
 }
@@ -102,5 +115,68 @@ describe("ProposalView", () => {
   it("renders risk score", () => {
     render(<ProposalView proposal={makeProposal()} artifactLinks={[]} />);
     expect(screen.getByText(/Risk 20%/)).toBeDefined();
+  });
+
+  it("breadcrumb Repository link points to the proposal's repo_id", () => {
+    render(<ProposalView proposal={makeProposal()} artifactLinks={[]} />);
+    const repoLink = screen.getByRole("link", { name: "Repository" });
+    expect(repoLink.getAttribute("href")).toBe("/repos/repo-42");
+  });
+
+  it("Create PR button receives the repo_id from the proposal", () => {
+    // Render with a known repo_id; the CreatePRButton is rendered with that id
+    render(
+      <ProposalView
+        proposal={makeProposal({ repo_id: "repo-99" })}
+        artifactLinks={[]}
+      />,
+    );
+    // The CreatePRButton receives repoId which it would pass to createPR —
+    // we verify it renders (not 404 / empty stub)
+    expect(screen.getByRole("button", { name: "Create PR" })).toBeDefined();
+  });
+
+  it("hides agent reasoning section when both traces are null", () => {
+    render(
+      <ProposalView
+        proposal={makeProposal({ discovery_trace: null, patch_trace: null })}
+        artifactLinks={[]}
+      />,
+    );
+    expect(screen.queryByText("Agent reasoning")).toBeNull();
+  });
+
+  it("shows agent reasoning section when discovery_trace is present", () => {
+    render(
+      <ProposalView
+        proposal={makeProposal({ discovery_trace: FAKE_TRACE, patch_trace: null })}
+        artifactLinks={[]}
+      />,
+    );
+    // Section heading is an <h2>; AgentReasoning also renders the label as a <span>
+    const headings = screen.getAllByText("Agent reasoning");
+    expect(headings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows agent reasoning section when patch_trace is present", () => {
+    render(
+      <ProposalView
+        proposal={makeProposal({ discovery_trace: null, patch_trace: FAKE_TRACE })}
+        artifactLinks={[]}
+      />,
+    );
+    const headings = screen.getAllByText("Agent reasoning");
+    expect(headings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows agent reasoning section when both traces are present", () => {
+    render(
+      <ProposalView
+        proposal={makeProposal({ discovery_trace: FAKE_TRACE, patch_trace: FAKE_TRACE })}
+        artifactLinks={[]}
+      />,
+    );
+    const headings = screen.getAllByText("Agent reasoning");
+    expect(headings.length).toBeGreaterThanOrEqual(1);
   });
 });

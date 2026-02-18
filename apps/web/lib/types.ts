@@ -5,11 +5,13 @@ export interface Repository {
   github_repo_id: number | null;
   github_full_name: string | null;
   default_branch: string;
+  installation_id?: number | null;
   package_manager: string | null;
   install_cmd: string | null;
   build_cmd: string | null;
   test_cmd: string | null;
   typecheck_cmd: string | null;
+  latest_run_status?: string | null;
   created_at: string;
 }
 
@@ -20,6 +22,7 @@ export interface Run {
   repo_id: string;
   sha: string | null;
   status: RunStatus;
+  compute_minutes: number | null;
   created_at: string;
 }
 
@@ -27,7 +30,8 @@ export type ConfidenceLevel = "high" | "medium" | "low";
 
 export interface Artifact {
   id: string;
-  proposal_id: string;
+  // Null for baseline artifacts (run-level), set for proposal-level artifacts
+  proposal_id: string | null;
   storage_path: string;
   type: string;
   created_at: string;
@@ -52,6 +56,7 @@ export interface Metrics {
 export interface Proposal {
   id: string;
   run_id: string;
+  repo_id: string;
   diff: string;
   summary: string | null;
   metrics_before: Metrics | null;
@@ -61,6 +66,8 @@ export interface Proposal {
   created_at: string;
   pr_url: string | null;
   artifacts: Artifact[];
+  discovery_trace: ThinkingTrace | null;
+  patch_trace: ThinkingTrace | null;
 }
 
 export interface ThinkingTrace {
@@ -83,6 +90,31 @@ export interface RepoSettings {
   consecutive_setup_failures: number;
   consecutive_flaky_runs: number;
   last_run_at: string | null;
+  llm_provider: string;
+  llm_model: string;
+}
+
+export interface Installation {
+  id: string;
+  installation_id: number;
+  account_login: string;
+  account_id: number;
+}
+
+export interface GitHubRepo {
+  github_repo_id: number;
+  full_name: string;
+  name: string;
+  default_branch: string;
+  private: boolean;
+}
+
+export interface ConnectRepoRequest {
+  github_repo_id: number;
+  github_full_name: string;
+  org_id: string;
+  default_branch: string;
+  installation_id: number;
 }
 
 export interface TraceAttempt {

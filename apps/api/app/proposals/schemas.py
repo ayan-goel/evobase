@@ -14,6 +14,10 @@ class ProposalResponse(BaseModel):
 
     id: uuid.UUID
     run_id: uuid.UUID
+    # repo_id is derived from proposal.run.repo_id — requires eager-loading Run.
+    # Included here so the frontend can route directly to /repos/{repo_id}/...
+    # without a separate lookup.
+    repo_id: uuid.UUID
     diff: str
     summary: Optional[str]
     metrics_before: Optional[dict[str, Any]]
@@ -23,6 +27,30 @@ class ProposalResponse(BaseModel):
     created_at: datetime
     pr_url: Optional[str]
     artifacts: list["ArtifactResponse"] = []
+    discovery_trace: Optional[dict[str, Any]] = None
+    patch_trace: Optional[dict[str, Any]] = None
+
+    @classmethod
+    def from_proposal(cls, proposal) -> "ProposalResponse":
+        """Build a ProposalResponse, resolving repo_id from the eager-loaded run."""
+        return cls(
+            id=proposal.id,
+            run_id=proposal.run_id,
+            repo_id=proposal.run.repo_id,
+            diff=proposal.diff,
+            summary=proposal.summary,
+            metrics_before=proposal.metrics_before,
+            metrics_after=proposal.metrics_after,
+            risk_score=proposal.risk_score,
+            confidence=proposal.confidence,
+            created_at=proposal.created_at,
+            pr_url=proposal.pr_url,
+            artifacts=[
+                ArtifactResponse.model_validate(a) for a in proposal.artifacts
+            ],
+            discovery_trace=proposal.discovery_trace,
+            patch_trace=proposal.patch_trace,
+        )
 
 
 class ArtifactResponse(BaseModel):
@@ -31,7 +59,8 @@ class ArtifactResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     id: uuid.UUID
-    proposal_id: uuid.UUID
+    # proposal_id is NULL for baseline artifacts (run-level, not tied to a proposal)
+    proposal_id: Optional[uuid.UUID] = None
     storage_path: str
     type: str
     created_at: datetime
@@ -48,8 +77,6 @@ class ProposalCreateRequest(BaseModel):
     """Request body for creating a new proposal (called by the runner).
 
     The runner sends this after the candidate passes all acceptance gates.
-    metrics_before/after are extracted from BaselineResult and CandidateResult
-    using runner.packaging.proposal_bundler.extract_metrics.
     """
 
     run_id: uuid.UUID
@@ -58,7 +85,6 @@ class ProposalCreateRequest(BaseModel):
     metrics_before: Optional[dict[str, Any]] = None
     metrics_after: Optional[dict[str, Any]] = None
     risk_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    confidence: Optional[str] = Field(
-        default=None,
-        description="Acceptance confidence level: 'high', 'medium', or 'low'",
-    )
+    confidence: Optional[str] = Field(default=None)
+    discovery_trace: Optional[dict[str, Any]] = None
+    patch_trace: Optional[dict[str, Any]] = None

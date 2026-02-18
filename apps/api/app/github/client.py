@@ -75,44 +75,6 @@ async def get_default_branch_sha(
         return response.json()["object"]["sha"]
 
 
-async def create_commit_from_patch(
-    token: str,
-    owner: str,
-    repo: str,
-    branch: str,
-    message: str,
-    tree_sha: str,
-    parent_sha: str,
-) -> str:
-    """Create a commit on a branch. Returns the new commit SHA.
-
-    For MVP, we use the update-ref approach: create a blob/tree/commit
-    chain and update the branch ref. This avoids needing to parse diffs
-    into individual file operations.
-    """
-    async with httpx.AsyncClient() as client:
-        # Create commit
-        commit_resp = await client.post(
-            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/commits",
-            headers=_auth_headers(token),
-            json={
-                "message": message,
-                "tree": tree_sha,
-                "parents": [parent_sha],
-            },
-        )
-        commit_resp.raise_for_status()
-        commit_sha = commit_resp.json()["sha"]
-
-        # Update branch ref to point to new commit
-        await client.patch(
-            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/refs/heads/{branch}",
-            headers=_auth_headers(token),
-            json={"sha": commit_sha},
-        )
-
-        return commit_sha
-
 
 async def create_pull_request(
     token: str,
@@ -126,7 +88,7 @@ async def create_pull_request(
     """Open a pull request. Returns the PR data including html_url.
 
     PR creation is always a user-initiated action in MVP.
-    SelfOpt does not auto-merge.
+    Coreloop does not auto-merge.
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -141,6 +103,103 @@ async def create_pull_request(
         )
         response.raise_for_status()
         return response.json()
+
+
+async def list_installation_repos(token: str) -> list[dict]:
+    """List all repos accessible to an installation token."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/installation/repositories",
+            headers=_auth_headers(token),
+        )
+        response.raise_for_status()
+        return response.json().get("repositories", [])
+
+
+async def get_file_content(
+    token: str,
+    owner: str,
+    repo: str,
+    path: str,
+    ref: str,
+) -> dict | None:
+    """GET /repos/{owner}/{repo}/contents/{path}?ref={ref}
+
+    Returns {"content": decoded_str, "sha": str} or None when the file
+    does not exist (404).
+    """
+    import base64
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}",
+            headers=_auth_headers(token),
+            params={"ref": ref},
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+        raw = base64.b64decode(data["content"].replace("\n", "")).decode("utf-8", errors="replace")
+        return {"content": raw, "sha": data["sha"]}
+
+
+async def put_file_content(
+    token: str,
+    owner: str,
+    repo: str,
+    path: str,
+    message: str,
+    new_content: str,
+    branch: str,
+    current_sha: str | None = None,
+) -> None:
+    """PUT /repos/{owner}/{repo}/contents/{path}
+
+    Creates or updates a file. Pass *current_sha* when updating an
+    existing file so GitHub can verify there are no race conditions.
+    """
+    import base64
+
+    payload: dict = {
+        "message": message,
+        "content": base64.b64encode(new_content.encode()).decode(),
+        "branch": branch,
+    }
+    if current_sha is not None:
+        payload["sha"] = current_sha
+
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}",
+            headers=_auth_headers(token),
+            json=payload,
+        )
+        response.raise_for_status()
+
+
+async def delete_file(
+    token: str,
+    owner: str,
+    repo: str,
+    path: str,
+    message: str,
+    sha: str,
+    branch: str,
+) -> None:
+    """DELETE /repos/{owner}/{repo}/contents/{path}"""
+    async with httpx.AsyncClient() as client:
+        response = await client.request(
+            "DELETE",
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}",
+            headers=_auth_headers(token),
+            json={
+                "message": message,
+                "sha": sha,
+                "branch": branch,
+            },
+        )
+        response.raise_for_status()
 
 
 def _auth_headers(token: str) -> dict[str, str]:

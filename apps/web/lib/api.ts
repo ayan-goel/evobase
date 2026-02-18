@@ -1,11 +1,20 @@
 /**
- * Typed API client for the SelfOpt control plane.
+ * Typed API client for the Coreloop control plane.
  *
  * All functions throw on non-2xx responses.
  * Use NEXT_PUBLIC_API_URL to point at the FastAPI backend.
  */
 
-import type { Proposal, Repository, RepoSettings, Run } from "@/lib/types";
+import type {
+  ConnectRepoRequest,
+  GitHubRepo,
+  Installation,
+  Proposal,
+  Repository,
+  RepoSettings,
+  Run,
+} from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
 
 export interface LLMModel {
   id: string;
@@ -21,12 +30,59 @@ export interface LLMProvider {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-/** Shared fetch wrapper with error handling. */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (typeof window === "undefined") {
+    try {
+      const { createClient: createServerSupabase } = await import(
+        "@/lib/supabase/server"
+      );
+      const supabase = await createServerSupabase();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        return { Authorization: `Bearer ${session.access_token}` };
+      }
+    } catch {
+      // No server session available
+    }
+    return {};
+  }
+
+  try {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch {
+    // No session available
+  }
+
+  return {};
+}
+
+/** Shared fetch wrapper with error handling and automatic auth. */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
+  const isServer = typeof window === "undefined";
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+    ...(isServer ? { cache: "no-store" as const } : {}),
   });
+
+  if (res.status === 401 && !isServer) {
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -38,7 +94,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** List all repos accessible to the current user. */
 export async function getRepos(): Promise<Repository[]> {
-  return apiFetch<Repository[]>("/repos");
+  const data = await apiFetch<{ repos: Repository[]; count: number }>("/repos");
+  return data.repos;
 }
 
 /** Get a single repo by ID. */
@@ -72,6 +129,11 @@ export async function getArtifactSignedUrl(
   return apiFetch(`/artifacts/${artifactId}/signed-url`);
 }
 
+/** Trigger a new optimization run for a repository. */
+export async function triggerRun(repoId: string): Promise<Run> {
+  return apiFetch<Run>(`/repos/${repoId}/run`, { method: "POST" });
+}
+
 /** Trigger PR creation for an accepted proposal. */
 export async function createPR(
   repoId: string,
@@ -91,6 +153,55 @@ export async function getRepoSettings(repoId: string): Promise<RepoSettings> {
 export async function getLLMModels(): Promise<LLMProvider[]> {
   const data = await apiFetch<{ providers: LLMProvider[] }>("/llm/models");
   return data.providers;
+}
+
+/** Get the current user's IDs (user_id + org_id). */
+export async function getMe(): Promise<{ user_id: string; org_id: string }> {
+  return apiFetch<{ user_id: string; org_id: string }>("/auth/me");
+}
+
+/** List GitHub App installations for the current user. */
+export async function getInstallations(): Promise<Installation[]> {
+  const data = await apiFetch<{ installations: Installation[]; count: number }>(
+    "/github/installations",
+  );
+  return data.installations;
+}
+
+/** List repos available via a GitHub App installation. */
+export async function getInstallationRepos(
+  installationId: number,
+): Promise<GitHubRepo[]> {
+  const data = await apiFetch<{ repos: GitHubRepo[]; count: number }>(
+    `/github/installations/${installationId}/repos`,
+  );
+  return data.repos;
+}
+
+/** Link a GitHub App installation to the current user. */
+export async function linkInstallation(
+  installationId: number,
+  accountLogin?: string,
+  accountId?: number,
+): Promise<{ installation_id: number; linked: boolean }> {
+  return apiFetch("/github/link-installation", {
+    method: "POST",
+    body: JSON.stringify({
+      installation_id: installationId,
+      account_login: accountLogin,
+      account_id: accountId,
+    }),
+  });
+}
+
+/** Connect a GitHub repo to Coreloop. */
+export async function connectRepo(
+  body: ConnectRepoRequest,
+): Promise<Repository> {
+  return apiFetch<Repository>("/repos/connect", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Update settings for a repository (partial update). */

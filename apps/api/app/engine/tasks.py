@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(
-    name="selfopt.execute_run",
+    name="coreloop.execute_run",
     bind=True,
     max_retries=1,
     default_retry_delay=30,

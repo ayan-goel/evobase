@@ -34,7 +34,7 @@ from app.scheduling.auto_pause import (
 
 @pytest.fixture
 async def repo(db_session: AsyncSession) -> Repository:
-    user = User(email="autopause@selfopt.local")
+    user = User(email="autopause@coreloop.local")
     db_session.add(user)
     await db_session.flush()
 

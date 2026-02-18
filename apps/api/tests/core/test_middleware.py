@@ -67,7 +67,7 @@ class TestCORSMiddleware:
         res = await client.options(
             "/health",
             headers={
-                "Origin": "https://app.selfopt.dev",
+                "Origin": "https://app.coreloop.dev",
                 "Access-Control-Request-Method": "GET",
             },
         )
@@ -78,6 +78,6 @@ class TestCORSMiddleware:
     async def test_cors_header_on_regular_request(self, client: AsyncClient) -> None:
         res = await client.get(
             "/health",
-            headers={"Origin": "https://app.selfopt.dev"},
+            headers={"Origin": "https://app.coreloop.dev"},
         )
         assert "access-control-allow-origin" in res.headers

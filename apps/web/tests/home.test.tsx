@@ -5,20 +5,20 @@ import Home from "../app/page";
 describe("Home page", () => {
   it("renders the heading", () => {
     render(<Home />);
-    expect(screen.getByText("SelfOpt")).toBeInTheDocument();
+    expect(screen.getByText("Coreloop")).toBeInTheDocument();
   });
 
-  it("renders the primary CTA button", () => {
+  it("renders the primary CTA link to login", () => {
     render(<Home />);
-    expect(
-      screen.getByRole("button", { name: "Get Started" })
-    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Get Started" });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe("/login");
   });
 
-  it("renders the secondary CTA button", () => {
+  it("renders the secondary CTA link to GitHub", () => {
     render(<Home />);
-    expect(
-      screen.getByRole("button", { name: "Learn More" })
-    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "View on GitHub" });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toContain("github.com");
   });
 });

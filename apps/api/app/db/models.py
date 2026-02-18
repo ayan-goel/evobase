@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, ForeignKey, Numeric, Text, Uuid, func, text
+from sqlalchemy import BigInteger, JSON, ForeignKey, Numeric, Text, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -28,6 +28,9 @@ class User(Base):
         Uuid, primary_key=True, default=uuid.uuid4
     )
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    github_id: Mapped[Optional[int]] = mapped_column(unique=True)
+    github_login: Mapped[Optional[str]] = mapped_column(Text)
+    avatar_url: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )
@@ -57,6 +60,25 @@ class Organization(Base):
     )
 
 
+class GitHubInstallation(Base):
+    __tablename__ = "github_installations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    installation_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, nullable=False
+    )
+    account_login: Mapped[str] = mapped_column(Text, nullable=False)
+    account_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+
+
 class Repository(Base):
     __tablename__ = "repositories"
 
@@ -79,6 +101,7 @@ class Repository(Base):
     test_cmd: Mapped[Optional[str]] = mapped_column(Text)
     typecheck_cmd: Mapped[Optional[str]] = mapped_column(Text)
     bench_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    installation_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )
@@ -243,6 +266,9 @@ class Proposal(Base):
 
     # confidence is set from the validator's AcceptanceVerdict ("high", "medium", "low")
     confidence: Mapped[Optional[str]] = mapped_column(Text)
+
+    discovery_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    patch_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
 
     run: Mapped["Run"] = relationship(back_populates="proposals")
     artifacts: Mapped[list["Artifact"]] = relationship(

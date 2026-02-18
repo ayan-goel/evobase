@@ -15,7 +15,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsForm } from "@/components/settings-form";
-import type { RepoSettings } from "@/lib/types";
+import type { Repository, RepoSettings } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -206,5 +206,50 @@ describe("SettingsForm", () => {
   it("does not render last_run_at section when null", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
     expect(screen.queryByText(/last scheduled run/i)).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Detected commands
+  // ---------------------------------------------------------------------------
+
+  const baseRepo: Repository = {
+    id: "repo-1",
+    github_repo_id: null,
+    github_full_name: "acme/api",
+    default_branch: "main",
+    installation_id: null,
+    package_manager: "npm",
+    install_cmd: "npm ci",
+    build_cmd: "npm run build",
+    test_cmd: "npm test",
+    typecheck_cmd: null,
+    latest_run_status: null,
+    created_at: new Date().toISOString(),
+  };
+
+  it("renders detected commands section when repo has commands", () => {
+    render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={baseRepo} />);
+    expect(screen.getByTestId("detected-commands")).toBeDefined();
+    expect(screen.getByDisplayValue("npm ci")).toBeDefined();
+    expect(screen.getByDisplayValue("npm run build")).toBeDefined();
+    expect(screen.getByDisplayValue("npm test")).toBeDefined();
+  });
+
+  it("detected command inputs are read-only", () => {
+    render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={baseRepo} />);
+    const installInput = screen.getByDisplayValue("npm ci") as HTMLInputElement;
+    expect(installInput.readOnly).toBe(true);
+  });
+
+  it("hides detected commands section when all command fields are null", () => {
+    const repoNoCommands: Repository = {
+      ...baseRepo,
+      install_cmd: null,
+      build_cmd: null,
+      test_cmd: null,
+      typecheck_cmd: null,
+    };
+    render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={repoNoCommands} />);
+    expect(screen.queryByTestId("detected-commands")).toBeNull();
   });
 });

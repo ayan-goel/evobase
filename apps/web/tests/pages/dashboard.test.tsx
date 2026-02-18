@@ -56,4 +56,47 @@ describe("DashboardView", () => {
     render(<DashboardView repos={[makeRepo({ github_repo_id: null })]} />);
     expect(screen.getByText(/Repo repo-1/)).toBeDefined();
   });
+
+  it("shows connect repository button when repos empty", () => {
+    render(<DashboardView repos={[]} />);
+    const links = screen.getAllByRole("link", { name: /Connect Repository/i });
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links.every((l) => l.getAttribute("href") === "/github/install")).toBe(true);
+  });
+
+  it("shows connect repository button in header", () => {
+    render(<DashboardView repos={[makeRepo()]} />);
+    const links = screen.getAllByRole("link", { name: /Connect Repository/i });
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0].getAttribute("href")).toBe("/github/install");
+  });
+
+  it("shows setting up badge when latest run is queued", () => {
+    render(
+      <DashboardView
+        repos={[makeRepo({ latest_run_status: "queued" })]}
+      />,
+    );
+    expect(screen.getByText(/Setting up/i)).toBeInTheDocument();
+  });
+
+  it("shows setting up badge when latest run is running", () => {
+    render(
+      <DashboardView
+        repos={[makeRepo({ latest_run_status: "running" })]}
+      />,
+    );
+    expect(screen.getByText(/Setting up/i)).toBeInTheDocument();
+  });
+
+  it("shows no badge when latest run is completed", () => {
+    render(
+      <DashboardView
+        repos={[makeRepo({ latest_run_status: "completed" })]}
+      />,
+    );
+    expect(screen.queryByText(/Setting up/i)).not.toBeInTheDocument();
+    // Arrow indicator should be present instead
+    expect(screen.getByText("→")).toBeInTheDocument();
+  });
 });

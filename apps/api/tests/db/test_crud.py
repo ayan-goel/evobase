@@ -27,7 +27,7 @@ from app.db.models import (
 # Helper: create a full entity chain for tests that need parent records
 # ---------------------------------------------------------------------------
 
-async def create_user(session, email: str = "test@selfopt.local") -> User:
+async def create_user(session, email: str = "test@coreloop.local") -> User:
     user = User(id=uuid.uuid4(), email=email)
     session.add(user)
     await session.flush()

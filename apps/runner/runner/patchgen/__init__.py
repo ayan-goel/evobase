@@ -1,10 +1,12 @@
-"""PatchGen module — template-based patch generation.
+"""PatchGen module — patch constraint enforcement and types.
 
 Public API:
-    generate_patch(opportunity, repo_dir) -> Optional[PatchResult]
+    enforce_constraints(patch) -> None (raises ConstraintViolation on failure)
+    PatchResult      — patch data container
+    ConstraintViolation — raised when a patch violates hard constraints
 """
 
-from runner.patchgen.generator import generate_patch
+from runner.patchgen.constraints import enforce_constraints
 from runner.patchgen.types import ConstraintViolation, PatchResult
 
-__all__ = ["generate_patch", "PatchResult", "ConstraintViolation"]
+__all__ = ["enforce_constraints", "PatchResult", "ConstraintViolation"]

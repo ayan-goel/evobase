@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
 
+    # Supabase Auth — JWT secret for verifying access tokens.
+    supabase_jwt_secret: str = ""
+
     # CORS — comma-separated list of allowed origins.
     # Defaults to ["*"] for local development; restrict in production.
     cors_origins: list[str] = ["*"]

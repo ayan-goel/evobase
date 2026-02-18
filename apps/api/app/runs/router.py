@@ -68,29 +68,12 @@ async def enqueue_run(
     # Inherit the request trace ID so the run is greppable in logs
     trace_id = get_request_id() or str(uuid.uuid4())
 
-    run = Run(
-        repo_id=repo_id,
-        sha=body.sha,
-        status="queued",
-        trace_id=trace_id,
-    )
-    db.add(run)
+    from app.runs.service import create_and_enqueue_run
+
+    run = await create_and_enqueue_run(db, repo_id, sha=body.sha, trace_id=trace_id)
     await db.commit()
     await db.refresh(run)
-
-    # Dispatch background execution via Celery
-    try:
-        from app.runs.service import async_enqueue_run
-        task_id = await async_enqueue_run(db, run)
-        logger.info("Enqueued run %s as Celery task %s (trace_id=%s)", run.id, task_id, trace_id)
-    except Exception:
-        # If Celery is unavailable, the run stays queued.
-        # A sweep job (Phase 8+) can retry orphaned queued runs.
-        logger.warning(
-            "Failed to enqueue Celery task for run %s; run remains queued",
-            run.id,
-            exc_info=True,
-        )
+    logger.info("Enqueued run %s (trace_id=%s)", run.id, trace_id)
 
     return RunResponse.model_validate(run)
 

@@ -1,4 +1,4 @@
-"""Shared test fixtures for the SelfOpt API test suite.
+"""Shared test fixtures for the Coreloop API test suite.
 
 Uses an in-memory SQLite database for fast, isolated model/CRUD tests.
 SQLAlchemy adapts UUID and JSON column types to SQLite-compatible equivalents.
@@ -7,14 +7,55 @@ Each test gets a fresh database for isolation.
 
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.models import Base, Organization, Repository, Run, User
 from app.db.session import get_db
+from app.core.config import Settings, get_settings
 from app.main import create_app
+
+
+# ---------------------------------------------------------------------------
+# JWT test constants
+# ---------------------------------------------------------------------------
+
+TEST_JWT_SECRET = "test-secret-for-unit-tests"
+
+STUB_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+STUB_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
+STUB_REPO_ID = uuid.UUID("00000000-0000-0000-0000-000000000100")
+
+
+def _make_jwt(
+    sub: str | uuid.UUID = STUB_USER_ID,
+    *,
+    secret: str = TEST_JWT_SECRET,
+    audience: str = "authenticated",
+    email: str = "dev@coreloop.local",
+    expired: bool = False,
+) -> str:
+    """Mint a HS256 JWT matching Supabase's format."""
+    now = datetime.now(timezone.utc)
+    exp = now - timedelta(hours=1) if expired else now + timedelta(hours=1)
+    payload = {
+        "sub": str(sub),
+        "aud": audience,
+        "email": email,
+        "exp": exp,
+        "iat": now,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
+@pytest.fixture
+def jwt_token() -> str:
+    """A valid JWT for the stub user."""
+    return _make_jwt()
 
 
 @pytest.fixture
@@ -46,9 +87,19 @@ async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def _override_settings() -> Settings:
+    """Return Settings with the test JWT secret."""
+    return Settings(
+        supabase_jwt_secret=TEST_JWT_SECRET,
+        database_url="sqlite+aiosqlite:///:memory:",
+        sentry_dsn="",
+        debug=False,
+    )
+
+
 @pytest.fixture
 def app(async_engine):
-    """Create a FastAPI app with the DB dependency overridden to use test SQLite.
+    """Create a FastAPI app with DB + settings dependencies overridden.
 
     The SlowAPI rate limiter uses an in-memory storage that persists across
     requests within the same process. To isolate tests from each other, we
@@ -56,11 +107,10 @@ def app(async_engine):
     """
     from app.core.limiter import limiter
 
-    # Reset all in-memory rate-limit buckets so each test starts clean.
     try:
         limiter.reset()
     except Exception:
-        pass  # reset() may fail if storage not initialised yet — that's fine
+        pass
 
     test_app = create_app()
 
@@ -79,12 +129,13 @@ def app(async_engine):
                 raise
 
     test_app.dependency_overrides[get_db] = override_get_db
+    test_app.dependency_overrides[get_settings] = _override_settings
     return test_app
 
 
 @pytest.fixture
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
-    """Provide an async HTTP client wired to the test app."""
+    """Provide an async HTTP client wired to the test app (no auth)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -94,15 +145,11 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 # Seed data helpers matching the stub auth user
 # ---------------------------------------------------------------------------
 
-STUB_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-STUB_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
-STUB_REPO_ID = uuid.UUID("00000000-0000-0000-0000-000000000100")
-
 
 @pytest.fixture
 async def seeded_db(db_session) -> AsyncSession:
     """Seed the database with a user, org, and repo for route tests."""
-    user = User(id=STUB_USER_ID, email="dev@selfopt.local")
+    user = User(id=STUB_USER_ID, email="dev@coreloop.local")
     db_session.add(user)
     await db_session.flush()
 
@@ -126,8 +173,20 @@ async def seeded_db(db_session) -> AsyncSession:
 
 
 @pytest.fixture
-async def seeded_client(app, seeded_db) -> AsyncGenerator[AsyncClient, None]:
-    """HTTP client with a pre-seeded database."""
+async def seeded_client(app, seeded_db, jwt_token) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP client with a pre-seeded database and valid auth header."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {jwt_token}"},
+    ) as ac:
+        yield ac
+
+
+@pytest.fixture
+async def unauthed_client(app, seeded_db) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP client with seeded DB but no auth header."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

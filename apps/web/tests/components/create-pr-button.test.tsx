@@ -77,4 +77,15 @@ describe("CreatePRButton", () => {
       expect(button.hasAttribute("disabled")).toBe(true);
     });
   });
+
+  it("passes real repoId to createPR when clicked", async () => {
+    mockCreatePR.mockResolvedValue({ pr_url: "https://github.com/pr/99" });
+
+    render(<CreatePRButton repoId="real-repo-123" proposalId="prop-456" />);
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => {
+      expect(mockCreatePR).toHaveBeenCalledWith("real-repo-123", "prop-456");
+    });
+  });
 });

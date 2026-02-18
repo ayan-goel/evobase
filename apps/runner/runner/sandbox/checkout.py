@@ -123,7 +123,7 @@ def clone_repo(
     validate_repo_url(repo_url)
 
     if workspace_dir is None:
-        workspace_dir = Path(tempfile.mkdtemp(prefix="selfopt-"))
+        workspace_dir = Path(tempfile.mkdtemp(prefix="coreloop-"))
 
     workspace_dir.mkdir(parents=True, exist_ok=True)
 

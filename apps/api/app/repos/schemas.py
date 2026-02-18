@@ -20,6 +20,10 @@ class RepoConnectRequest(BaseModel):
     )
     org_id: uuid.UUID = Field(..., description="Organization to attach this repo to")
     default_branch: str = Field(default="main")
+    installation_id: Optional[int] = Field(
+        default=None,
+        description="GitHub App installation ID (from github_installations table)",
+    )
     package_manager: Optional[str] = None
     install_cmd: Optional[str] = None
     build_cmd: Optional[str] = None
@@ -38,13 +42,21 @@ class RepoResponse(BaseModel):
     github_repo_id: Optional[int]
     github_full_name: Optional[str] = None
     default_branch: str
+    installation_id: Optional[int] = None
     package_manager: Optional[str]
     install_cmd: Optional[str]
     build_cmd: Optional[str]
     test_cmd: Optional[str]
     typecheck_cmd: Optional[str] = None
     bench_config: Optional[dict[str, Any]]
+    latest_run_status: Optional[str] = None
     created_at: datetime
+
+
+class RepoConnectResponse(RepoResponse):
+    """Response schema for POST /repos/connect — includes the auto-created run ID."""
+
+    initial_run_id: Optional[str] = None
 
 
 class RepoListResponse(BaseModel):

@@ -1,4 +1,4 @@
-"""ASGI middleware for the SelfOpt API.
+"""ASGI middleware for the Coreloop API.
 
 Three middlewares registered in order (outermost → innermost):
   1. CORSMiddleware     — handled by FastAPI directly (not here)

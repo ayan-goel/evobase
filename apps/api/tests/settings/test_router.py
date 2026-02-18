@@ -7,6 +7,8 @@ Tests cover:
 - PUT: unpause resets failure counters
 - PUT: 404 for unknown repo
 - PUT: invalid field values (e.g. budget <= 0)
+- Auth: 401 when no auth header is provided
+- Auth: 404 when repo belongs to a different user
 """
 
 import uuid
@@ -16,8 +18,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Repository, Settings
-from tests.conftest import STUB_REPO_ID
+from app.db.models import Organization, Repository, Settings, User
+from tests.conftest import STUB_REPO_ID, STUB_USER_ID, _make_jwt
 
 
 # ---------------------------------------------------------------------------
@@ -215,3 +217,55 @@ class TestUpdateSettings:
         data = res.json()
         assert data["llm_model"] == "claude-sonnet-4-5"
         assert data["llm_provider"] == "anthropic"  # unchanged
+
+
+# ---------------------------------------------------------------------------
+# Auth tests
+# ---------------------------------------------------------------------------
+
+
+class TestSettingsAuth:
+    async def test_get_settings_without_auth_returns_401(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        res = await unauthed_client.get(f"/repos/{STUB_REPO_ID}/settings")
+        assert res.status_code == 401
+
+    async def test_put_settings_without_auth_returns_401(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        res = await unauthed_client.put(
+            f"/repos/{STUB_REPO_ID}/settings",
+            json={"compute_budget_minutes": 30},
+        )
+        assert res.status_code == 401
+
+    async def test_get_settings_with_auth_succeeds(
+        self, seeded_client: AsyncClient
+    ) -> None:
+        res = await seeded_client.get(f"/repos/{STUB_REPO_ID}/settings")
+        assert res.status_code == 200
+
+    async def test_put_settings_wrong_user_returns_404(
+        self, app, seeded_db: AsyncSession
+    ) -> None:
+        """A valid JWT for a different user should get 404 (not their repo)."""
+        from httpx import ASGITransport, AsyncClient as HC
+
+        other_user_id = uuid.uuid4()
+        other_user = User(id=other_user_id, email="other@example.com")
+        seeded_db.add(other_user)
+        await seeded_db.commit()
+
+        token = _make_jwt(sub=other_user_id)
+        transport = ASGITransport(app=app)
+        async with HC(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as ac:
+            res = await ac.put(
+                f"/repos/{STUB_REPO_ID}/settings",
+                json={"compute_budget_minutes": 30},
+            )
+            assert res.status_code == 404

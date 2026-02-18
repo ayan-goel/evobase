@@ -31,6 +31,7 @@ async def test_all_tables_created_successfully():
     expected_tables = {
         "users",
         "organizations",
+        "github_installations",
         "repositories",
         "baselines",
         "runs",

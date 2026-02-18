@@ -7,6 +7,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.middleware import RequestIdMiddleware, SecurityHeadersMiddleware
+from app.auth.router import router as auth_router
 from app.repos.router import router as repos_router
 from app.runs.router import router as runs_router
 from app.proposals.router import router as proposals_router
@@ -23,8 +24,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     _app = FastAPI(
-        title="SelfOpt API",
-        description="Control Plane API for SelfOpt autonomous code optimization",
+        title="Coreloop API",
+        description="Control Plane API for Coreloop autonomous code optimization",
         version="0.1.0",
     )
 
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "ok"}
 
+    _app.include_router(auth_router)
     _app.include_router(repos_router)
     _app.include_router(runs_router)
     _app.include_router(proposals_router)

@@ -69,7 +69,7 @@ def _is_schedule_due(schedule: str, last_run_at: Optional[datetime]) -> bool:
 
 
 @celery_app.task(
-    name="selfopt.trigger_scheduled_runs",
+    name="coreloop.trigger_scheduled_runs",
     bind=True,
     max_retries=0,
     ignore_result=True,
@@ -164,7 +164,7 @@ def _dispatch_due_repos() -> None:
 
 celery_app.conf.beat_schedule = {
     "trigger-scheduled-runs": {
-        "task": "selfopt.trigger_scheduled_runs",
+        "task": "coreloop.trigger_scheduled_runs",
         "schedule": TRIGGER_INTERVAL_SECONDS,
     },
 }

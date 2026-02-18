@@ -3,16 +3,18 @@ import { render, screen } from "@testing-library/react";
 import { RepoView } from "@/app/repos/[repoId]/page";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
-function makeRepo(): Repository {
+function makeRepo(overrides: Partial<Repository> = {}): Repository {
   return {
     id: "repo-1",
     github_repo_id: 123,
+    github_full_name: null,
     default_branch: "main",
     package_manager: "npm",
     install_cmd: "npm ci",
     build_cmd: null,
     test_cmd: "npm test",
     created_at: new Date().toISOString(),
+    ...overrides,
   };
 }
 
@@ -25,6 +27,7 @@ function makeRun(
     repo_id: "repo-1",
     sha: "abc1234",
     status,
+    compute_minutes: null,
     created_at: new Date().toISOString(),
     proposals,
   };
@@ -34,6 +37,7 @@ function makeProposal(): Proposal {
   return {
     id: "prop-1",
     run_id: "run-1",
+    repo_id: "repo-1",
     diff: "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y\n",
     summary: "Optimized set membership check",
     metrics_before: null,
@@ -47,9 +51,29 @@ function makeProposal(): Proposal {
 }
 
 describe("RepoView", () => {
-  it("renders repo heading with github_repo_id", () => {
+  it("renders repo heading with github_repo_id when github_full_name is absent", () => {
     render(<RepoView repo={makeRepo()} runs={[]} />);
     expect(screen.getByRole("heading", { name: "Repo #123" })).toBeDefined();
+  });
+
+  it("prefers github_full_name over repo_id and numeric id", () => {
+    render(
+      <RepoView
+        repo={makeRepo({ github_full_name: "acme/api-service" })}
+        runs={[]}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "acme/api-service" })).toBeDefined();
+  });
+
+  it("falls back to short UUID when neither github_full_name nor github_repo_id are set", () => {
+    render(
+      <RepoView
+        repo={makeRepo({ github_full_name: null, github_repo_id: null })}
+        runs={[]}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Repo repo-1" })).toBeDefined();
   });
 
   it("shows empty state when no runs", () => {

@@ -9,6 +9,7 @@ from app.db.models import (
     Attempt,
     Base,
     Baseline,
+    GitHubInstallation,
     Opportunity,
     Organization,
     Proposal,
@@ -23,11 +24,12 @@ class TestModelMetadata:
     """Verify model table names and column definitions match the schema."""
 
     def test_all_tables_registered(self):
-        """All 10 tables must be registered in Base metadata."""
+        """All 11 tables must be registered in Base metadata."""
         table_names = set(Base.metadata.tables.keys())
         expected = {
             "users",
             "organizations",
+            "github_installations",
             "repositories",
             "baselines",
             "runs",
@@ -42,7 +44,9 @@ class TestModelMetadata:
     def test_user_table_columns(self):
         table = User.__table__
         column_names = {c.name for c in table.columns}
-        assert column_names == {"id", "email", "created_at"}
+        assert column_names == {
+            "id", "email", "github_id", "github_login", "avatar_url", "created_at",
+        }
 
     def test_organization_table_columns(self):
         table = Organization.__table__
@@ -64,7 +68,17 @@ class TestModelMetadata:
             "test_cmd",
             "typecheck_cmd",
             "bench_config",
+            "installation_id",
             "created_at",
+        }
+        assert column_names == expected
+
+    def test_github_installations_table_columns(self):
+        table = GitHubInstallation.__table__
+        column_names = {c.name for c in table.columns}
+        expected = {
+            "id", "installation_id", "account_login", "account_id",
+            "user_id", "created_at",
         }
         assert column_names == expected
 
@@ -112,6 +126,8 @@ class TestModelMetadata:
             "confidence",
             "created_at",
             "pr_url",
+            "discovery_trace",
+            "patch_trace",
         }
         assert column_names == expected
 

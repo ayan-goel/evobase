@@ -1,7 +1,7 @@
 [project]
-name = "selfopt-runner"
+name = "coreloop-runner"
 version = "0.1.0"
-description = "SelfOpt Runner - Sandbox execution engine for code optimization"
+description = "Coreloop Runner - Sandbox execution engine for code optimization"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

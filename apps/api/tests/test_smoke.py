@@ -7,7 +7,7 @@ def test_app_creates_successfully():
     """Verify the FastAPI app factory produces a valid app instance."""
     app = create_app()
     assert app is not None
-    assert app.title == "SelfOpt API"
+    assert app.title == "Coreloop API"
 
 
 def test_app_imports():

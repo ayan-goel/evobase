@@ -582,3 +582,185 @@ class TestUploadBaselineArtifacts:
 
             # Must not raise:
             _upload_baseline_artifacts("run-1", "repo-1", MagicMock())
+
+
+# ============================================================================
+# _build_repo_url — token support for private repos
+# ============================================================================
+
+class TestBuildRepoUrlWithToken:
+    """Verify _build_repo_url embeds the installation token for private repos."""
+
+    def test_token_embedded_in_url(self):
+        from app.runs.service import _build_repo_url
+
+        url = _build_repo_url("acme/private-repo", 99, token="ghs_abc123")
+        assert url == "https://x-access-token:ghs_abc123@github.com/acme/private-repo.git"
+
+    def test_no_token_returns_plain_https(self):
+        from app.runs.service import _build_repo_url
+
+        url = _build_repo_url("acme/public-repo", 99, token=None)
+        assert url == "https://github.com/acme/public-repo.git"
+        assert "x-access-token" not in url
+
+    def test_token_none_by_default(self):
+        from app.runs.service import _build_repo_url
+
+        url = _build_repo_url("acme/repo", None)
+        assert "x-access-token" not in url
+
+
+# ============================================================================
+# _write_proposals_to_db — metrics_after + LLM traces stored
+# ============================================================================
+
+class TestWriteProposalsFields:
+    """Verify metrics_after and LLM traces are passed to the Proposal constructor."""
+
+    def _make_mock_session(self):
+        session = MagicMock()
+        captured = []
+
+        def add_side_effect(obj):
+            captured.append(obj)
+
+        session.add.side_effect = add_side_effect
+        session._captured = captured
+        return session
+
+    def _run_write(self, session, n_accepted=1):
+        from app.runs.service import _write_proposals_to_db
+
+        run_id = str(uuid.uuid4())
+        repo_id = str(uuid.uuid4())
+
+        # Build a cycle with a candidate whose attempt has a pipeline_result
+        pipeline_result = MagicMock()
+        pipeline_result.to_dict.return_value = {"is_success": True, "p95_ms": 80}
+
+        attempt = MagicMock()
+        attempt.pipeline_result = pipeline_result
+
+        candidate = MagicMock()
+        candidate.is_accepted = True
+        candidate.final_verdict = MagicMock(is_accepted=True, confidence="high")
+        candidate.attempts = [attempt]
+
+        trace = _make_thinking_trace()
+
+        opp = MagicMock()
+        opp.location = "src/app.ts"
+        opp.category = "performance"
+        opp.rationale = "Hot path"
+        opp.risk_score = 0.2
+        opp.thinking_trace = trace
+
+        patch_obj = MagicMock()
+        patch_obj.diff = "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n"
+        patch_obj.thinking_trace = trace
+
+        agent_run = MagicMock()
+        agent_run.patches = [patch_obj]
+
+        cycle = MagicMock()
+        cycle.candidate_results = [candidate]
+        cycle.opportunity_for_candidate = [opp]
+        cycle.agent_run = agent_run
+
+        baseline = _make_baseline()
+
+        with patch("app.runs.service.get_sync_db") as mock_db:
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            _write_proposals_to_db(
+                run_id=run_id,
+                repo_id=repo_id,
+                cycle_result=cycle,
+                baseline=baseline,
+                max_proposals=10,
+            )
+
+        return session._captured
+
+    def test_metrics_after_stored_on_proposal(self):
+        """The Proposal row receives metrics_after from the last attempt's pipeline_result."""
+        session = self._make_mock_session()
+        objects = self._run_write(session)
+
+        from app.db.models import Proposal
+        proposals = [o for o in objects if isinstance(o, Proposal)]
+        assert len(proposals) == 1
+        assert proposals[0].metrics_after == {"is_success": True, "p95_ms": 80}
+
+    def test_discovery_trace_stored_on_proposal(self):
+        """discovery_trace is populated on the Proposal row."""
+        session = self._make_mock_session()
+        objects = self._run_write(session)
+
+        from app.db.models import Proposal
+        proposals = [o for o in objects if isinstance(o, Proposal)]
+        assert len(proposals) == 1
+        assert proposals[0].discovery_trace is not None
+
+    def test_patch_trace_stored_on_proposal(self):
+        """patch_trace is populated on the Proposal row."""
+        session = self._make_mock_session()
+        objects = self._run_write(session)
+
+        from app.db.models import Proposal
+        proposals = [o for o in objects if isinstance(o, Proposal)]
+        assert len(proposals) == 1
+        assert proposals[0].patch_trace is not None
+
+    def test_metrics_after_none_when_no_attempts(self):
+        """If a candidate has no attempts, metrics_after is None (no crash)."""
+        from app.runs.service import _write_proposals_to_db
+
+        run_id = str(uuid.uuid4())
+        repo_id = str(uuid.uuid4())
+
+        candidate = MagicMock()
+        candidate.is_accepted = True
+        candidate.final_verdict = MagicMock(is_accepted=True, confidence="low")
+        candidate.attempts = []  # no attempts
+
+        patch_obj = MagicMock()
+        patch_obj.diff = "--- a/x.ts\n+++ b/x.ts"
+        patch_obj.thinking_trace = None
+
+        opp = MagicMock()
+        opp.location = "x.ts:1"
+        opp.category = "dead_code"
+        opp.rationale = "unused"
+        opp.risk_score = 0.1
+        opp.thinking_trace = None
+
+        agent_run = MagicMock()
+        agent_run.patches = [patch_obj]
+
+        cycle = MagicMock()
+        cycle.candidate_results = [candidate]
+        cycle.opportunity_for_candidate = [opp]
+        cycle.agent_run = agent_run
+
+        captured = []
+        session = MagicMock()
+        session.add.side_effect = lambda o: captured.append(o)
+
+        with patch("app.runs.service.get_sync_db") as mock_db:
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            _write_proposals_to_db(
+                run_id=run_id,
+                repo_id=repo_id,
+                cycle_result=cycle,
+                baseline=_make_baseline(),
+                max_proposals=10,
+            )
+
+        from app.db.models import Proposal
+        proposals = [o for o in captured if isinstance(o, Proposal)]
+        assert proposals[0].metrics_after is None

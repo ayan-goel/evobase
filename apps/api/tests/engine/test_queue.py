@@ -11,7 +11,7 @@ class TestCeleryAppConfig:
     """Verify Celery app settings match production requirements."""
 
     def test_celery_app_name(self):
-        assert celery_app.main == "selfopt"
+        assert celery_app.main == "coreloop"
 
     def test_json_serializer(self):
         assert celery_app.conf.task_serializer == "json"

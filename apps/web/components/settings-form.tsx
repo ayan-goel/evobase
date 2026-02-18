@@ -13,15 +13,16 @@
 import { useState, useTransition } from "react";
 import { updateRepoSettings } from "@/lib/api";
 import type { LLMProvider } from "@/lib/api";
-import type { RepoSettings } from "@/lib/types";
+import type { Repository, RepoSettings } from "@/lib/types";
 
 interface SettingsFormProps {
   repoId: string;
   initial: RepoSettings;
   llmProviders?: LLMProvider[];
+  repo?: Repository | null;
 }
 
-export function SettingsForm({ repoId, initial, llmProviders = [] }: SettingsFormProps) {
+export function SettingsForm({ repoId, initial, llmProviders = [], repo }: SettingsFormProps) {
   const [settings, setSettings] = useState<RepoSettings>(initial);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,36 @@ export function SettingsForm({ repoId, initial, llmProviders = [] }: SettingsFor
           </div>
         </div>
       )}
+
+      {/* Detected commands (read-only) */}
+      {repo &&
+        (repo.install_cmd || repo.build_cmd || repo.test_cmd || repo.typecheck_cmd) && (
+          <div className="space-y-3" data-testid="detected-commands">
+            <p className="text-xs font-medium text-white/60 uppercase tracking-wider">
+              Detected commands
+            </p>
+            <div className="space-y-2">
+              {[
+                { label: "Install", value: repo.install_cmd },
+                { label: "Build", value: repo.build_cmd },
+                { label: "Test", value: repo.test_cmd },
+                { label: "Typecheck", value: repo.typecheck_cmd },
+              ]
+                .filter((c) => c.value)
+                .map((c) => (
+                  <div key={c.label}>
+                    <p className="mb-1 text-xs text-white/40">{c.label}</p>
+                    <input
+                      readOnly
+                      value={c.value!}
+                      aria-label={`${c.label} command`}
+                      className="w-full rounded-xl border border-white/8 bg-white/[0.02] px-4 py-2 text-xs font-mono text-white/60 cursor-default focus:outline-none"
+                    />
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
       {/* Schedule */}
       <div className="space-y-1.5">

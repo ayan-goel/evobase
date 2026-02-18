@@ -51,7 +51,7 @@ class TestCloneRepo:
         result = clone_repo("https://github.com/user/repo.git")
 
         assert result is not None
-        assert "selfopt-" in str(result)
+        assert "coreloop-" in str(result)
 
     @patch("runner.sandbox.checkout.subprocess.run")
     def test_clone_custom_depth(self, mock_run, tmp_path):

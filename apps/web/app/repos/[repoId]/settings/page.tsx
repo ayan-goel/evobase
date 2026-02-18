@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Nav } from "@/components/nav";
+import { NavWithUser } from "@/components/nav-server";
 import { SettingsForm } from "@/components/settings-form";
 import { getRepo, getRepoSettings, getLLMModels } from "@/lib/api";
 
@@ -34,7 +34,7 @@ export default async function RepoSettingsPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
-      <Nav />
+      <NavWithUser />
 
       <div className="mx-auto max-w-2xl px-4 pt-28 pb-20">
         {/* Breadcrumb */}
@@ -68,7 +68,7 @@ export default async function RepoSettingsPage({ params }: PageProps) {
 
         {/* Settings card */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-sm">
-          <SettingsForm repoId={repoId} initial={settings} llmProviders={llmProviders} />
+          <SettingsForm repoId={repoId} initial={settings} llmProviders={llmProviders} repo={repo} />
         </div>
 
         {/* Auto-pause info */}

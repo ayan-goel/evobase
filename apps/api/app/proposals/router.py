@@ -32,14 +32,14 @@ async def get_proposal(
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ) -> ProposalResponse:
-    """Get a single proposal with its artifacts.
+    """Get a single proposal with its artifacts and repo_id.
 
-    Eagerly loads artifacts so the frontend can display
-    evidence links (logs, traces, benchmarks, diffs).
+    Eagerly loads artifacts and the parent run so the frontend can display
+    evidence links and route to the correct repo without a secondary fetch.
     """
     result = await db.execute(
         select(Proposal)
-        .options(selectinload(Proposal.artifacts))
+        .options(selectinload(Proposal.artifacts), selectinload(Proposal.run))
         .where(Proposal.id == proposal_id)
     )
     proposal = result.scalar_one_or_none()
@@ -62,7 +62,7 @@ async def get_proposal(
             detail="Proposal not found",
         )
 
-    return ProposalResponse.model_validate(proposal)
+    return ProposalResponse.from_proposal(proposal)
 
 
 @router.get("/by-run/{run_id}", response_model=ProposalListResponse)
@@ -87,13 +87,13 @@ async def list_proposals_by_run(
 
     result = await db.execute(
         select(Proposal)
-        .options(selectinload(Proposal.artifacts))
+        .options(selectinload(Proposal.artifacts), selectinload(Proposal.run))
         .where(Proposal.run_id == run_id)
         .order_by(Proposal.created_at.desc())
     )
     proposals = result.scalars().all()
     return ProposalListResponse(
-        proposals=[ProposalResponse.model_validate(p) for p in proposals],
+        proposals=[ProposalResponse.from_proposal(p) for p in proposals],
         count=len(proposals),
     )
 
@@ -132,21 +132,23 @@ async def create_proposal(
         metrics_after=body.metrics_after,
         risk_score=body.risk_score,
         confidence=body.confidence,
+        discovery_trace=body.discovery_trace,
+        patch_trace=body.patch_trace,
     )
     db.add(proposal)
     await db.commit()
-    await db.refresh(proposal)
 
-    # Load artifacts relationship for the response (will be empty on create)
-    await db.execute(
+    # Re-fetch with artifacts + run eager-loaded to build the full response.
+    result = await db.execute(
         select(Proposal)
-        .options(selectinload(Proposal.artifacts))
+        .options(selectinload(Proposal.artifacts), selectinload(Proposal.run))
         .where(Proposal.id == proposal.id)
     )
+    proposal = result.scalar_one()
 
     logger.info(
         "Created proposal %s for run %s (confidence=%s)",
         proposal.id, body.run_id, body.confidence,
     )
 
-    return ProposalResponse.model_validate(proposal)
+    return ProposalResponse.from_proposal(proposal)

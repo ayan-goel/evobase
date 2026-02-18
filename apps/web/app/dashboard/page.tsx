@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { getRepos } from "@/lib/api";
-import { Nav } from "@/components/nav";
+import { NavWithUser } from "@/components/nav-server";
 import type { Repository } from "@/lib/types";
 
-export const metadata = { title: "Dashboard — SelfOpt" };
+export const metadata = { title: "Dashboard — Coreloop" };
+
+/** Returns the most human-readable label for a repo. */
+function repoDisplayName(repo: Repository): string {
+  if (repo.github_full_name) return repo.github_full_name;
+  if (repo.github_repo_id) return `Repo #${repo.github_repo_id}`;
+  return `Repo ${repo.id.slice(0, 8)}`;
+}
 
 /** Presentational component — tested in isolation with mock data. */
 export function DashboardView({ repos }: { repos: Repository[] }) {
@@ -11,13 +18,21 @@ export function DashboardView({ repos }: { repos: Repository[] }) {
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
         {/* Page header */}
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
-            Repositories
-          </h1>
-          <p className="mt-1.5 text-sm text-white/50">
-            Connect a repository to start optimizing.
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
+              Repositories
+            </h1>
+            <p className="mt-1.5 text-sm text-white/50">
+              Connect a repository to start optimizing.
+            </p>
+          </div>
+          <Link
+            href="/github/install"
+            className="shrink-0 rounded-full bg-white text-black h-9 px-5 text-sm font-semibold transition-colors hover:bg-white/90 inline-flex items-center justify-center"
+          >
+            Connect Repository
+          </Link>
         </div>
 
         {repos.length === 0 ? (
@@ -34,6 +49,22 @@ export function DashboardView({ repos }: { repos: Repository[] }) {
   );
 }
 
+function RepoStatusBadge({ status }: { status: string | null | undefined }) {
+  if (status === "queued" || status === "running") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse" />
+        Setting up…
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-white/30 group-hover:text-white/50 transition-colors">
+      →
+    </span>
+  );
+}
+
 function RepoCard({ repo }: { repo: Repository }) {
   return (
     <Link
@@ -43,17 +74,13 @@ function RepoCard({ repo }: { repo: Repository }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-white">
-            {repo.github_repo_id
-              ? `Repo #${repo.github_repo_id}`
-              : `Repo ${repo.id.slice(0, 8)}`}
+            {repoDisplayName(repo)}
           </p>
           <p className="mt-0.5 text-xs text-white/40">
             {repo.default_branch} · {repo.package_manager ?? "unknown PM"}
           </p>
         </div>
-        <span className="text-xs text-white/30 group-hover:text-white/50 transition-colors">
-          →
-        </span>
+        <RepoStatusBadge status={repo.latest_run_status} />
       </div>
 
       {(repo.build_cmd || repo.test_cmd) && (
@@ -78,9 +105,15 @@ function EmptyRepos() {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-8 text-center">
       <p className="text-sm text-white/40">No repositories connected yet.</p>
-      <p className="mt-1 text-xs text-white/25">
-        Install the GitHub App to get started.
+      <p className="mt-2 text-xs text-white/25">
+        Connect a repository to start optimizing your code.
       </p>
+      <Link
+        href="/github/install"
+        className="mt-4 inline-flex items-center justify-center rounded-full bg-white text-black h-9 px-5 text-sm font-semibold transition-colors hover:bg-white/90"
+      >
+        Connect Repository
+      </Link>
     </div>
   );
 }
@@ -97,7 +130,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <Nav />
+      <NavWithUser />
       <DashboardView repos={repos} />
     </>
   );

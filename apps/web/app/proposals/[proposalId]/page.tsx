@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getProposal, getArtifactSignedUrl } from "@/lib/api";
-import { Nav } from "@/components/nav";
+import { NavWithUser } from "@/components/nav-server";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { DiffViewer } from "@/components/diff-viewer";
 import { TraceTimeline } from "@/components/trace-timeline";
@@ -8,7 +8,7 @@ import { CreatePRButton } from "@/components/create-pr-button";
 import { AgentReasoning } from "@/components/agent-reasoning";
 import type { Artifact, Metrics, Proposal, ThinkingTrace, TraceAttempt } from "@/lib/types";
 
-export const metadata = { title: "Proposal — SelfOpt" };
+export const metadata = { title: "Proposal — Coreloop" };
 
 interface ProposalPageData {
   proposal: Proposal;
@@ -29,10 +29,10 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
           </Link>
           <span className="mx-2">/</span>
           <Link
-            href={`/repos`}
+            href={`/repos/${proposal.repo_id}`}
             className="hover:text-white/70 transition-colors"
           >
-            Run
+            Repository
           </Link>
           <span className="mx-2">/</span>
           <span className="text-white/70">Proposal</span>
@@ -193,9 +193,7 @@ function _extractTraceAttempts(proposal: Proposal): TraceAttempt[] {
 }
 
 function _extractRepoId(proposal: Proposal): string {
-  // The repo ID is carried through the run; for MVP, we leave it empty
-  // and the Create PR button falls back gracefully.
-  return "";
+  return proposal.repo_id;
 }
 
 function _artifactLabel(type: string): string {
@@ -210,22 +208,15 @@ function _artifactLabel(type: string): string {
 }
 
 function _hasAgentReasoning(proposal: Proposal): boolean {
-  // Check if any trace attempt carries LLM reasoning
-  const attempts = _extractTraceAttempts(proposal);
-  return attempts.some((a) => a.llm_reasoning !== null);
+  return !!(proposal.discovery_trace || proposal.patch_trace);
 }
 
 function _extractDiscoveryTrace(proposal: Proposal): ThinkingTrace | null {
-  // The discovery trace is stored on the first attempt (opportunity-level)
-  const attempts = _extractTraceAttempts(proposal);
-  return attempts[0]?.llm_reasoning ?? null;
+  return proposal.discovery_trace ?? null;
 }
 
 function _extractPatchTrace(proposal: Proposal): ThinkingTrace | null {
-  // The patch trace may differ from discovery; use the second attempt if available
-  const attempts = _extractTraceAttempts(proposal);
-  if (attempts.length > 1) return attempts[1]?.llm_reasoning ?? null;
-  return attempts[0]?.llm_reasoning ?? null;
+  return proposal.patch_trace ?? null;
 }
 
 /** RSC page — fetches data then delegates to ProposalView. */
@@ -260,7 +251,7 @@ export default async function ProposalPage({
   if (!proposal) {
     return (
       <>
-        <Nav />
+        <NavWithUser />
         <div className="min-h-screen pt-24 flex items-center justify-center">
           <p className="text-sm text-white/50">Proposal not found.</p>
         </div>
@@ -270,7 +261,7 @@ export default async function ProposalPage({
 
   return (
     <>
-      <Nav />
+      <NavWithUser />
       <ProposalView proposal={proposal} artifactLinks={artifactLinks} />
     </>
   );

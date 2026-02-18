@@ -1,4 +1,4 @@
-"""Sentry SDK integration for SelfOpt API.
+"""Sentry SDK integration for Coreloop API.
 
 Captures exceptions and performance traces without leaking secrets.
 

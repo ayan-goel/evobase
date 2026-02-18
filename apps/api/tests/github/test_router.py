@@ -134,3 +134,47 @@ class TestCreatePrEndpoint:
             f"/github/repos/{STUB_REPO_ID}/proposals/{uuid.uuid4()}/create-pr"
         )
         assert response.status_code == 404
+
+    @patch("app.github.router.create_pr_for_proposal", new_callable=AsyncMock)
+    async def test_create_pr_returns_422_when_repo_not_configured(
+        self, mock_create_pr, seeded_client, seeded_db
+    ):
+        """Service raising ValueError (missing github_full_name or installation_id)
+        must surface as 422 Unprocessable Entity, not a 500."""
+        proposal = await self._setup_proposal(seeded_client, seeded_db)
+        mock_create_pr.side_effect = ValueError("Repository has no GitHub App installation")
+
+        response = await seeded_client.post(
+            f"/github/repos/{STUB_REPO_ID}/proposals/{proposal.id}/create-pr"
+        )
+        assert response.status_code == 422
+        assert "installation" in response.json()["detail"]
+
+    async def test_create_pr_wrong_repo_returns_404(self, seeded_client, seeded_db):
+        """A proposal belonging to a different repo must return 404."""
+        # Create a run + proposal under a repo that the test user doesn't own
+        other_repo_id = uuid.uuid4()
+        run_resp = await seeded_client.post(f"/repos/{STUB_REPO_ID}/run", json={})
+        run_id = uuid.UUID(run_resp.json()["id"])
+
+        proposal = Proposal(
+            run_id=run_id,
+            diff="--- a/f\n+++ b/f",
+            summary="some change",
+        )
+        seeded_db.add(proposal)
+        await seeded_db.commit()
+        await seeded_db.refresh(proposal)
+
+        # Request create-pr using a random (non-existent) repo_id
+        response = await seeded_client.post(
+            f"/github/repos/{uuid.uuid4()}/proposals/{proposal.id}/create-pr"
+        )
+        assert response.status_code == 404
+
+    async def test_create_pr_without_auth_returns_401(self, unauthed_client):
+        """Endpoint must reject requests with no Authorization header."""
+        response = await unauthed_client.post(
+            f"/github/repos/{STUB_REPO_ID}/proposals/{uuid.uuid4()}/create-pr"
+        )
+        assert response.status_code == 401

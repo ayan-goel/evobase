@@ -32,7 +32,7 @@ from app.scheduling.budget import (
 
 @pytest.fixture
 async def repo(db_session: AsyncSession) -> Repository:
-    user = User(email="test@selfopt.local")
+    user = User(email="test@coreloop.local")
     db_session.add(user)
     await db_session.flush()
 

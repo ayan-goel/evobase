@@ -1,7 +1,7 @@
 [project]
-name = "selfopt-api"
+name = "coreloop-api"
 version = "0.1.0"
-description = "SelfOpt Control Plane API"
+description = "Coreloop Control Plane API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,13 +13,15 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.0",
     "pyjwt>=2.11.0",
+    "python-jose[cryptography]>=3.3.0",
     "python-dotenv>=1.2.1",
     "redis>=6.4.0",
-    "selfopt-runner",
+    "coreloop-runner",
     "sentry-sdk[fastapi]>=2.53.0",
     "slowapi>=0.1.9",
     "sqlalchemy[asyncio]>=2.0.46",
     "structlog>=25.5.0",
+    "unidiff>=0.7.5",
     "uvicorn>=0.41.0",
 ]
 
@@ -35,4 +37,4 @@ dev = [
 asyncio_mode = "auto"
 
 [tool.uv.sources]
-selfopt-runner = { path = "../runner", editable = true }
+coreloop-runner = { path = "../runner", editable = true }

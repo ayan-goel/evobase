@@ -1,512 +1,593 @@
+# Coreloop — Full-Stack Wiring Implementation Plan
 
-### Required tests
-- `apps/api/tests/test_smoke.py` (API imports, app boots)
-- `apps/runner/tests/test_smoke.py` (runner imports)
-- `apps/web` basic render test
+The app has a backend with 15+ endpoints and a frontend with 5 pages, but they are not connected through any real user flow. This plan closes every gap in [GAPS.md](GAPS.md) across 6 phases.
 
----
+```mermaid
+flowchart LR
+    P1[Phase1_Auth] --> P2[Phase2_GitHubApp]
+    P1 --> P3[Phase3_Onboarding]
+    P2 --> P3
+    P2 --> P4[Phase4_FixPR]
+    P1 --> P5[Phase5_Polling]
+    P1 --> P6[Phase6_Polish]
+    P3 --> P6
+    P4 --> P6
+    P5 --> P6
+```
 
-## Phase 1 — Supabase Project + Schema + Migrations
-
-### Goal
-Establish Supabase as the source of truth (Postgres + Storage).
-
-### Deliverables
-- Supabase CLI local project (`supabase init`)
-- SQL migrations for core tables:
-  - users, organizations, repositories, runs, baselines, opportunities, attempts, proposals, artifacts, settings
-- Seed data (minimal)
-- Storage bucket created: `artifacts`
-- Policies plan (MVP can start permissive locally, tighten later)
-
-### Files
-- `infra/supabase/migrations/*.sql`
-- `apps/api/app/db/*` (models + db session)
-- `apps/api/app/core/settings.py` (Supabase URL/keys)
-
-### Required tests
-- Migration apply test (clean db)
-- CRUD integration tests for at least:
-  - repositories
-  - runs
-  - proposals
-  - artifacts
+Phases 1 and 2 are sequential (auth must exist before GitHub flow). Phases 3, 4, and 5 can run in parallel after Phase 2. Phase 6 is the final sweep after everything works.
 
 ---
 
-## Phase 2 — FastAPI Core API (Repos + Runs + Proposals)
+## Phase 1 — Authentication (Supabase Auth + GitHub OAuth)
 
-### Goal
-Create the Control Plane API with clean contracts and strong validation.
+**Goal:** A user can sign in with GitHub and all API calls are authenticated.
 
-### Deliverables
-- Auth stub (Supabase Auth integration can come later, but route guards must exist)
-- CRUD endpoints:
-  - `POST /repos/connect` (create repo record)
-  - `GET /repos`
-  - `GET /repos/{repo_id}`
-  - `POST /repos/{repo_id}/run` (enqueue run)
-  - `GET /repos/{repo_id}/runs`
-  - `GET /proposals/{proposal_id}`
-- Status enums and DB models
-- Signed URL generation endpoints for artifacts
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Supabase
+    participant GitHub
+    participant API
 
-### Files
-- `apps/api/app/repos/router.py`
-- `apps/api/app/runs/router.py`
-- `apps/api/app/proposals/router.py`
-- `apps/api/app/artifacts/router.py`
+    User->>Frontend: Click "Sign in with GitHub"
+    Frontend->>Supabase: signInWithOAuth(github)
+    Supabase->>GitHub: OAuth redirect
+    GitHub->>Supabase: Auth code
+    Supabase->>Frontend: Redirect to /auth/callback
+    Frontend->>Supabase: Exchange code for session
+    Frontend->>API: POST /auth/github-callback
+    API->>API: Upsert user + auto-create org
+    API->>Frontend: { user_id, org_id }
+    Frontend->>Frontend: Redirect to /dashboard
+```
 
-### Required tests
-- Unit tests for Pydantic schemas
-- Integration tests for each endpoint with DB
-- Tests for signed URL generation (mock Supabase storage client)
+### Database
 
----
+New migration `infra/supabase/migrations/20260218000000_auth_and_installations.sql`:
 
-## Phase 3 — GitHub App Integration (Connect + Webhooks + PR Creation)
+- Alter `users` table: add `github_id bigint`, `github_login text`, `avatar_url text`
+- New `github_installations` table:
 
-### Goal
-Enable repo connection via GitHub App and PR creation workflow.
+```sql
+create table github_installations (
+    id               uuid primary key default gen_random_uuid(),
+    installation_id  bigint unique not null,
+    account_login    text not null,
+    account_id       bigint not null,
+    user_id          uuid references users(id) on delete set null,
+    created_at       timestamptz not null default now()
+);
+```
 
-### Deliverables
-- GitHub App setup notes (private key storage, webhook secret)
-- Webhook handler:
-  - installation events
-  - repo selection events (if needed)
-- Store `github_repo_id`, default branch
-- PR creation endpoint:
-  - `POST /repos/{repo_id}/proposals/{proposal_id}/create-pr`
+- Add `installation_id bigint` column to `repositories` (FK to `github_installations.installation_id`)
+- Index on `github_installations.user_id`
 
-### Files
-- `apps/api/app/github/*`
-- `apps/api/app/repos/service.py`
+### Backend changes
 
-### Required tests
-- Webhook signature verification unit tests
-- Mock GitHub API tests:
-  - branch creation
-  - commit creation
-  - PR open
-- Contract test: proposal -> PR payload
+**`app/auth/dependencies.py`** — Replace stub with real JWT validation:
 
----
+```python
+from fastapi import Header, HTTPException, status
+from jose import JWTError, jwt
+from app.core.config import get_settings
 
-## Phase 4 — Job System (Redis + Celery) + Run Orchestration
+async def get_current_user(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+) -> uuid.UUID:
+    token = authorization.removeprefix("Bearer ").strip()
+    settings = get_settings()
+    payload = jwt.decode(
+        token,
+        settings.supabase_jwt_secret,
+        algorithms=["HS256"],
+        audience="authenticated",
+    )
+    sub = payload.get("sub")  # Supabase user UUID
+    # Upsert user row (first login creates the user)
+    ...
+    return uuid.UUID(sub)
+```
 
-### Goal
-Make runs actually happen: API enqueues jobs, workers execute orchestration.
+- Add `SUPABASE_JWT_SECRET` to `app/core/config.py` (found in Supabase Dashboard -> Settings -> API -> JWT Secret)
+- Add `python-jose[cryptography]` to `apps/api/pyproject.toml`
+- Add auth dependency to settings router (`GET/PUT /repos/{repo_id}/settings`)
 
-### Deliverables
-- Redis configured locally
-- Celery worker setup
-- Run state machine (minimal):
-  - queued -> running -> completed/failed
-- A “run baseline only” job type
-- Store logs pointers and status updates in DB
+**New endpoint** `POST /auth/github-callback`:
 
-### Files
-- `apps/api/app/engine/queue.py`
-- `apps/api/app/engine/tasks.py`
-- `apps/api/app/runs/service.py`
+- Receives `{ github_id, github_login, avatar_url, email }` from frontend after Supabase OAuth completes
+- Upserts `users` row with GitHub metadata
+- Auto-creates a default `organizations` row if none exists (name = github_login)
+- Returns `{ user_id, org_id }`
 
-### Required tests
-- Unit tests for state transitions
-- Integration test: enqueue run -> worker picks up -> run status updated
+### Frontend changes
 
----
+**New dependency:** `@supabase/supabase-js` + `@supabase/ssr`
 
-## Phase 5 — Runner v0: Repo Checkout + Command Auto-Detection
+**New file `lib/supabase/client.ts`:**
 
-### Goal
-Runner can clone repo at SHA and detect commands for Node/Next/Nest/Express/React repos.
+- Browser Supabase client (uses `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 
-### Deliverables
-- Git checkout in sandbox workspace
-- Detect:
-  - package manager (pnpm/yarn/npm)
-  - install_cmd
-  - build_cmd
-  - test_cmd
-  - typecheck_cmd (optional)
-- CI workflow parser (GitHub Actions YAML) + package.json parser
-- Output a single JSON config object with confidence + evidence
+**New file `lib/supabase/server.ts`:**
 
-### Files
-- `apps/runner/runner/detector/*`
-- `apps/runner/runner/sandbox/*`
+- Server-side Supabase client (for RSC data fetching)
 
-### Required tests (lots)
-- Golden tests with repo fixtures:
-  - nextjs repo fixture
-  - nestjs repo fixture
-  - express repo fixture
-  - react (vite) repo fixture
-- YAML parsing edge case tests
-- Confidence scoring tests
+**New file `lib/supabase/middleware.ts`:**
 
----
+- Token refresh logic for Next.js middleware
 
-## Phase 6 — Runner v1: Baseline Execution + Artifact Upload to Supabase Storage
+**New file `app/login/page.tsx`:**
 
-### Goal
-Runner executes baseline pipeline and uploads artifacts to Supabase Storage.
+- Full-page login with "Sign in with GitHub" button
+- Calls `supabase.auth.signInWithOAuth({ provider: 'github' })`
+- Redirects to `/auth/callback` after GitHub OAuth completes
 
-### Deliverables
-- Run:
-  - install
-  - build (if available)
-  - typecheck (if available)
-  - tests
-- Benchmark mode support (MVP choose one path first):
-  - script bench if `bench_cmd` exists
-  - else skip bench but still store baseline build/test results
-- Upload artifacts:
-  - logs.txt
-  - baseline.json
-  - trace.json
-- Store `artifacts` records in Postgres via API callback or direct DB client (prefer API callback)
+**New file `app/auth/callback/route.ts`:**
 
-### Files
-- `apps/runner/runner/validator/*`
-- `apps/runner/runner/packaging/*`
+- Next.js route handler that exchanges the OAuth code for a session
+- Calls `POST /auth/github-callback` to upsert user + org
+- Redirects to `/dashboard`
 
-### Required tests
-- Baseline pipeline unit tests (mock subprocess)
-- Integration test with local Supabase storage (upload + signed URL retrieval)
-- Failure-mode tests:
-  - install fails
-  - tests fail
-  - build fails
+**New file `middleware.ts`** (root of `apps/web/`):
 
----
+- Checks for Supabase session on every request
+- Redirects unauthenticated users to `/login` (except `/`, `/login`, `/auth/callback`)
 
-## Phase 7 — Scanner v0: Opportunity Backlog (AST + Heuristics)
+**Update `lib/api.ts`:**
 
-### Goal
-Generate a ranked list of opportunities to attempt.
+- `apiFetch()` reads the Supabase session token and attaches `Authorization: Bearer <token>`
+- On 401 response, redirect to `/login`
 
-### Deliverables
-- tree-sitter-based AST pass (JS/TS)
-- ripgrep heuristics pass
-- Output: `opportunities[]` with:
-  - type, location, rationale, risk estimate
-- Store opportunities in DB under the run
+**Update `components/nav.tsx`:**
 
-### Files
-- `apps/runner/runner/scanner/*`
+- Add user avatar + logout button
+- Logout calls `supabase.auth.signOut()` then redirects to `/`
 
-### Required tests
-- Golden tests: input file -> expected opportunities
-- Regression tests: ensure scanner output stable over time
-- Performance test: scanner runtime upper bound on medium repo fixture
+**Env vars to add:**
 
----
+- `NEXT_PUBLIC_SUPABASE_URL` (same as existing `SUPABASE_URL`)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (same as existing `SUPABASE_ANON_KEY`)
+- `SUPABASE_JWT_SECRET` (backend only)
 
-## Phase 8 — PatchGen v0: Template Library (First 10 Templates)
+**Supabase dashboard config:**
 
-### Goal
-Generate safe patches without LLM dependence.
+- Enable GitHub OAuth provider in Supabase Auth settings
+- Set GitHub OAuth client ID + secret (from GitHub App or a separate OAuth app)
+- Set Site URL and redirect URLs
 
-### Deliverables
-- 10 high-signal templates (Node/TS oriented), e.g.:
-  - Set membership swap
-  - memoize pure function wrapper
-  - avoid repeated JSON.parse
-  - reduce intermediate arrays in hot loop
-  - remove obvious dead code (only if build/typecheck prove unused)
-- Patch generator returns unified diff + explanation + touched files list
-- Hard constraints enforced:
-  - ≤ 5 files
-  - ≤ 200 lines changed
-  - no config/test/deps changes
+### Tests (~28 tests)
 
-### Files
-- `apps/runner/runner/patchgen/templates/*`
+**Backend — `tests/auth/test_dependencies.py`** (rewrite, replaces stub tests):
 
-### Required tests
-- For each template:
-  - fixture input
-  - expected diff output
-  - lint/build-safe checks (static)
-- Constraint enforcement tests
+- `test_valid_jwt_returns_user_uuid` — craft a HS256 JWT with `sub` claim, verify `get_current_user` returns matching UUID
+- `test_expired_jwt_raises_401` — JWT with `exp` in the past
+- `test_missing_authorization_header_raises_401` — no header at all
+- `test_malformed_token_raises_401` — garbage string, no "Bearer" prefix, empty string
+- `test_wrong_audience_raises_401` — JWT with audience != "authenticated"
+- `test_first_login_upserts_user` — call `get_current_user` with a UUID that has no `users` row yet, verify row is created
+
+**Backend — `tests/auth/test_callback.py`** (new file):
+
+- `test_github_callback_creates_user_and_org` — first-time login creates both `users` row (with `github_id`, `github_login`, `avatar_url`) and a default `organizations` row
+- `test_github_callback_idempotent` — calling twice with the same `github_id` does not duplicate user/org
+- `test_github_callback_updates_github_metadata` — if user changes their avatar/login, it updates
+- `test_github_callback_missing_fields_returns_422` — missing required fields in body
+- `test_github_callback_returns_org_id` — response body includes `org_id`
+
+**Backend — `tests/settings/test_router.py`** (update existing):
+
+- `test_get_settings_without_auth_returns_401` — no Authorization header
+- `test_put_settings_without_auth_returns_401` — no Authorization header
+- `test_get_settings_with_auth_succeeds` — valid JWT returns settings
+- `test_put_settings_wrong_user_returns_404` — JWT for user who doesn't own the repo
+
+**Backend — `tests/conftest.py`** (update):
+
+- Add a `jwt_token` fixture that mints a valid test JWT matching `STUB_USER_ID`
+- Update `seeded_client` to send `Authorization: Bearer {jwt_token}` on every request
+- Add a `unauthed_client` fixture for testing 401 paths
+
+**Frontend — `tests/pages/login.test.tsx`** (new file):
+
+- `test_renders_sign_in_with_github_button` — button text and presence
+- `test_renders_app_branding` — page shows "Coreloop"
+- `test_no_authenticated_content_visible` — no nav, no dashboard links
+
+**Frontend — `tests/lib/api.test.ts`** (new file):
+
+- `test_apiFetch_attaches_bearer_token` — mock `supabase.auth.getSession()`, verify fetch is called with `Authorization` header
+- `test_apiFetch_redirects_on_401` — mock a 401 response, verify redirect to `/login`
+- `test_apiFetch_works_without_session_for_public_endpoints` — when session is null, still makes the call (for health endpoints)
+
+**Frontend — `tests/components/nav.test.tsx`** (new file):
+
+- `test_renders_user_avatar_when_logged_in` — mock session with avatar_url
+- `test_renders_logout_button_when_logged_in`
+- `test_logout_calls_signOut`
+- `test_renders_login_link_when_not_authenticated`
 
 ---
 
-## Phase 9 — Validation v1: Candidate Testing + Acceptance Logic
+## Phase 2 — GitHub App Installation + Repo Connection Flow
 
-### Goal
-Apply patch -> validate deterministically -> accept/reject.
+**Goal:** A user can install the Coreloop GitHub App and connect repos from the UI.
 
-### Deliverables
-- Candidate pipeline:
-  1) apply patch
-  2) build/typecheck (if available)
-  3) tests
-  4) (optional) benchmark compare if available
-- Acceptance logic:
-  - tests must pass
-  - if benchmark exists: require ≥3% improvement and beyond noise
-  - if no benchmark: allow “tech debt safe improvements” but label lower confidence and keep PR disabled unless user enables
-- Record all attempts (accepted + rejected) with reasons
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant GitHub
+    participant API
 
-### Files
-- `apps/runner/runner/validator/*`
+    User->>Frontend: Click "Connect Repository"
+    Frontend->>GitHub: Redirect to App install page
+    GitHub->>Frontend: Redirect to /github/callback?installation_id=123
+    Frontend->>API: POST /auth/link-installation
+    API->>API: Store installation with user_id
+    Frontend->>API: GET /github/installations/123/repos
+    API->>GitHub: GET /installation/repositories
+    GitHub->>API: Repo list
+    API->>Frontend: Available repos
+    User->>Frontend: Select repos, click Connect
+    Frontend->>API: POST /repos/connect (for each)
+    API->>API: Create repository + settings rows
+    Frontend->>Frontend: Redirect to /dashboard
+```
 
-### Required tests
-- Unit tests for each gate pass/fail
-- Flaky test handling tests (rerun once)
-- Metric comparison tests
+### Backend changes
 
----
+**ORM model** `GitHubInstallation` in `app/db/models.py` matching the new migration table.
 
-## Phase 10 — Proposal Packaging + Trace Timeline + Storage Bundles
+**Update webhook handler** `app/github/router.py`:
 
-### Goal
-Create proposal objects with full evidence, and persist.
+- On `installation` event with `action: "created"`: upsert `github_installations` row
+- On `installation_repositories` event: upsert installation + log repo list
+- On `installation` event with `action: "deleted"`: mark installation as removed
 
-### Deliverables
-- Proposal JSON schema:
-  - summary
-  - diff
-  - metrics before/after
-  - risk score
-  - trace timeline (attempts + outcomes)
-- Upload proposal artifact bundle to Supabase Storage
-- Store `proposals` + `artifacts` in DB
+**New endpoints:**
 
-### Files
-- `apps/runner/runner/packaging/*`
-- `apps/api/app/proposals/*`
-- `apps/api/app/artifacts/*`
+- `GET /github/installations` — list installations for the current user
+- `GET /github/installations/{installation_id}/repos` — list repos available via the installation (calls GitHub API: `GET /installation/repositories` with installation token)
+- `POST /repos/connect` (update existing) — accept `installation_id` as a new field, persist it on the repository row
 
-### Required tests
-- Schema validation tests (Pydantic + JSON)
-- Golden tests for proposal bundle shape
-- Signed URL retrieval tests
+### Frontend changes
 
----
+**New page `app/github/install/page.tsx`:**
 
-## Phase 11 — Dashboard v0 (Next.js): Runs + Proposals + Evidence Viewer
+- Redirects browser to `https://github.com/apps/YOUR_APP_SLUG/installations/new`
+- Passes `state` param with the user's session ID for CSRF protection
 
-### Goal
-Users can see everything: runs, proposals, diffs, logs, trace, and create PR.
+**New page `app/github/callback/page.tsx`:**
 
-### Deliverables
-Pages:
-- `/dashboard` (repos list + run status)
-- `/repos/[repoId]` (runs + proposals)
-- `/proposals/[proposalId]` (diff viewer, metrics, trace, logs)
-- “Create PR” button for proposal
+- GitHub redirects here with `installation_id` query param after App installation
+- Calls `POST /auth/link-installation` to associate installation with current user
+- Then shows the repo picker
 
-UI components:
-- Proposal cards
-- Diff viewer (simple text diff is fine MVP)
-- Trace timeline (collapsible list)
-- Evidence links (logs via signed URLs)
+**New component `components/repo-picker.tsx`:**
 
-### Files
-- `apps/web/app/dashboard/page.tsx`
-- `apps/web/app/repos/[repoId]/page.tsx`
-- `apps/web/app/proposals/[proposalId]/page.tsx`
-- `apps/web/components/*`
+- Client component
+- Fetches `GET /github/installations/{installation_id}/repos`
+- Lists repos with checkboxes
+- "Connect selected" button calls `POST /repos/connect` for each selected repo
+- Shows success state, then redirects to `/dashboard`
 
-### Required tests
-- Component tests for proposal cards and diff viewer
-- Page rendering tests with mocked API
-- Playwright E2E:
-  - connect -> see repo -> see proposal -> create PR
+**Update `app/dashboard/page.tsx`:**
 
----
+- Replace "Install the GitHub App to get started" with a "Connect Repository" button
+- Button links to `/github/install`
 
-## Phase 12 — Continuous Scheduling + Budget Enforcement
+**New `lib/api.ts` functions:**
 
-### Goal
-Make it run “forever” safely.
+- `getInstallations(): Promise<Installation[]>`
+- `getInstallationRepos(installationId: number): Promise<GitHubRepo[]>`
+- `connectRepo(body: ConnectRepoRequest): Promise<Repository>`
 
-### Deliverables
-- Scheduler job (Celery beat) to trigger nightly runs
-- Budget settings in DB:
-  - compute minutes/day
-  - max candidates/run
-  - max proposals/run
-- Auto pause conditions:
-  - setup fails N times
-  - tests flaky repeatedly
-- UI settings panel (optional MVP-lite)
+### Tests (~25 tests)
 
-### Required tests
-- Budget enforcement unit tests
-- Scheduler integration tests (time-based triggering mocked)
-- Auto-pause tests
+**Backend — `tests/github/test_webhook_persistence.py`** (new file):
 
----
+- `test_installation_created_event_persists_row` — send a valid `installation` webhook with `action: "created"`, verify `github_installations` row exists with correct `installation_id`, `account_login`, `account_id`
+- `test_installation_created_event_is_idempotent` — send the same event twice, verify only one row
+- `test_installation_deleted_event_removes_row` — send `action: "deleted"`, verify row is removed or flagged
+- `test_installation_repositories_event_logs_repos` — send `installation_repositories` event, verify installation is upserted and repo list is parseable
+- `test_invalid_signature_rejected` — wrong HMAC, verify 401
+- `test_missing_signature_rejected` — no header, verify 401
 
-## Phase 13 — LLM Agent Integration
+**Backend — `tests/github/test_installations_router.py`** (new file):
 
-### Goal
-Replace the regex/AST scanner and template-based patch generator with multi-provider
-LLM agents as the primary intelligence layer. Agents discover opportunities through
-smart repo analysis, generate patches with full reasoning traces, and feed into the
-existing validation pipeline (Phase 9). Users configure provider and model per-repo.
+- `test_list_installations_returns_users_installations` — seed an installation for the test user, verify `GET /github/installations` returns it
+- `test_list_installations_excludes_other_users` — seed an installation for a different user, verify it's not in the response
+- `test_list_installations_empty` — user with no installations gets empty list
+- `test_get_installation_repos_calls_github_api` — mock httpx, verify the endpoint calls GitHub API with correct installation token and returns the repo list
+- `test_get_installation_repos_unauthorized` — no auth header returns 401
 
-### Deliverables
+**Backend — `tests/repos/test_connect.py`** (new or update `test_router.py`):
 
-#### LLM Provider Layer (`apps/runner/runner/llm/`)
-- Abstract `LLMProvider` protocol with `async complete()` method
-- OpenAI provider: GPT-4o, GPT-4o-mini, o3-mini
-- Anthropic provider: claude-sonnet-4-5, claude-haiku-3-5 (with extended thinking)
-- Google provider: gemini-2.0-flash, gemini-1.5-pro
-- `LLMConfig`, `LLMMessage`, `LLMResponse`, `ThinkingTrace` types
-- `get_provider()` factory function
-- Default: `anthropic` / `claude-sonnet-4-5`
+- `test_connect_repo_with_installation_id` — provide `installation_id` in body, verify it's stored on the repository row
+- `test_connect_repo_without_installation_id_still_works` — backward compatibility
+- `test_connect_repo_invalid_installation_returns_422` — `installation_id` doesn't exist in `github_installations`
+- `test_connect_repo_creates_default_settings` — verify settings row with defaults is created alongside the repo
 
-#### Stack-Aware Prompt Engineering (`apps/runner/runner/llm/prompts/`)
-- `system_prompts.py`: `build_system_prompt(detection)` — framework-specific prompts
-  - Next.js: Server Components, RSC boundaries, caching, bundle splitting
-  - NestJS: DI efficiency, interceptors, N+1 in service methods
-  - Express: middleware ordering, async error handling, memory in closures
-  - React+Vite: render frequency, memo/useMemo/useCallback, lazy loading
-- `discovery_prompts.py`: file selection prompt + per-file analysis prompt
-- `patch_prompts.py`: patch generation prompt with constraint reminders
+**Frontend — `tests/components/repo-picker.test.tsx`** (new file):
 
-#### Agent Modules (`apps/runner/runner/agent/`)
-- `repo_map.py`: build directory tree (depth 3) + file line counts
-- `discovery.py`: 2-stage LLM discovery (file selection → opportunity analysis)
-- `patchgen.py`: per-opportunity patch generation with reasoning capture
-- `orchestrator.py`: coordinates discovery → patchgen → validation
-- All agent outputs carry `ThinkingTrace` (model, reasoning text, token counts)
+- `test_renders_loading_state` — shows skeleton/spinner while fetching
+- `test_renders_repo_list_with_checkboxes` — mock API response with 3 repos, verify all rendered with checkboxes
+- `test_connect_button_disabled_when_no_repos_selected` — nothing checked, button disabled
+- `test_connect_button_enabled_when_repos_selected` — check 1 repo, button enabled
+- `test_connect_calls_api_for_each_selected_repo` — select 2 repos, click connect, verify `connectRepo` called twice
+- `test_shows_success_state_after_connection` — after successful connect, shows success message
+- `test_shows_error_on_api_failure` — mock API error, verify error message shown
 
-#### DB + API Changes
-- `Settings`: add `llm_provider` and `llm_model` columns
-- `Opportunity`: add `llm_reasoning` JSON column (discovery thinking trace)
-- `Attempt`: add `llm_reasoning` JSON column (patch generation thinking trace)
-- Config: `openai_api_key`, `anthropic_api_key`, `google_api_key`
-- New endpoint: `GET /llm/models` — lists available models per provider
-- Settings API: expose `llm_provider` and `llm_model` in GET/PUT
+**Frontend — `tests/pages/dashboard.test.tsx`** (update existing):
 
-#### UI — Agent Reasoning Viewer
-- New `AgentReasoning` component: collapsible panel showing reasoning trace
-- Proposal detail page: shows discovery + patch reasoning below diff
-- Settings form: provider radio group + model dropdown
-
-### Required tests
-- LLM provider tests (mocked HTTP, reasoning extraction per provider)
-- Prompt content tests (framework keywords, constraint injection)
-- Agent discovery tests (mocked LLM responses, opportunity shape)
-- Agent patchgen tests (diff extraction, constraint enforcement)
-- Orchestrator integration tests (full mock pipeline)
-- Settings API tests with LLM fields
-- `AgentReasoning` component tests
+- `test_shows_connect_repository_button_when_repos_empty` — replace old "Install the GitHub App" assertion
+- `test_connect_button_links_to_github_install_page`
 
 ---
 
-## Phase 14A — API Security Layer
+## Phase 3 — Onboarding + First Run
 
-### Goal
-Every request that enters the API is validated, traceable, and rate-limited.
-No external service dependencies — pure FastAPI middleware work.
+**Goal:** After connecting a repo, auto-trigger the first baseline run and show meaningful progress.
 
-### Deliverables
-- `CORS` middleware (`allow_origins` from `settings.cors_origins`)
-- `RequestIdMiddleware` — injects `X-Request-ID` UUID on every response
-- `SecurityHeadersMiddleware` — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
-- `slowapi` rate limiting on `POST /runs` — 10 requests/minute per user (configurable)
-- `cors_origins` and `run_rate_limit` added to `Settings`
+### Backend changes
 
-### Required tests
-- Security headers present on all responses
-- `X-Request-ID` generated when absent from request
-- CORS headers returned on OPTIONS
-- 11th run-trigger request returns 429 with `Retry-After`
+**Update `POST /repos/connect`** in `app/repos/router.py`:
 
----
+- After creating the repository + settings rows, auto-enqueue the first run via `execute_run.delay(str(run.id))`
+- Return the created run ID in the response
 
-## Phase 14B — Observability
+### Frontend changes
 
-### Goal
-Structured logs in every environment, per-run trace IDs for grep-ability,
-and Sentry capturing exceptions without leaking secrets.
+**Update `app/repos/[repoId]/page.tsx`:**
 
-### Deliverables
-- `structlog` JSON logging (JSON in prod, colorful console in dev)
-  - Every log line carries `request_id` and `trace_id` from context vars
-- `trace_id` column on `Run` model — set from `X-Request-ID` at creation time
-- `trace_id` returned in `RunResponse` and logged by Celery worker
-- Sentry SDK with `FastApiIntegration`, `SqlalchemyIntegration`, `CeleryIntegration`
-  - `send_default_pii=False`
-  - `before_send` hook strips `api_key`, `secret`, `password`, `token` values
-  - No-op when `SENTRY_DSN` is empty
-- `SENTRY_DSN` added to config and `.env.example`
+- When the page loads and there's exactly 1 run in `queued` or `running` status, show a first-run onboarding banner:
+  - "Coreloop is analyzing your repository for the first time. This usually takes 2-5 minutes."
+  - Progress indicator (see Phase 5 for real-time, but use polling here initially)
 
-### Required tests
-- `trace_id` set on run creation and matches request's `X-Request-ID`
-- Sentry `before_send` hook redacts API key values
-- `init_sentry` no-ops cleanly when DSN is empty
+**Update `app/dashboard/page.tsx`:**
 
----
+- Newly connected repos should show a "Setting up..." badge on the card
+- Add `latest_run_status` to the repo card (requires backend to return it — either a new field on `RepoResponse` or a join)
 
-## Phase 14C — Infrastructure Hardening
+**Update `RepoResponse` schema** in `app/repos/schemas.py`:
 
-### Goal
-The runner is protected against SSRF and resource exhaustion.
-Redis requires a password. Artifact signed URLs are real Supabase calls.
+- Add `latest_run_status: Optional[str]` — populated by a subquery or eager-load of the most recent run
 
-### Deliverables
-- `validate_repo_url()` in `sandbox/checkout.py` — blocks non-HTTPS and private CIDR ranges
-  (127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1, fc00::/7)
-- `apply_resource_limits()` in `sandbox/limits.py` — 512 MB virtual memory cap,
-  60 CPU-second cap; used as `preexec_fn` in all subprocess calls
-- Redis `--requirepass` in `docker-compose.yml`; `REDIS_PASSWORD` in `.env.example`
-- `storage.py` — real Supabase `create_signed_url` call replacing the stub;
-  path traversal guard (`..` and null-byte rejection); graceful fallback when unconfigured
-- `storage_bucket` added to `Settings`
+### Tests (~13 tests)
 
-### Required tests
-- SSRF: rejects `http://`, `127.x.x.x`, `10.x.x.x`, `169.254.x.x`; accepts GitHub URLs
-- Resource limits: `setrlimit` called with correct values (mocked)
-- Storage: `../` path rejected, `None` returned when Supabase unconfigured,
-  Supabase client called when key is set (mocked)
+**Backend — `tests/repos/test_auto_run.py`** (new file):
+
+- `test_connect_repo_auto_enqueues_run` — after `POST /repos/connect`, verify a `Run` row exists with status `queued` and `execute_run.delay` was called (mock Celery)
+- `test_connect_repo_run_has_correct_repo_id` — the auto-created run's `repo_id` matches the new repo
+- `test_connect_repo_returns_run_id` — response body includes `initial_run_id`
+
+**Backend — `tests/repos/test_router.py`** (update):
+
+- `test_list_repos_includes_latest_run_status` — seed a repo with a completed run, verify `latest_run_status` is `"completed"` in the list response
+- `test_list_repos_latest_run_status_null_when_no_runs` — repo with no runs has `latest_run_status: null`
+- `test_get_repo_includes_latest_run_status` — same for single-repo GET
+
+**Frontend — `tests/components/onboarding-banner.test.tsx`** (new file):
+
+- `test_renders_when_single_queued_run` — banner visible with correct copy
+- `test_renders_when_single_running_run` — banner visible with progress indicator
+- `test_hidden_when_run_completed` — banner not rendered
+- `test_hidden_when_multiple_runs` — not a first-run scenario
+
+**Frontend — `tests/pages/dashboard.test.tsx`** (update):
+
+- `test_repo_card_shows_setting_up_badge_when_latest_run_queued` — mock repo with `latest_run_status: "queued"`, verify badge
+- `test_repo_card_shows_running_badge_when_latest_run_running`
+- `test_repo_card_shows_no_badge_when_latest_run_completed`
 
 ---
 
-# Implementation Notes (Cursor Guidance)
+## Phase 4 — Fix PR Creation
 
-## Recommended Cursor workflow
-- Work one phase at a time
-- For each phase:
-  - Implement core logic
-  - Add unit tests
-  - Add integration tests
-  - Update docs
-- Do not proceed to the next phase until:
-  - tests pass
-  - fixtures exist
-  - golden tests written for stable behavior
+**Goal:** "Create PR" button actually creates a real PR on GitHub.
 
-## Golden test fixtures (must create early)
-Create minimal repo fixtures for:
-- nextjs-ts
-- nestjs-ts
-- express-ts
-- react-vite-ts
+### Backend changes
 
-These fixtures power:
-- detector tests
-- scanner tests
-- template tests
-- end-to-end runner tests
+**Update `create_pr_for_proposal`** in `app/github/service.py`:
+
+- Replace hardcoded `owner`, `repo_name`, `installation_id` with real values:
+
+```python
+async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
+    if not repo.github_full_name:
+        raise ValueError("Repository has no github_full_name")
+
+    owner, repo_name = repo.github_full_name.split("/", 1)
+    installation_id = repo.installation_id
+
+    if not installation_id:
+        raise ValueError("Repository has no GitHub App installation")
+
+    token = await github_client.get_installation_token(installation_id)
+    # ... rest stays the same with real values ...
+```
+
+**Update `create_pr` endpoint** in `app/github/router.py`:
+
+- Eagerly load `repo.installation_id` (will exist after Phase 2 migration)
+
+### Tests (~11 tests)
+
+**Backend — `tests/github/test_service.py`** (update existing):
+
+- `test_create_pr_parses_github_full_name` — repo with `github_full_name="acme/api"`, verify `owner="acme"`, `repo_name="api"` passed to client
+- `test_create_pr_raises_when_no_github_full_name` — `github_full_name` is None, expect `ValueError`
+- `test_create_pr_raises_when_no_installation_id` — `installation_id` is None, expect `ValueError`
+- `test_create_pr_gets_installation_token` — mock `get_installation_token`, verify called with correct `installation_id`
+- `test_create_pr_full_flow_with_mocked_github` — mock all httpx calls (get_installation_token, get_default_branch_sha, create_branch, create_pull_request), verify the full chain produces a `pr_url`
+- `test_pr_title_includes_proposal_summary` — verify title format `"[Coreloop] <summary>"`
+- `test_pr_body_includes_coreloop_attribution` — verify attribution link in PR body
+
+**Backend — `tests/github/test_router.py`** (new file):
+
+- `test_create_pr_endpoint_with_mocked_service` — mock `create_pr_for_proposal`, verify endpoint returns `pr_url` and stores it on the proposal
+- `test_create_pr_duplicate_returns_409` — proposal already has `pr_url`, verify 409 Conflict
+- `test_create_pr_wrong_repo_returns_404` — proposal belongs to different repo
+- `test_create_pr_without_auth_returns_401`
+
+**Frontend — `tests/components/create-pr-button.test.tsx`** (update existing):
+
+- Verify existing tests still pass (they already test success, error, loading states)
+- `test_create_pr_passes_real_repo_id` — verify `createPR` is called with the `repoId` prop, not an empty string
 
 ---
 
-# Definition of Done (MVP)
+## Phase 5 — Real-time Run Status Updates
 
-MVP is complete when:
+**Goal:** When a run is queued/running, the UI updates automatically without page refresh.
 
-- User connects repo with no manual config (or one fallback prompt max)
-- Baseline runs and stores artifacts in Supabase Storage
-- System generates and validates multiple attempts
-- At least one proposal is surfaced with full evidence + trace
-- User can click “Create PR” and PR is created on GitHub
-- Continuous nightly runs work with budgets
-- Full test suite passes in CI
+### Approach: Client-side polling (simpler than Supabase Realtime, sufficient for MVP)
+
+### Frontend changes
+
+**New hook `lib/hooks/use-run-polling.ts`:**
+
+```typescript
+export function useRunPolling(repoId: string, initialRuns: Run[]) {
+  const [runs, setRuns] = useState(initialRuns);
+
+  useEffect(() => {
+    const hasActiveRun = runs.some(r => r.status === "queued" || r.status === "running");
+    if (!hasActiveRun) return;
+
+    const interval = setInterval(async () => {
+      const updated = await getRuns(repoId);
+      setRuns(updated);
+      if (!updated.some(r => r.status === "queued" || r.status === "running")) {
+        clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [repoId, runs]);
+
+  return runs;
+}
+```
+
+**Update `app/repos/[repoId]/page.tsx`:**
+
+- Extract the run-list section into a client component `RepoRunList`
+- Pass initial server-fetched runs as props
+- Use `useRunPolling` to keep runs fresh while any are active
+
+**Update `TriggerRunButton`:**
+
+- After "Queued" state, trigger a page-level re-fetch (via callback or router refresh)
+
+### Tests (~10 tests)
+
+**Frontend — `tests/lib/hooks/use-run-polling.test.ts`** (new file):
+
+- `test_does_not_poll_when_all_runs_completed` — pass runs with status `completed`, verify no interval is set
+- `test_does_not_poll_when_all_runs_failed` — same for `failed`
+- `test_starts_polling_when_run_is_queued` — pass a `queued` run, advance fake timers by 5s, verify `getRuns` was called
+- `test_starts_polling_when_run_is_running` — same for `running`
+- `test_stops_polling_when_runs_transition_to_terminal` — initial run is `running`, first poll returns `completed`, verify interval is cleared
+- `test_updates_runs_state_from_poll_response` — verify the hook's returned runs array reflects the API response
+- `test_cleans_up_interval_on_unmount` — unmount the hook, verify clearInterval was called
+
+**Frontend — `tests/components/repo-run-list.test.tsx`** (new file):
+
+- `test_renders_initial_runs_from_server` — server-fetched runs appear immediately
+- `test_shows_trigger_run_button` — button is present in the header
+- `test_run_status_updates_after_poll` — mock `getRuns` to return updated status, advance timers, verify UI updates
+
+---
+
+## Phase 6 — Polish, Security, and Test Coverage
+
+### Security
+
+- Add auth dependency to `GET/PUT /repos/{repo_id}/settings` in `app/settings/router.py`
+- Add auth dependency to `POST /artifacts/upload` (or verify it's internal-only via network boundary)
+- Add CORS origin restriction in `.env` (remove `["*"]`)
+
+### Loading and error states
+
+- Add loading skeletons to dashboard, repo page, and proposal page (use `loading.tsx` convention)
+- Add `error.tsx` boundaries for each route segment
+- Add `not-found.tsx` for better 404 handling
+
+### Nav improvements
+
+- Add user avatar + GitHub login to nav (from Supabase session)
+- Add logout button
+- Add mobile hamburger menu
+
+### Command override UI
+
+- Add read-only "Detected commands" section to settings page
+- Show `install_cmd`, `build_cmd`, `test_cmd`, `typecheck_cmd` from the repo record
+- Add editable override fields (future: `PUT /repos/{repo_id}` endpoint for command overrides)
+
+### Branding cleanup
+
+- Update `mvp.md` and `technical-mvp.md` references from SelfOpt to Coreloop
+- Update `.gitignore` temp dir pattern from `selfopt-*` to `coreloop-*`
+- Update homepage GitHub link to correct repo URL
+- Add favicon / app icon
+
+### Tests (~18 tests)
+
+**Backend — security audit tests `tests/security/test_auth_guards.py`** (new file):
+
+- `test_every_protected_endpoint_requires_auth` — parametrized test that hits every endpoint that should require auth without a token and asserts 401. Covers: `/repos`, `/repos/{id}`, `/repos/{id}/runs`, `/repos/{id}/settings`, `/proposals/{id}`, `/artifacts/{id}/signed-url`, `/github/repos/{id}/proposals/{id}/create-pr`, `/github/installations`
+- `test_settings_update_requires_repo_ownership` — valid JWT but wrong user, 404
+- `test_artifacts_upload_is_internal_only` — verify it has no auth dependency (it's runner-only)
+
+**Frontend — loading/error state tests:**
+
+- `tests/pages/dashboard-loading.test.tsx` — verify `loading.tsx` renders skeleton
+- `tests/pages/repo-error.test.tsx` — verify `error.tsx` renders error message with retry
+- `tests/pages/proposal-not-found.test.tsx` — verify `not-found.tsx` renders 404 page
+
+**Frontend — `tests/components/nav.test.tsx`** (update from Phase 1):
+
+- `test_mobile_menu_toggle` — hamburger opens/closes the menu
+- `test_mobile_menu_contains_all_links`
+
+**Frontend — `tests/components/settings-form.test.tsx`** (update existing):
+
+- `test_detected_commands_section_renders` — shows install_cmd, build_cmd, test_cmd from repo
+- `test_detected_commands_are_read_only` — fields are disabled/non-editable
+
+**E2E tests — `apps/web/e2e/`** (new directory, Playwright):
+
+- `e2e/auth.spec.ts`:
+  - `test_login_page_loads` — navigate to `/login`, verify "Sign in with GitHub" button
+  - `test_unauthenticated_redirect` — navigate to `/dashboard`, verify redirect to `/login`
+- `e2e/dashboard.spec.ts`:
+  - `test_dashboard_loads_with_repos` — mock API, verify repo cards render
+  - `test_empty_dashboard_shows_connect_cta` — mock empty repo list, verify CTA
+- `e2e/repo-detail.spec.ts`:
+  - `test_repo_page_shows_runs` — mock runs, verify run status badges
+  - `test_trigger_run_button_works` — click trigger, verify "Queued" state
+- `e2e/proposal.spec.ts`:
+  - `test_proposal_page_renders_diff` — mock proposal, verify diff viewer
+  - `test_create_pr_button_works` — mock createPR, verify success state
+
+Add `@playwright/test` to `apps/web/package.json` devDependencies and `playwright.config.ts`.
+
+---
+
+## Test summary
+
+| Phase | Backend tests | Frontend tests | Total |
+|-------|--------------|----------------|-------|
+| 1 — Auth | ~17 (JWT validation, callback upsert, settings auth, conftest update) | ~11 (login page, api.ts auth, nav auth) | ~28 |
+| 2 — GitHub App | ~16 (webhook persistence, installations router, connect w/ installation) | ~9 (repo picker, dashboard CTA) | ~25 |
+| 3 — Onboarding | ~6 (auto-run on connect, latest_run_status) | ~7 (onboarding banner, dashboard badges) | ~13 |
+| 4 — PR Creation | ~10 (service parsing, full flow mock, router tests) | ~1 (update create-pr-button) | ~11 |
+| 5 — Polling | 0 | ~10 (useRunPolling hook, repo-run-list component) | ~10 |
+| 6 — Polish | ~8 (security audit parametrized) | ~10 (loading/error states, nav, settings, E2E) | ~18 |
+| **Total** | **~57** | **~48** | **~105** |
+
+This brings the total test count from the current 337 backend + 106 frontend = **443 tests** to approximately **548 tests**.

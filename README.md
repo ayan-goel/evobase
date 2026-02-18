@@ -1,4 +1,4 @@
-# SelfOpt
+# Coreloop
 
 Autonomous code optimization system. Connect your repo, come back later, review real improvements.
 

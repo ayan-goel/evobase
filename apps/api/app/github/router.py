@@ -4,22 +4,42 @@ Webhook endpoint is public (no auth dependency) but verifies the
 X-Hub-Signature-256 header to confirm the payload came from GitHub.
 
 PR creation is an authenticated user action.
+
+Installation management endpoints allow users to list their GitHub App
+installations and browse repos available via an installation.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
-from app.db.models import Organization, Proposal, Repository, Run
+from app.db.models import GitHubInstallation, Organization, Proposal, Repository, Run
 from app.db.session import get_db
-from app.github.schemas import CreatePrResponse, WebhookResponse
+from app.github.schemas import (
+    CreatePrResponse,
+    GitHubRepoItem,
+    InstallationListResponse,
+    InstallationReposResponse,
+    InstallationResponse,
+    LinkInstallationRequest,
+    LinkInstallationResponse,
+    WebhookResponse,
+)
 from app.github.service import create_pr_for_proposal
 from app.github.webhooks import parse_installation_event, verify_webhook_signature
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/github", tags=["github"])
+
+
+# ---------------------------------------------------------------------------
+# Webhooks (public, signature-verified)
+# ---------------------------------------------------------------------------
 
 
 @router.post("/webhooks", response_model=WebhookResponse)
@@ -31,11 +51,9 @@ async def handle_webhook(
 ) -> WebhookResponse:
     """Handle incoming GitHub App webhook events.
 
-    Verifies the HMAC signature before processing. Currently handles:
-    - installation: when the App is installed or uninstalled
-    - installation_repositories: when repos are added/removed
-
-    Unknown events are acknowledged but ignored.
+    Verifies the HMAC signature before processing. Handles:
+    - installation (created/deleted): upsert or remove github_installations row
+    - installation_repositories: upsert installation and log repo list
     """
     body = await request.body()
 
@@ -49,18 +67,183 @@ async def handle_webhook(
 
     if x_github_event in ("installation", "installation_repositories"):
         event_data = parse_installation_event(payload)
-        # In MVP, we log the event. Full repo auto-connect comes later.
-        return WebhookResponse(
-            received=True,
-            event=x_github_event,
-            action=event_data.get("action", ""),
+        action = event_data.get("action", "")
+        inst_id = event_data.get("installation_id")
+
+        if action == "created" and inst_id:
+            result = await db.execute(
+                select(GitHubInstallation).where(
+                    GitHubInstallation.installation_id == inst_id
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if not existing:
+                db.add(
+                    GitHubInstallation(
+                        installation_id=inst_id,
+                        account_login=event_data.get("account_login", ""),
+                        account_id=event_data.get("account_id", 0),
+                    )
+                )
+                await db.flush()
+                logger.info("Persisted new installation %d", inst_id)
+
+        elif action == "deleted" and inst_id:
+            await db.execute(
+                delete(GitHubInstallation).where(
+                    GitHubInstallation.installation_id == inst_id
+                )
+            )
+            logger.info("Removed installation %d", inst_id)
+
+        elif x_github_event == "installation_repositories" and inst_id:
+            result = await db.execute(
+                select(GitHubInstallation).where(
+                    GitHubInstallation.installation_id == inst_id
+                )
+            )
+            if not result.scalar_one_or_none():
+                db.add(
+                    GitHubInstallation(
+                        installation_id=inst_id,
+                        account_login=event_data.get("account_login", ""),
+                        account_id=event_data.get("account_id", 0),
+                    )
+                )
+                await db.flush()
+
+            logger.info(
+                "installation_repositories event for %d: %d repos",
+                inst_id,
+                len(event_data.get("repositories", [])),
+            )
+
+        return WebhookResponse(received=True, event=x_github_event, action=action)
+
+    return WebhookResponse(received=True, event=x_github_event, action="ignored")
+
+
+# ---------------------------------------------------------------------------
+# Installation management (authenticated)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/installations", response_model=InstallationListResponse)
+async def list_installations(
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> InstallationListResponse:
+    """List GitHub App installations belonging to the current user."""
+    result = await db.execute(
+        select(GitHubInstallation).where(GitHubInstallation.user_id == user_id)
+    )
+    installations = result.scalars().all()
+    return InstallationListResponse(
+        installations=[
+            InstallationResponse(
+                id=str(inst.id),
+                installation_id=inst.installation_id,
+                account_login=inst.account_login,
+                account_id=inst.account_id,
+            )
+            for inst in installations
+        ],
+        count=len(installations),
+    )
+
+
+@router.get(
+    "/installations/{installation_id}/repos",
+    response_model=InstallationReposResponse,
+)
+async def get_installation_repos(
+    installation_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> InstallationReposResponse:
+    """List repos available via a GitHub App installation.
+
+    Calls the GitHub API with an installation token to fetch the repo list.
+    """
+    result = await db.execute(
+        select(GitHubInstallation).where(
+            GitHubInstallation.installation_id == installation_id,
+            GitHubInstallation.user_id == user_id,
+        )
+    )
+    installation = result.scalar_one_or_none()
+    if not installation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Installation not found",
         )
 
-    return WebhookResponse(
-        received=True,
-        event=x_github_event,
-        action="ignored",
+    from app.github import client as github_client
+
+    token = await github_client.get_installation_token(installation_id)
+    raw_repos = await github_client.list_installation_repos(token)
+
+    repos = [
+        GitHubRepoItem(
+            github_repo_id=r["id"],
+            full_name=r["full_name"],
+            name=r["name"],
+            default_branch=r.get("default_branch", "main"),
+            private=r.get("private", False),
+        )
+        for r in raw_repos
+    ]
+
+    return InstallationReposResponse(repos=repos, count=len(repos))
+
+
+# ---------------------------------------------------------------------------
+# Link installation to user (called from frontend after GitHub redirect)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/link-installation", response_model=LinkInstallationResponse)
+async def link_installation(
+    body: LinkInstallationRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> LinkInstallationResponse:
+    """Associate a GitHub App installation with the current user.
+
+    Called by the frontend after GitHub redirects back with installation_id.
+    If the installation doesn't exist yet (webhook not received), creates it
+    by fetching metadata from the GitHub API.
+    """
+    result = await db.execute(
+        select(GitHubInstallation).where(
+            GitHubInstallation.installation_id == body.installation_id
+        )
     )
+    installation = result.scalar_one_or_none()
+
+    if installation:
+        installation.user_id = user_id
+    else:
+        installation = GitHubInstallation(
+            installation_id=body.installation_id,
+            account_login=body.account_login or "",
+            account_id=body.account_id or 0,
+            user_id=user_id,
+        )
+        db.add(installation)
+
+    await db.flush()
+    logger.info("Linked installation %d to user %s", body.installation_id, user_id)
+
+    return LinkInstallationResponse(
+        installation_id=body.installation_id,
+        linked=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PR creation (authenticated)
+# ---------------------------------------------------------------------------
 
 
 @router.post(
@@ -74,16 +257,7 @@ async def create_pr(
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ) -> CreatePrResponse:
-    """Create a GitHub pull request from a validated proposal.
-
-    This is an explicit user action — SelfOpt never auto-merges in MVP.
-    The endpoint:
-    1. Validates the user owns the repo
-    2. Checks the proposal exists and has no PR yet
-    3. Creates a branch, commits the diff, opens a PR
-    4. Stores the PR URL in the database
-    """
-    # Verify repo access
+    """Create a GitHub pull request from a validated proposal."""
     result = await db.execute(
         select(Repository)
         .join(Organization)
@@ -96,7 +270,6 @@ async def create_pr(
             detail="Repository not found",
         )
 
-    # Verify proposal exists and belongs to this repo
     result = await db.execute(
         select(Proposal)
         .join(Run)
@@ -109,19 +282,21 @@ async def create_pr(
             detail="Proposal not found",
         )
 
-    # INVARIANT: proposals cannot have PRs created twice
     if proposal.pr_url:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="PR already created for this proposal",
         )
 
-    pr_url = await create_pr_for_proposal(repo, proposal)
+    try:
+        pr_url = await create_pr_for_proposal(repo, proposal)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
 
     proposal.pr_url = pr_url
     await db.commit()
 
-    return CreatePrResponse(
-        proposal_id=proposal.id,
-        pr_url=pr_url,
-    )
+    return CreatePrResponse(proposal_id=proposal.id, pr_url=pr_url)

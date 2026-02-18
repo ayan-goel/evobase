@@ -41,6 +41,18 @@ class TestGetProposal:
         assert data["metrics_before"]["avg_latency_ms"] == 120
         assert data["pr_url"] is None
 
+    async def test_get_proposal_includes_repo_id(self, seeded_client, seeded_db):
+        """repo_id must be present so the frontend can route to /repos/{repo_id}/..."""
+        run_id, proposal = await _create_run_and_proposal(seeded_client, seeded_db)
+
+        response = await seeded_client.get(f"/proposals/{proposal.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "repo_id" in data
+        # repo_id must be a valid UUID and match the repo that owns the run
+        assert uuid.UUID(data["repo_id"])  # does not raise
+        assert str(STUB_REPO_ID) == data["repo_id"]
+
     async def test_get_proposal_not_found(self, seeded_client):
         response = await seeded_client.get(f"/proposals/{uuid.uuid4()}")
         assert response.status_code == 404
@@ -78,6 +90,17 @@ class TestListProposalsByRun:
         response = await seeded_client.get(f"/proposals/by-run/{run_id}")
         assert response.status_code == 200
         assert response.json()["count"] == 1
+
+    async def test_list_proposals_includes_repo_id(self, seeded_client, seeded_db):
+        """Every proposal in the list must carry repo_id."""
+        run_id, _ = await _create_run_and_proposal(seeded_client, seeded_db)
+
+        response = await seeded_client.get(f"/proposals/by-run/{run_id}")
+        assert response.status_code == 200
+        proposals = response.json()["proposals"]
+        assert len(proposals) == 1
+        assert "repo_id" in proposals[0]
+        assert uuid.UUID(proposals[0]["repo_id"])
 
     async def test_list_proposals_nonexistent_run(self, seeded_client):
         response = await seeded_client.get(f"/proposals/by-run/{uuid.uuid4()}")

@@ -30,12 +30,18 @@ class TestIsScheduleDue:
         assert _is_schedule_due("0 2 * * *", None) is True
 
     def test_run_very_recently_is_not_due(self) -> None:
-        recent = datetime.now(timezone.utc) - timedelta(minutes=30)
-        assert _is_schedule_due("0 2 * * *", recent) is False
+        fixed_now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        recent = fixed_now - timedelta(minutes=30)
+        with patch("app.scheduling.scheduler.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.side_effect = None
+            assert _is_schedule_due("0 2 * * *", recent) is False
 
     def test_run_over_23_hours_ago_is_due(self) -> None:
+        # Use a non-daily-cron schedule so the code takes the 23h fallback path,
+        # which is deterministic and independent of wall-clock hour.
         old = datetime.now(timezone.utc) - timedelta(hours=24)
-        assert _is_schedule_due("0 2 * * *", old) is True
+        assert _is_schedule_due("@daily", old) is True
 
     def test_malformed_schedule_falls_back_to_time_check(self) -> None:
         # Non-parseable schedule falls back to 23h heuristic
@@ -50,6 +56,25 @@ class TestIsScheduleDue:
         old = datetime.now(timezone.utc) - timedelta(hours=24)
         assert _is_schedule_due("0 */6 * * *", old) is True
 
+    def test_daily_cron_due_after_target_hour(self) -> None:
+        # Simulate: now is 03:00 UTC, schedule is "0 2 * * *", last run was yesterday
+        fixed_now = datetime(2026, 1, 15, 3, 0, 0, tzinfo=timezone.utc)
+        last_run = fixed_now - timedelta(hours=24)
+        with patch("app.scheduling.scheduler.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            # Allow datetime(...) constructor calls to work normally
+            mock_dt.side_effect = None
+            assert _is_schedule_due("0 2 * * *", last_run) is True
+
+    def test_daily_cron_not_due_before_target_hour(self) -> None:
+        # Simulate: now is 01:00 UTC, schedule is "0 2 * * *", last run was yesterday
+        fixed_now = datetime(2026, 1, 15, 1, 0, 0, tzinfo=timezone.utc)
+        last_run = fixed_now - timedelta(hours=24)
+        with patch("app.scheduling.scheduler.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.side_effect = None
+            assert _is_schedule_due("0 2 * * *", last_run) is False
+
 
 # ---------------------------------------------------------------------------
 # Celery task registration
@@ -59,13 +84,13 @@ class TestIsScheduleDue:
 class TestTaskRegistration:
     def test_trigger_task_is_registered(self) -> None:
         registered = celery_app.tasks.keys()
-        assert "selfopt.trigger_scheduled_runs" in registered
+        assert "coreloop.trigger_scheduled_runs" in registered
 
     def test_beat_schedule_configured(self) -> None:
         beat = celery_app.conf.beat_schedule
         assert "trigger-scheduled-runs" in beat
         entry = beat["trigger-scheduled-runs"]
-        assert entry["task"] == "selfopt.trigger_scheduled_runs"
+        assert entry["task"] == "coreloop.trigger_scheduled_runs"
         assert entry["schedule"] == TRIGGER_INTERVAL_SECONDS
 
     def test_trigger_interval_is_reasonable(self) -> None:

@@ -12,7 +12,7 @@ fresh client for each test to avoid state leakage between tests.
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import STUB_REPO_ID
+from tests.conftest import STUB_REPO_ID, _make_jwt
 
 
 class TestRunTriggerRateLimit:
@@ -25,6 +25,7 @@ class TestRunTriggerRateLimit:
         self,
         app,
         seeded_db,
+        jwt_token,
     ) -> None:
         """Send requests until we hit the rate limit.
 
@@ -34,7 +35,11 @@ class TestRunTriggerRateLimit:
         from httpx import ASGITransport, AsyncClient
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        ) as ac:
             statuses = []
             for _ in range(12):
                 r = await ac.post(f"/repos/{STUB_REPO_ID}/run", json={})
@@ -47,12 +52,17 @@ class TestRunTriggerRateLimit:
         self,
         app,
         seeded_db,
+        jwt_token,
     ) -> None:
         """A 429 response from the rate limiter must still have security headers."""
         from httpx import ASGITransport, AsyncClient
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        ) as ac:
             last_429 = None
             for _ in range(12):
                 r = await ac.post(f"/repos/{STUB_REPO_ID}/run", json={})
