@@ -32,21 +32,29 @@ _sync_engine = None
 _SyncSession = None
 
 
-def _build_sync_url(async_url: str) -> str:
-    """Convert an asyncpg DATABASE_URL to a psycopg2-compatible URL.
+def _build_sync_url(url: str) -> str:
+    """Convert any Postgres URL variant to a psycopg2-compatible URL.
 
-    asyncpg:  postgresql+asyncpg://user:pass@host:port/db
-    psycopg2: postgresql+psycopg2://user:pass@host:port/db
+    Accepted input formats
+    ──────────────────────
+    • postgresql+asyncpg://...  (set by FastAPI config after normalisation)
+    • postgresql://...          (Supabase cloud / Railway plugin raw value)
+    • postgres://...            (legacy Heroku-style alias)
+    • sqlite://...              (used in tests)
 
-    Falls back to in-memory SQLite if the URL does not contain a recognisable
-    Postgres scheme (useful in CI / unit tests that patch the env var).
+    All Postgres variants are rewritten to ``postgresql+psycopg2://``.
+    SQLite URLs are returned unchanged for test compatibility.
     """
-    if "asyncpg" in async_url:
-        return async_url.replace("postgresql+asyncpg", "postgresql+psycopg2", 1)
-    if async_url.startswith("sqlite"):
-        return async_url
+    if url.startswith("sqlite"):
+        return url
+    # Strip any existing driver suffix so we can set psycopg2 uniformly
+    for prefix in ("postgresql+asyncpg://", "postgresql+psycopg2://",
+                   "postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            rest = url[len(prefix):]
+            return f"postgresql+psycopg2://{rest}"
     # Unknown scheme — return as-is and let SQLAlchemy diagnose
-    return async_url
+    return url
 
 
 def _get_engine():

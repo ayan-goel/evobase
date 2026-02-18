@@ -1,0 +1,68 @@
+# =============================================================================
+# Railway deployment configuration
+# https://docs.railway.app/reference/config-as-code
+#
+# Services in this project
+# ─────────────────────────
+#  api     FastAPI control-plane server   → Dockerfile
+#  worker  Celery worker + beat scheduler → Dockerfile.worker
+#  web     Next.js dashboard             → apps/web/Dockerfile
+#
+# External services (provisioned manually)
+#  • Supabase   https://supabase.com  — Postgres + Auth + Storage
+#  • Redis      Railway plugin        — add via Railway dashboard
+# =============================================================================
+
+[build]
+# Default build settings inherited by all services unless overridden below.
+# Each service can override dockerfilePath and buildContext.
+builder = "dockerfile"
+
+# ---------------------------------------------------------------------------
+# API service  (FastAPI)
+# ---------------------------------------------------------------------------
+[[services]]
+name = "api"
+
+[services.build]
+dockerfilePath = "Dockerfile"
+# Build context is the repo root so both apps/api and apps/runner are reachable
+buildContext = "."
+
+[services.deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# ---------------------------------------------------------------------------
+# Worker service  (Celery + Beat)
+# ---------------------------------------------------------------------------
+[[services]]
+name = "worker"
+
+[services.build]
+dockerfilePath = "Dockerfile.worker"
+buildContext = "."
+
+[services.deploy]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+# Worker does not serve HTTP — no healthcheck path
+
+# ---------------------------------------------------------------------------
+# Web service  (Next.js)
+# ---------------------------------------------------------------------------
+[[services]]
+name = "web"
+
+[services.build]
+dockerfilePath = "apps/web/Dockerfile"
+# Next.js Dockerfile only needs apps/web
+buildContext = "apps/web"
+
+[services.deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
