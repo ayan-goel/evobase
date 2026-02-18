@@ -1,9 +1,9 @@
 # =============================================================================
-# SelfOpt API server
+# SelfOpt Celery worker + Beat scheduler
 #
 # Build context: repository root (needs both apps/api and apps/runner)
-# Railway service "api" → this Dockerfile
-# PORT is injected automatically by Railway
+# Railway service "worker" → this Dockerfile
+# No HTTP port — this service processes queue tasks only
 # =============================================================================
 
 FROM python:3.12-slim
@@ -30,7 +30,5 @@ RUN useradd --create-home --shell /bin/bash appuser \
  && chown -R appuser:appuser /app
 USER appuser
 
-ENV PORT=8000
-EXPOSE 8000
-
-CMD uvicorn app.main:app --host 0.0.0.0 --port "${PORT}"
+# --beat runs the scheduler inside the worker so no separate beat service is needed
+CMD celery -A app.engine.queue worker --beat --loglevel=info --concurrency=2

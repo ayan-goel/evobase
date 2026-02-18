@@ -4,31 +4,50 @@
 #
 # Services in this project
 # ─────────────────────────
-#  backend   FastAPI + Celery worker (combined, start.sh)
+#  api     FastAPI HTTP server       → Dockerfile
+#  worker  Celery worker + scheduler → Dockerfile.worker
 #
 # Hosted elsewhere
-#  • web      Vercel (Next.js)  — set NEXT_PUBLIC_API_URL to backend URL
+#  • web      Vercel (Next.js) — set NEXT_PUBLIC_API_URL to the api service URL
 #
 # External services (provisioned manually)
 #  • Supabase  https://supabase.com  — Postgres + Auth + Storage
 #  • Redis     Railway plugin        — add via Railway dashboard (auto-sets REDIS_URL)
+#
+# Both api and worker need the same environment variables.
+# Tip: use a Railway "Shared Variable" group to avoid duplicating them.
 # =============================================================================
 
 [build]
 builder = "dockerfile"
 
 # ---------------------------------------------------------------------------
-# Backend  (FastAPI + Celery worker in one container)
+# API  (FastAPI HTTP server)
 # ---------------------------------------------------------------------------
 [[services]]
-name = "backend"
+name = "api"
 
 [services.build]
 dockerfilePath = "Dockerfile"
-buildContext    = "."
+buildContext   = "."
 
 [services.deploy]
-healthcheckPath        = "/health"
-healthcheckTimeout     = 30
-restartPolicyType      = "on_failure"
+healthcheckPath         = "/health"
+healthcheckTimeout      = 30
+restartPolicyType       = "on_failure"
 restartPolicyMaxRetries = 3
+
+# ---------------------------------------------------------------------------
+# Worker  (Celery + Beat)
+# ---------------------------------------------------------------------------
+[[services]]
+name = "worker"
+
+[services.build]
+dockerfilePath = "Dockerfile.worker"
+buildContext   = "."
+
+[services.deploy]
+restartPolicyType       = "on_failure"
+restartPolicyMaxRetries = 3
+# No healthcheckPath — worker does not serve HTTP
