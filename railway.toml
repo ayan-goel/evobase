@@ -6,7 +6,9 @@
 # ─────────────────────────
 #  api     FastAPI control-plane server   → Dockerfile
 #  worker  Celery worker + beat scheduler → Dockerfile.worker
-#  web     Next.js dashboard             → apps/web/Dockerfile
+#
+# Hosted elsewhere
+#  • web        Vercel (Next.js)  — set NEXT_PUBLIC_API_URL to the api URL
 #
 # External services (provisioned manually)
 #  • Supabase   https://supabase.com  — Postgres + Auth + Storage
@@ -50,19 +52,4 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 # Worker does not serve HTTP — no healthcheck path
 
-# ---------------------------------------------------------------------------
-# Web service  (Next.js)
-# ---------------------------------------------------------------------------
-[[services]]
-name = "web"
-
-[services.build]
-dockerfilePath = "apps/web/Dockerfile"
-# Next.js Dockerfile only needs apps/web
-buildContext = "apps/web"
-
-[services.deploy]
-healthcheckPath = "/"
-healthcheckTimeout = 30
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+# Web is deployed on Vercel — see vercel.json at the repo root.
