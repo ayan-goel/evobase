@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteRepo } from "@/lib/api";
 
@@ -13,18 +13,18 @@ export function DeleteRepoButton({ repoId, repoLabel }: DeleteRepoButtonProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
-  function handleDelete() {
-    startTransition(async () => {
-      try {
-        await deleteRepo(repoId);
-        router.replace("/dashboard");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to remove repository.");
-        setConfirming(false);
-      }
-    });
+  async function handleDelete() {
+    setIsPending(true);
+    try {
+      await deleteRepo(repoId);
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove repository.");
+      setConfirming(false);
+      setIsPending(false);
+    }
   }
 
   if (confirming) {
