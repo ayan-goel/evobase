@@ -4,6 +4,7 @@ Validates Supabase-issued JWTs from the Authorization header and
 ensures the corresponding user row exists in the database.
 """
 
+import logging
 import uuid
 
 from fastapi import Depends, Header, HTTPException, status
@@ -14,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.db.models import User
 from app.db.session import get_db
+
+logger = logging.getLogger(__name__)
 
 STUB_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -29,6 +32,7 @@ async def get_current_user(
     inserted so downstream queries never face a missing FK.
     """
     if not authorization.startswith("Bearer "):
+        logger.warning("auth: missing or malformed Authorization header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing token",
@@ -36,19 +40,29 @@ async def get_current_user(
 
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
+        logger.warning("auth: empty token after Bearer prefix")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing token",
         )
 
+    secret = settings.supabase_jwt_secret
+    if not secret:
+        logger.error("auth: SUPABASE_JWT_SECRET is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
     try:
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
+            secret,
             algorithms=["HS256"],
             audience="authenticated",
         )
-    except JWTError:
+    except JWTError as exc:
+        logger.warning("auth: JWT verification failed — %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
