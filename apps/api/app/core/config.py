@@ -56,9 +56,19 @@ class Settings(BaseSettings):
 
     # GitHub App — required for webhook handling and PR creation.
     # Private key is the PEM contents (not a file path).
+    # Accepts both real newlines and escaped \n (common when pasted into
+    # Railway / Vercel / Render env var editors).
     github_app_id: str = ""
     github_private_key: str = ""
     github_webhook_secret: str = ""
+
+    @field_validator("github_private_key", mode="before")
+    @classmethod
+    def normalise_private_key(cls, v: str) -> str:
+        """Replace escaped \\n with real newlines so PEM keys parse correctly."""
+        if v and "\\n" in v:
+            return v.replace("\\n", "\n")
+        return v
 
     # LLM provider API keys — at least one must be set for agent runs.
     openai_api_key: str = ""
