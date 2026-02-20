@@ -63,6 +63,7 @@ class TestModelMetadata:
             "github_full_name",
             "default_branch",
             "package_manager",
+            "framework",
             "install_cmd",
             "build_cmd",
             "test_cmd",
@@ -127,6 +128,7 @@ class TestModelMetadata:
             "confidence",
             "created_at",
             "pr_url",
+            "framework",
             "discovery_trace",
             "patch_trace",
         }

@@ -10,6 +10,7 @@ function makeRepo(overrides: Partial<Repository> = {}): Repository {
     github_full_name: null,
     default_branch: "main",
     package_manager: "npm",
+    framework: null,
     install_cmd: "npm ci",
     build_cmd: null,
     test_cmd: "npm test",

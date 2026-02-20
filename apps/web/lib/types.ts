@@ -7,6 +7,7 @@ export interface Repository {
   default_branch: string;
   installation_id?: number | null;
   package_manager: string | null;
+  framework: string | null;
   install_cmd: string | null;
   build_cmd: string | null;
   test_cmd: string | null;
@@ -67,6 +68,7 @@ export interface Proposal {
   confidence: ConfidenceLevel | null;
   created_at: string;
   pr_url: string | null;
+  framework: string | null;
   artifacts: Artifact[];
   discovery_trace: ThinkingTrace | null;
   patch_trace: ThinkingTrace | null;

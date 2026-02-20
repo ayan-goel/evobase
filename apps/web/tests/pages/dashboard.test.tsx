@@ -9,6 +9,7 @@ function makeRepo(overrides: Partial<Repository> = {}): Repository {
     github_repo_id: 123,
     default_branch: "main",
     package_manager: "npm",
+    framework: null,
     install_cmd: "npm ci",
     build_cmd: "npm run build",
     test_cmd: "npm test",
@@ -63,9 +64,10 @@ describe("DashboardView", () => {
     expect(screen.getByText("Repo #456")).toBeDefined();
   });
 
-  it("shows package manager in repo card", () => {
+  it("shows branch name and package manager badge in repo card", () => {
     render(<DashboardView repos={[makeRepo()]} installations={[]} />);
-    expect(screen.getByText(/main · npm/)).toBeDefined();
+    expect(screen.getByText("main")).toBeDefined();
+    expect(screen.getByText("npm")).toBeDefined();
   });
 
   it("shows command chips when build/test cmds present", () => {

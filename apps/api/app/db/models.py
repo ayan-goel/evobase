@@ -96,6 +96,7 @@ class Repository(Base):
         Text, nullable=False, server_default=text("'main'")
     )
     package_manager: Mapped[Optional[str]] = mapped_column(Text)
+    framework: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     install_cmd: Mapped[Optional[str]] = mapped_column(Text)
     build_cmd: Mapped[Optional[str]] = mapped_column(Text)
     test_cmd: Mapped[Optional[str]] = mapped_column(Text)
@@ -269,6 +270,9 @@ class Proposal(Base):
 
     # confidence is set from the validator's AcceptanceVerdict ("high", "medium", "low")
     confidence: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Denormalized from the run's repository for analytics queries
+    framework: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     discovery_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     patch_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)

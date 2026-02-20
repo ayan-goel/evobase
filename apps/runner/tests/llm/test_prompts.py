@@ -66,6 +66,89 @@ class TestSystemPrompts:
         assert '"reasoning"' in prompt or "reasoning" in prompt
 
 
+class TestNewFrameworkFocusAreas:
+    def _prompt(self, framework: str) -> str:
+        return build_system_prompt(DetectionResult(framework=framework))
+
+    def test_vue_focus(self) -> None:
+        prompt = self._prompt("vue")
+        assert "v-for" in prompt or "computed" in prompt
+
+    def test_nuxt_focus(self) -> None:
+        prompt = self._prompt("nuxt")
+        assert "Nuxt" in prompt or "ClientOnly" in prompt
+
+    def test_angular_focus(self) -> None:
+        prompt = self._prompt("angular")
+        assert "OnPush" in prompt or "trackBy" in prompt
+
+    def test_svelte_focus(self) -> None:
+        prompt = self._prompt("svelte")
+        assert "onDestroy" in prompt or "$:" in prompt
+
+    def test_sveltekit_focus(self) -> None:
+        prompt = self._prompt("sveltekit")
+        assert "onDestroy" in prompt or "load" in prompt
+
+    def test_fastify_focus(self) -> None:
+        prompt = self._prompt("fastify")
+        assert "schema" in prompt or "Fastify" in prompt
+
+    def test_koa_uses_generic_node(self) -> None:
+        prompt = self._prompt("koa")
+        assert "event loop" in prompt.lower() or "Node.js" in prompt
+
+    def test_hapi_uses_generic_node(self) -> None:
+        prompt = self._prompt("hapi")
+        assert "event loop" in prompt.lower() or "Node.js" in prompt
+
+    def test_gatsby_uses_react_focus(self) -> None:
+        prompt = self._prompt("gatsby")
+        assert "React.memo" in prompt or "useMemo" in prompt
+
+    def test_remix_uses_react_focus(self) -> None:
+        prompt = self._prompt("remix")
+        assert "React.memo" in prompt or "useMemo" in prompt
+
+    # Ruby / Rails
+    def test_rails_focus(self) -> None:
+        prompt = self._prompt("rails")
+        assert "includes" in prompt or "N+1" in prompt
+
+    def test_grape_uses_rails_focus(self) -> None:
+        prompt = self._prompt("grape")
+        assert "Active Record" in prompt or "N+1" in prompt
+
+    def test_sinatra_uses_rails_focus(self) -> None:
+        prompt = self._prompt("sinatra")
+        assert "counter_cache" in prompt or "Rails.cache" in prompt
+
+    def test_ruby_generic_uses_rails_focus(self) -> None:
+        prompt = self._prompt("ruby")
+        assert "bundle exec" in prompt.lower() or "Rails" in prompt or "N+1" in prompt
+
+    # JVM / Spring Boot
+    def test_spring_boot_focus(self) -> None:
+        prompt = self._prompt("spring-boot")
+        assert "Transactional" in prompt or "JPA" in prompt
+
+    def test_spring_webflux_uses_springboot_focus(self) -> None:
+        prompt = self._prompt("spring-webflux")
+        assert "Transactional" in prompt or "RestTemplate" in prompt
+
+    def test_quarkus_uses_generic_jvm_focus(self) -> None:
+        prompt = self._prompt("quarkus")
+        assert "Optional" in prompt or "allocation" in prompt.lower()
+
+    def test_micronaut_uses_generic_jvm_focus(self) -> None:
+        prompt = self._prompt("micronaut")
+        assert "Optional" in prompt or "allocation" in prompt.lower()
+
+    def test_java_generic_uses_generic_jvm_focus(self) -> None:
+        prompt = self._prompt("java")
+        assert "HashSet" in prompt or "allocation" in prompt.lower()
+
+
 class TestDiscoveryPrompts:
     def test_file_selection_requests_json(self) -> None:
         prompt = file_selection_prompt("tree content")

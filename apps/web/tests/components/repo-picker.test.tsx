@@ -4,12 +4,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const mockGetInstallationRepos = vi.fn();
 const mockGetMe = vi.fn();
 const mockConnectRepo = vi.fn();
+const mockUseDetectFramework = vi.fn();
 const mockPush = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   getInstallationRepos: (...args: any[]) => mockGetInstallationRepos(...args),
   getMe: (...args: any[]) => mockGetMe(...args),
   connectRepo: (...args: any[]) => mockConnectRepo(...args),
+}));
+
+vi.mock("@/hooks/use-detect-framework", () => ({
+  useDetectFramework: (...args: any[]) => mockUseDetectFramework(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -22,6 +27,8 @@ describe("RepoPicker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetMe.mockResolvedValue({ user_id: "user-1", org_id: "test-org-id" });
+    // Default: no detection result so it doesn't interfere with existing tests
+    mockUseDetectFramework.mockReturnValue({ result: null, isDetecting: false });
   });
 
   it("renders loading state", () => {
@@ -136,6 +143,37 @@ describe("RepoPicker", () => {
 
     await waitFor(() => {
       expect(screen.getByText("GitHub API down")).toBeInTheDocument();
+    });
+  });
+
+  it("shows framework badge when repo is selected and detection returns a result", async () => {
+    mockGetInstallationRepos.mockResolvedValue([
+      { github_repo_id: 1, full_name: "org/nextapp", name: "nextapp", default_branch: "main", private: false },
+    ]);
+
+    // Return a result immediately for the selected repo
+    mockUseDetectFramework.mockImplementation(
+      (_installationId: number, repoFullName: string | null) => ({
+        result: repoFullName
+          ? { framework: "nextjs", language: "javascript", package_manager: "npm", confidence: 0.9 }
+          : null,
+        isDetecting: false,
+      }),
+    );
+
+    render(<RepoPicker installationId={42000} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("org/nextapp")).toBeInTheDocument();
+    });
+
+    // Select the repo — the RepoRow now calls useDetectFramework with the full_name
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    // The FrameworkBadge renders an <img> with a title attribute for the framework
+    await waitFor(() => {
+      const img = document.querySelector("img[title]");
+      expect(img).not.toBeNull();
     });
   });
 });

@@ -60,6 +60,7 @@ async def run_agent_cycle(
     llm_config: LLMConfig,
     baseline: BaselineResult,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    seen_signatures: frozenset[tuple[str, str]] = frozenset(),
 ) -> AgentCycleResult:
     """Run the full LLM agent cycle: discover → patch → validate.
 
@@ -69,6 +70,8 @@ async def run_agent_cycle(
         llm_config: Provider + model + API key configuration.
         baseline: Phase 6 baseline result for comparison.
         max_candidates: Budget cap on validation attempts.
+        seen_signatures: Set of (type, file_path) pairs already seen for this
+            repo; opportunities matching a signature are skipped before patching.
 
     Returns:
         `AgentCycleResult` with all attempts, reasoning traces, and verdicts.
@@ -91,6 +94,7 @@ async def run_agent_cycle(
         detection=detection,
         provider=provider,
         config=llm_config,
+        seen_signatures=seen_signatures,
     )
     agent_run.opportunities = opportunities
 

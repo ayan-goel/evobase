@@ -6,6 +6,7 @@ import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ProposalCard } from "@/components/proposal-card";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
+import { FrameworkBadge } from "@/components/framework-badge";
 import type { Proposal, Run } from "@/lib/types";
 
 type RunWithProposals = Run & { proposals: Proposal[] };
@@ -14,6 +15,7 @@ interface RepoRunListProps {
   repoId: string;
   initialRuns: RunWithProposals[];
   setupFailing?: boolean;
+  framework?: string | null;
 }
 
 const POLL_INTERVAL_MS = 5000;
@@ -32,7 +34,7 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
   );
 }
 
-export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
+export function RepoRunList({ repoId, initialRuns, setupFailing = false, framework }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
 
   useEffect(() => {
@@ -83,6 +85,7 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
               proposals={run.proposals}
               repoId={repoId}
               setupFailing={setupFailing}
+              framework={framework}
             />
           ))}
         </div>
@@ -96,16 +99,19 @@ function RunSection({
   proposals,
   repoId,
   setupFailing,
+  framework,
 }: {
   run: Run;
   proposals: Proposal[];
   repoId: string;
   setupFailing: boolean;
+  framework?: string | null;
 }) {
   return (
     <section>
       <div className="mb-3 flex items-center gap-3">
         <RunStatusBadge status={run.status} />
+        {framework && <FrameworkBadge framework={framework} size="sm" />}
         <span className="text-xs text-white/40 font-mono">
           {run.sha ? run.sha.slice(0, 7) : "no sha"}
         </span>

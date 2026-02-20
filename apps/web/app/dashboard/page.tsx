@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getInstallations, getRepos } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
+import { FrameworkBadge } from "@/components/framework-badge";
 import type { Installation, Repository } from "@/lib/types";
 
 export const metadata = { title: "Dashboard — Coreloop" };
@@ -102,9 +103,15 @@ function RepoCard({ repo }: { repo: Repository }) {
           <p className="mt-0.5 text-xs text-white/40">
             {repo.default_branch}
             {repo.root_dir ? ` · ${repo.root_dir}` : ""}
-            {" · "}
-            {repo.package_manager ?? "unknown PM"}
           </p>
+          <div className="mt-1.5">
+            <FrameworkBadge
+              framework={repo.framework}
+              packageManager={repo.package_manager}
+              size="sm"
+              showLabel
+            />
+          </div>
         </div>
         <RepoStatusBadge
           status={repo.latest_run_status}

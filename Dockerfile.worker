@@ -8,14 +8,74 @@
 
 FROM python:3.12-slim
 
+# ---------------------------------------------------------------------------
+# System build tools + Node.js (for JS/TS project runs)
+# ---------------------------------------------------------------------------
+# The runner executes npm ci / pnpm install / yarn install inside cloned
+# repos, so node, npm, pnpm and yarn must all be available in PATH.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
+        curl \
         build-essential \
         libpq-dev \
+        ca-certificates \
+        xz-utils \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g pnpm yarn \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
+# ---------------------------------------------------------------------------
+# Python package managers (for Python project runs)
+# ---------------------------------------------------------------------------
+RUN pip install --no-cache-dir uv poetry pipenv
 
+# ---------------------------------------------------------------------------
+# Go toolchain (for Go project runs)
+# Pinned to a specific release for reproducible builds.
+# ---------------------------------------------------------------------------
+ENV GO_VERSION=1.23.4
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+    | tar -C /usr/local -xzf -
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# ---------------------------------------------------------------------------
+# Rust toolchain (for Rust project runs)
+# Installed into system-wide directories so the non-root appuser can use it.
+# ---------------------------------------------------------------------------
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --default-toolchain stable \
+ && chmod -R a+rx /usr/local/rustup /usr/local/cargo
+
+# ---------------------------------------------------------------------------
+# Ruby toolchain (for Ruby / Rails project runs)
+# Uses the system Ruby from Debian bookworm-slim (3.1.x).
+# Bundler is the only gem needed at image build time; project gems are
+# installed by `bundle install` during the run.
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ruby ruby-dev \
+    && gem install bundler --no-document \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# JVM toolchain (for Java / Kotlin / Spring Boot project runs)
+# OpenJDK 21 LTS headless + Maven. Gradle wrapper (./gradlew) is supplied
+# by the project itself and does not require a system-level Gradle install.
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-21-jdk-headless \
+        maven \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# ---------------------------------------------------------------------------
+# Application code
+# ---------------------------------------------------------------------------
 WORKDIR /app
 
 COPY apps/runner /app/apps/runner

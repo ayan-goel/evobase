@@ -47,6 +47,7 @@ async def discover_opportunities(
     detection: DetectionResult,
     provider: LLMProvider,
     config: LLMConfig,
+    seen_signatures: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[AgentOpportunity]:
     """Run the two-stage discovery pipeline and return all opportunities.
 
@@ -55,6 +56,10 @@ async def discover_opportunities(
         detection: Output from the detector (framework, commands, etc.).
         provider: Instantiated LLM provider to use for API calls.
         config: LLM configuration (model, API key, etc.).
+        seen_signatures: Set of (type, file_path) pairs already recorded for
+            this repository across all previous runs. Opportunities whose
+            (type, file_path) match an entry are filtered out before returning
+            so the same suggestion is never re-proposed.
 
     Returns:
         List of `AgentOpportunity` objects sorted by risk score ascending
@@ -91,6 +96,16 @@ async def discover_opportunities(
             seen_locations.add(opp.location)
             deduped.append(opp)
 
+    # Filter out opportunities the agent has already proposed in previous runs
+    if seen_signatures:
+        before = len(deduped)
+        deduped = [o for o in deduped if _is_new(o, seen_signatures)]
+        filtered = before - len(deduped)
+        if filtered:
+            logger.debug(
+                "Deduplication: skipped %d already-seen opportunity(s)", filtered
+            )
+
     # Sort by risk score (safest first) then cap
     deduped.sort(key=lambda o: o.risk_score)
     result = deduped[:MAX_OPPORTUNITIES]
@@ -100,6 +115,12 @@ async def discover_opportunities(
         len(result), len(selected_files),
     )
     return result
+
+
+def _is_new(opp: AgentOpportunity, seen: frozenset[tuple[str, str]]) -> bool:
+    """Return True if this opportunity has not been seen in a previous run."""
+    file_path = opp.location.split(":")[0].strip() if opp.location else ""
+    return (opp.type, file_path) not in seen
 
 
 async def _select_files(

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getRepo, getRuns, getProposalsByRun } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { RepoRunList } from "@/components/repo-run-list";
+import { FrameworkBadge } from "@/components/framework-badge";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
 export const metadata = { title: "Repository — Coreloop" };
@@ -38,9 +39,16 @@ export function RepoView({ repo, runs }: RepoPageData) {
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
               {repoDisplayName(repo)}
             </h1>
-            <p className="mt-1.5 text-sm text-white/50">
-              {repo.default_branch} · {repo.package_manager ?? "unknown PM"}
-            </p>
+            <div className="mt-1.5 flex items-center gap-3 text-sm text-white/50">
+              <span>{repo.default_branch}</span>
+              <span>·</span>
+              <FrameworkBadge
+                framework={repo.framework}
+                packageManager={repo.package_manager}
+                size="md"
+                showLabel
+              />
+            </div>
           </div>
           <Link
             href={`/repos/${repo.id}/settings`}
@@ -54,6 +62,7 @@ export function RepoView({ repo, runs }: RepoPageData) {
           repoId={repo.id}
           initialRuns={runs}
           setupFailing={repo.setup_failing}
+          framework={repo.framework}
         />
       </div>
     </div>

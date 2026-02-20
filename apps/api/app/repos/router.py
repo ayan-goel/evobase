@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.db.models import Organization, Repository, Run, Settings
 from app.db.session import get_db
+from app.github import client as github_client
+from app.repos.detect import detect_repo_framework
 from app.repos.schemas import (
+    DetectFrameworkRequest,
+    DetectFrameworkResponse,
     RepoPatchRequest,
     RepoConnectRequest,
     RepoConnectResponse,
@@ -278,3 +282,27 @@ async def patch_repo(
     ).scalar_one_or_none()
 
     return _build_repo_response(repo, latest_status_row, 0 if root_dir_changed else setup_failures)
+
+
+@router.post("/detect-framework", response_model=DetectFrameworkResponse)
+async def detect_framework(
+    body: DetectFrameworkRequest,
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> DetectFrameworkResponse:
+    """Lightweight framework detection from GitHub manifest files.
+
+    Fetches only the key manifest files (Cargo.toml, go.mod, pyproject.toml,
+    requirements.txt, package.json, lock files) via the GitHub Contents API
+    and returns the detected framework, language, and package manager.
+
+    Results are cached for 1 hour per (installation_id, repo, root_dir).
+    This endpoint is intentionally separate from the runner's full detection
+    pipeline — it provides instant feedback in the UI without starting a run.
+    """
+    token = await github_client.get_installation_token(body.installation_id)
+    return await detect_repo_framework(
+        token,
+        body.installation_id,
+        body.repo_full_name,
+        body.root_dir,
+    )

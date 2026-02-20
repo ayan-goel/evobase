@@ -194,6 +194,29 @@ export async function updateRepoConfig(
   });
 }
 
+export interface DetectFrameworkResult {
+  framework: string | null;
+  language: string | null;
+  package_manager: string | null;
+  confidence: number;
+}
+
+/** Detect the framework for a repository by probing its manifest files. */
+export async function detectFramework(
+  installationId: number,
+  repoFullName: string,
+  rootDir: string | null,
+): Promise<DetectFrameworkResult> {
+  return apiFetch<DetectFrameworkResult>("/repos/detect-framework", {
+    method: "POST",
+    body: JSON.stringify({
+      installation_id: installationId,
+      repo_full_name: repoFullName,
+      root_dir: rootDir || null,
+    }),
+  });
+}
+
 /** Update settings for a repository (partial update). */
 export async function updateRepoSettings(
   repoId: string,

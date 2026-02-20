@@ -8,9 +8,92 @@ import {
   getMe,
 } from "@/lib/api";
 import type { GitHubRepo } from "@/lib/types";
+import { useDetectFramework } from "@/hooks/use-detect-framework";
+import { FrameworkBadge } from "@/components/framework-badge";
 
 interface RepoPickerProps {
   installationId: number;
+}
+
+interface RepoRowProps {
+  repo: GitHubRepo;
+  installationId: number;
+  isSelected: boolean;
+  rootDir: string;
+  onToggle: () => void;
+  onRootDirChange: (value: string) => void;
+}
+
+function RepoRow({
+  repo,
+  installationId,
+  isSelected,
+  rootDir,
+  onToggle,
+  onRootDirChange,
+}: RepoRowProps) {
+  const { result, isDetecting } = useDetectFramework(
+    installationId,
+    isSelected ? repo.full_name : null,
+    rootDir,
+  );
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05]">
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-white truncate">
+            {repo.full_name}
+          </p>
+          <p className="text-xs text-white/40">
+            {repo.default_branch}
+            {repo.private && " · private"}
+          </p>
+        </div>
+      </label>
+
+      {isSelected && (
+        <div className="mt-3 pl-7">
+          <label className="block text-xs text-white/40 mb-1">
+            Project directory{" "}
+            <span className="text-white/25">(optional — leave blank for repo root)</span>
+          </label>
+          <input
+            type="text"
+            value={rootDir}
+            onChange={(e) => onRootDirChange(e.target.value)}
+            placeholder="e.g. apps/web, packages/backend"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-white/25">
+            For monorepos: specify the sub-project folder that contains{" "}
+            <code className="text-white/35">package.json</code> or{" "}
+            <code className="text-white/35">pyproject.toml</code>.
+          </p>
+
+          <div className="mt-2 h-6 flex items-center">
+            {isDetecting && (
+              <span className="text-xs text-white/30 animate-pulse">Detecting framework…</span>
+            )}
+            {!isDetecting && result && (result.framework || result.package_manager) && (
+              <FrameworkBadge
+                framework={result.framework}
+                packageManager={result.package_manager}
+                size="sm"
+                showLabel
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function RepoPicker({ installationId }: RepoPickerProps) {
@@ -133,49 +216,15 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
 
       <div className="space-y-2">
         {repos.map((repo) => (
-          <div
+          <RepoRow
             key={repo.github_repo_id}
-            className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05]"
-          >
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selected.has(repo.github_repo_id)}
-                onChange={() => toggleRepo(repo.github_repo_id)}
-                className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {repo.full_name}
-                </p>
-                <p className="text-xs text-white/40">
-                  {repo.default_branch}
-                  {repo.private && " · private"}
-                </p>
-              </div>
-            </label>
-
-            {selected.has(repo.github_repo_id) && (
-              <div className="mt-3 pl-7">
-                <label className="block text-xs text-white/40 mb-1">
-                  Project directory{" "}
-                  <span className="text-white/25">(optional — leave blank for repo root)</span>
-                </label>
-                <input
-                  type="text"
-                  value={rootDirs[repo.github_repo_id] ?? ""}
-                  onChange={(e) => setRootDir(repo.github_repo_id, e.target.value)}
-                  placeholder="e.g. apps/web, packages/backend"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
-                />
-                <p className="mt-1 text-xs text-white/25">
-                  For monorepos: specify the sub-project folder that contains{" "}
-                  <code className="text-white/35">package.json</code> or{" "}
-                  <code className="text-white/35">pyproject.toml</code>.
-                </p>
-              </div>
-            )}
-          </div>
+            repo={repo}
+            installationId={installationId}
+            isSelected={selected.has(repo.github_repo_id)}
+            rootDir={rootDirs[repo.github_repo_id] ?? ""}
+            onToggle={() => toggleRepo(repo.github_repo_id)}
+            onRootDirChange={(value) => setRootDir(repo.github_repo_id, value)}
+          />
         ))}
       </div>
 

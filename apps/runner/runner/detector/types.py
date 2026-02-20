@@ -37,6 +37,7 @@ class DetectionResult:
     typecheck_cmd: Optional[str] = None
     bench_cmd: Optional[str] = None
     framework: Optional[str] = None
+    language: Optional[str] = None  # "javascript" | "python" | "go" | "rust"
     confidence: float = 0.0
     evidence: list[str] = field(default_factory=list)
 
@@ -49,6 +50,7 @@ class DetectionResult:
             "typecheck_cmd": self.typecheck_cmd,
             "bench_cmd": self.bench_cmd,
             "framework": self.framework,
+            "language": self.language,
             "confidence": round(self.confidence, 2),
             "evidence": self.evidence,
         }

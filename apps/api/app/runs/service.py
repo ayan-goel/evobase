@@ -137,6 +137,7 @@ class RunService:
                 test_cmd = repo.test_cmd
                 typecheck_cmd = repo.typecheck_cmd
                 root_dir = repo.root_dir
+                repo_framework = repo.framework
 
                 # LLM settings — prefer per-repo, fall back to env vars
                 llm_provider = settings.llm_provider if settings else "anthropic"
@@ -177,7 +178,7 @@ class RunService:
             # Step 3: Clone
             # ----------------------------------------------------------------
             repo_dir = Path(tempfile.mkdtemp(prefix="coreloop-run-"))
-            from runner.sandbox.checkout import clone_repo, checkout_sha
+            from runner.sandbox.checkout import clone_repo, checkout_sha, get_head_sha
 
             clone_repo(repo_url=repo_url, workspace_dir=repo_dir)
             if sha:
@@ -188,6 +189,18 @@ class RunService:
                         "Run %s: could not checkout SHA %s (%s) — using HEAD",
                         run_id, sha, exc,
                     )
+
+            # Capture the actual HEAD SHA and persist it so the UI can show it
+            try:
+                head_sha = get_head_sha(repo_dir)
+                with get_sync_db() as session:
+                    run_row = session.get(Run, uuid.UUID(run_id))
+                    if run_row:
+                        run_row.sha = head_sha
+                        session.commit()
+                logger.info("Run %s: HEAD sha=%s", run_id, head_sha[:7])
+            except Exception as exc:
+                logger.warning("Run %s: could not capture HEAD SHA: %s", run_id, exc)
 
             # ----------------------------------------------------------------
             # Step 3b: Resolve working directory (monorepo support)
@@ -245,6 +258,7 @@ class RunService:
                 repo_row = session.get(Repository, uuid.UUID(repo_id))
                 if repo_row:
                     repo_row.package_manager = repo_row.package_manager or detection.package_manager
+                    repo_row.framework = repo_row.framework or detection.framework
                     repo_row.install_cmd = repo_row.install_cmd or detection.install_cmd
                     repo_row.build_cmd = repo_row.build_cmd or detection.build_cmd
                     repo_row.test_cmd = repo_row.test_cmd or detection.test_cmd
@@ -310,6 +324,8 @@ class RunService:
                 enable_thinking=True,
             )
 
+            seen_signatures = _build_seen_signatures(uuid.UUID(repo_id))
+
             cycle_result = asyncio.run(
                 run_agent_cycle(
                     repo_dir=work_dir,
@@ -317,6 +333,7 @@ class RunService:
                     llm_config=llm_config,
                     baseline=baseline,
                     max_candidates=max_candidates,
+                    seen_signatures=seen_signatures,
                 )
             )
 
@@ -334,6 +351,7 @@ class RunService:
                 cycle_result=cycle_result,
                 baseline=baseline,
                 max_proposals=max_proposals,
+                framework=repo_framework,
             )
 
             # ----------------------------------------------------------------
@@ -410,6 +428,7 @@ def _write_proposals_to_db(
     cycle_result,
     baseline,
     max_proposals: int,
+    framework: Optional[str] = None,
 ) -> int:
     """Write accepted proposals (with opportunities + attempts) to the DB.
 
@@ -430,7 +449,7 @@ def _write_proposals_to_db(
             # Write Opportunity row
             opp_row = Opportunity(
                 run_id=uuid.UUID(run_id),
-                type=agent_opp.category,
+                type=agent_opp.type,
                 location=agent_opp.location,
                 rationale=agent_opp.rationale,
                 risk_score=float(agent_opp.risk_score),
@@ -464,11 +483,12 @@ def _write_proposals_to_db(
                 proposal_row = Proposal(
                     run_id=uuid.UUID(run_id),
                     diff=patch.diff if patch else "",
-                    summary=agent_opp.rationale or agent_opp.category,
+                    summary=agent_opp.rationale or agent_opp.type,
                     risk_score=float(agent_opp.risk_score),
                     confidence=candidate.final_verdict.confidence,
                     metrics_before=_baseline_to_dict(baseline),
                     metrics_after=metrics_after_dict,
+                    framework=framework,
                     discovery_trace=_discovery_trace_to_dict(agent_opp),
                     patch_trace=_patch_trace_to_dict(patch),
                 )
@@ -482,6 +502,25 @@ def _write_proposals_to_db(
         proposals_created, run_id,
     )
     return proposals_created
+
+
+def _build_seen_signatures(repo_id: uuid.UUID) -> frozenset[tuple[str, str]]:
+    """Return all (type, file_path) pairs ever generated for this repo.
+
+    Used to skip opportunities the LLM has already proposed in previous runs,
+    regardless of whether they were accepted or declined.
+    """
+    with get_sync_db() as session:
+        rows = session.execute(
+            select(Opportunity.type, Opportunity.location)
+            .join(Run, Opportunity.run_id == Run.id)
+            .where(Run.repo_id == repo_id)
+        ).all()
+    return frozenset(
+        (row.type, row.location.split(":")[0].strip())
+        for row in rows
+        if row.location
+    )
 
 
 def _discovery_trace_to_dict(opp) -> Optional[dict]:

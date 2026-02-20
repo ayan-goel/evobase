@@ -62,6 +62,7 @@ class RepoResponse(BaseModel):
     default_branch: str
     installation_id: Optional[int] = None
     package_manager: Optional[str]
+    framework: Optional[str] = None
     install_cmd: Optional[str]
     build_cmd: Optional[str]
     test_cmd: Optional[str]
@@ -85,3 +86,23 @@ class RepoListResponse(BaseModel):
 
     repos: list[RepoResponse]
     count: int
+
+
+class DetectFrameworkRequest(BaseModel):
+    """Payload for the lightweight framework detection endpoint."""
+
+    installation_id: int = Field(..., description="GitHub App installation ID")
+    repo_full_name: str = Field(..., description="'owner/repo' full name")
+    root_dir: Optional[str] = Field(
+        default=None,
+        description="Subdirectory to probe (for monorepos). Omit to probe the repo root.",
+    )
+
+
+class DetectFrameworkResponse(BaseModel):
+    """Detected framework metadata — informational only (no commands)."""
+
+    framework: Optional[str] = None
+    language: Optional[str] = None
+    package_manager: Optional[str] = None
+    confidence: float = 0.0

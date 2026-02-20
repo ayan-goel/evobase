@@ -147,6 +147,21 @@ def clone_repo(
     return workspace_dir
 
 
+def get_head_sha(repo_dir: Path) -> str:
+    """Return the full SHA of the current HEAD commit."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+        preexec_fn=apply_resource_limits,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"git rev-parse HEAD failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
 def checkout_sha(repo_dir: Path, sha: str) -> None:
     """Checkout a specific commit SHA in the repo.
 

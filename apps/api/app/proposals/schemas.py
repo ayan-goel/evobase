@@ -26,6 +26,7 @@ class ProposalResponse(BaseModel):
     confidence: Optional[str] = None
     created_at: datetime
     pr_url: Optional[str]
+    framework: Optional[str] = None
     artifacts: list["ArtifactResponse"] = []
     discovery_trace: Optional[dict[str, Any]] = None
     patch_trace: Optional[dict[str, Any]] = None
@@ -45,6 +46,7 @@ class ProposalResponse(BaseModel):
             confidence=proposal.confidence,
             created_at=proposal.created_at,
             pr_url=proposal.pr_url,
+            framework=proposal.framework,
             artifacts=[
                 ArtifactResponse.model_validate(a) for a in proposal.artifacts
             ],

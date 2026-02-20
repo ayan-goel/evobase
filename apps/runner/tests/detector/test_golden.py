@@ -50,7 +50,7 @@ class TestNextjsFixture:
         expected_keys = {
             "package_manager", "install_cmd", "build_cmd",
             "test_cmd", "typecheck_cmd", "bench_cmd", "framework",
-            "confidence", "evidence",
+            "language", "confidence", "evidence",
         }
         assert set(d.keys()) == expected_keys
 
