@@ -13,10 +13,13 @@ Platform notes:
     is a no-op on Windows so tests and development on Windows are unaffected.
 
 Limits chosen:
-  RLIMIT_AS (virtual address space): 512 MB
-    Prevents a subprocess from allocating unbounded memory. Node.js and npm
-    use shared memory mappings, so a generous limit is needed; 512 MB covers
-    all typical install/build/test workloads with headroom.
+  RLIMIT_AS (virtual address space): 4 GB
+    Prevents a subprocess from allocating unbounded memory. Node.js / V8
+    maps several GB of virtual address space at startup (for the isolate
+    heap cage) even though physical pages are only committed on demand.
+    512 MB trips this limit before npm can execute a single line, causing
+    SIGTRAP (exit 133). 4 GB is a safe ceiling that blocks truly runaway
+    processes while allowing all typical install/build/test workloads.
 
   RLIMIT_CPU (CPU seconds): 60 seconds
     Prevents infinite CPU loops from consuming the entire worker core.
@@ -44,8 +47,10 @@ def apply_resource_limits() -> None:
     try:
         import resource
 
-        # 512 MB virtual address space hard limit
-        _MEM_LIMIT = 512 * 1024 * 1024  # 512 MB
+        # 4 GB virtual address space hard limit — Node.js / V8 maps several GB
+        # of virtual space at startup even for lightweight tasks, so anything
+        # below ~2 GB causes an immediate SIGTRAP before npm can run.
+        _MEM_LIMIT = 4 * 1024 * 1024 * 1024  # 4 GB
         resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT, resource.RLIM_INFINITY))
 
         # 60 CPU-seconds hard limit (separate from wall-clock timeout)

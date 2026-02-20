@@ -14,7 +14,11 @@ from runner.sandbox.limits import apply_resource_limits
 
 class TestApplyResourceLimits:
     def test_sets_memory_limit(self) -> None:
-        """RLIMIT_AS must be set to 512 MB."""
+        """RLIMIT_AS must be set to 4 GB.
+
+        512 MB was too low — Node.js / V8 maps several GB of virtual address
+        space at startup, causing SIGTRAP (exit 133) before npm can run.
+        """
         mock_resource = MagicMock()
         mock_resource.RLIMIT_AS = 5  # arbitrary sentinel
         mock_resource.RLIMIT_CPU = 0
@@ -26,7 +30,7 @@ class TestApplyResourceLimits:
 
         mock_resource.setrlimit.assert_any_call(
             mock_resource.RLIMIT_AS,
-            (512 * 1024 * 1024, mock_resource.RLIM_INFINITY),
+            (4 * 1024 * 1024 * 1024, mock_resource.RLIM_INFINITY),
         )
 
     def test_sets_cpu_limit(self) -> None:
