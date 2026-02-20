@@ -1,11 +1,11 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { linkInstallation, getInstallations } from "@/lib/api";
+import { useEffect, useState, Suspense } from "react";
+import { linkInstallation } from "@/lib/api";
 import { RepoPicker } from "@/components/repo-picker";
 
-export default function GitHubCallbackPage() {
+function GitHubCallbackContent() {
   const searchParams = useSearchParams();
   const installationId = searchParams.get("installation_id");
   const [linked, setLinked] = useState(false);
@@ -60,5 +60,19 @@ export default function GitHubCallbackPage() {
         <RepoPicker installationId={parseInt(installationId, 10)} />
       </div>
     </div>
+  );
+}
+
+export default function GitHubCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-sm text-white/50">Loading...</p>
+        </div>
+      }
+    >
+      <GitHubCallbackContent />
+    </Suspense>
   );
 }
