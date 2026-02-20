@@ -396,20 +396,24 @@ class TestExecuteFullPipeline:
         assert result["reason"] == "baseline_failed"
         assert result["baseline_completed"] is False
 
-    def test_baseline_failure_persists_failing_step(self) -> None:
-        """When baseline fails, failure_step is set to the first non-zero step."""
+    def test_baseline_failure_persists_critical_failing_step(self) -> None:
+        """When baseline fails, failure_step reflects the critical failing step."""
         run = self._make_run_mock()
         repo = self._make_repo_mock()
 
-        # Build a baseline that has a failing "test" step
+        # Build a baseline where a non-critical step (build) fails, followed by
+        # a critical failure (test). The persisted failure_step must be "test".
         failed_baseline = _make_baseline(is_success=False)
         install_step = MagicMock()
         install_step.name = "install"
         install_step.exit_code = 0
+        build_step = MagicMock()
+        build_step.name = "build"
+        build_step.exit_code = 1
         test_step = MagicMock()
         test_step.name = "test"
         test_step.exit_code = 1
-        failed_baseline.steps = [install_step, test_step]
+        failed_baseline.steps = [install_step, build_step, test_step]
 
         captured_run_row = MagicMock(spec=Run)
         captured_run_row.failure_step = None

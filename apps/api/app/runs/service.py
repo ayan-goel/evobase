@@ -302,11 +302,18 @@ class RunService:
                     "Run %s: baseline failed — incrementing setup failure counter",
                     run_id,
                 )
-                # Find the first step that failed and persist it so the UI can
-                # show a specific, actionable message (install / build / test).
+                # Persist the critical failing step for UI messaging.
+                # Baseline failure is only triggered by critical gates
+                # (install/test), so prefer those over optional failures
+                # like build/typecheck.
+                critical_steps = {"install", "test"}
                 failed_step = next(
-                    (s.name for s in baseline.steps if s.exit_code != 0),
-                    "unknown",
+                    (
+                        s.name
+                        for s in baseline.steps
+                        if s.exit_code != 0 and s.name in critical_steps
+                    ),
+                    next((s.name for s in baseline.steps if s.exit_code != 0), "unknown"),
                 )
                 try:
                     with get_sync_db() as session:
