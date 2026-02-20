@@ -22,26 +22,6 @@ export type { LLMModel, LLMProvider } from "@/lib/types";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  if (typeof window === "undefined") {
-    // Server-side: read session from cookies via the SSR Supabase client.
-    try {
-      const { createClient: createServerSupabase } = await import(
-        "@/lib/supabase/server"
-      );
-      const supabase = await createServerSupabase();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        return { Authorization: `Bearer ${session.access_token}` };
-      }
-    } catch {
-      // No server session available
-    }
-    return {};
-  }
-
-  // Client-side: read from the browser Supabase client.
   try {
     const supabase = createClient();
     const {
@@ -59,7 +39,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 /** Shared fetch wrapper with error handling and automatic auth. */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const isServer = typeof window === "undefined";
   const authHeaders = await getAuthHeaders();
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -69,11 +48,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       ...authHeaders,
       ...(init?.headers as Record<string, string> | undefined),
     },
-    ...(isServer ? { cache: "no-store" as const } : {}),
   });
 
-  if (res.status === 401 && !isServer) {
-    window.location.href = "/login";
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
     throw new Error("Unauthorized");
   }
 
