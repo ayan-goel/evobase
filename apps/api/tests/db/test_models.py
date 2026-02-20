@@ -69,6 +69,7 @@ class TestModelMetadata:
             "typecheck_cmd",
             "bench_config",
             "installation_id",
+            "root_dir",
             "created_at",
         }
         assert column_names == expected

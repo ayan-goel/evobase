@@ -223,33 +223,28 @@ describe("SettingsForm", () => {
     build_cmd: "npm run build",
     test_cmd: "npm test",
     typecheck_cmd: null,
+    root_dir: null,
+    setup_failing: false,
     latest_run_status: null,
     created_at: new Date().toISOString(),
   };
 
-  it("renders detected commands section when repo has commands", () => {
+  it("renders repo config section when repo is provided", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={baseRepo} />);
-    expect(screen.getByTestId("detected-commands")).toBeDefined();
+    expect(screen.getByTestId("repo-config")).toBeDefined();
     expect(screen.getByDisplayValue("npm ci")).toBeDefined();
     expect(screen.getByDisplayValue("npm run build")).toBeDefined();
     expect(screen.getByDisplayValue("npm test")).toBeDefined();
   });
 
-  it("detected command inputs are read-only", () => {
+  it("command inputs in repo config section are editable", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={baseRepo} />);
     const installInput = screen.getByDisplayValue("npm ci") as HTMLInputElement;
-    expect(installInput.readOnly).toBe(true);
+    expect(installInput.readOnly).toBe(false);
   });
 
-  it("hides detected commands section when all command fields are null", () => {
-    const repoNoCommands: Repository = {
-      ...baseRepo,
-      install_cmd: null,
-      build_cmd: null,
-      test_cmd: null,
-      typecheck_cmd: null,
-    };
-    render(<SettingsForm repoId="repo-1" initial={baseSettings} repo={repoNoCommands} />);
-    expect(screen.queryByTestId("detected-commands")).toBeNull();
+  it("hides repo config section when repo is not provided", () => {
+    render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
+    expect(screen.queryByTestId("repo-config")).toBeNull();
   });
 });

@@ -59,7 +59,20 @@ export function DashboardView({
   );
 }
 
-function RepoStatusBadge({ status }: { status: string | null | undefined }) {
+function RepoStatusBadge({
+  status,
+  setupFailing,
+}: {
+  status: string | null | undefined;
+  setupFailing: boolean;
+}) {
+  if (setupFailing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+        Setup failing
+      </span>
+    );
+  }
   if (status === "queued" || status === "running") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
@@ -87,11 +100,23 @@ function RepoCard({ repo }: { repo: Repository }) {
             {repoDisplayName(repo)}
           </p>
           <p className="mt-0.5 text-xs text-white/40">
-            {repo.default_branch} · {repo.package_manager ?? "unknown PM"}
+            {repo.default_branch}
+            {repo.root_dir ? ` · ${repo.root_dir}` : ""}
+            {" · "}
+            {repo.package_manager ?? "unknown PM"}
           </p>
         </div>
-        <RepoStatusBadge status={repo.latest_run_status} />
+        <RepoStatusBadge
+          status={repo.latest_run_status}
+          setupFailing={repo.setup_failing}
+        />
       </div>
+
+      {repo.setup_failing && (
+        <p className="mt-2 text-xs text-amber-400/70">
+          Install step is failing. Update the project directory in Settings →
+        </p>
+      )}
 
       {(repo.build_cmd || repo.test_cmd) && (
         <div className="mt-3 flex flex-wrap gap-2">

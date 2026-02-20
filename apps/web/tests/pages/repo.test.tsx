@@ -13,6 +13,9 @@ function makeRepo(overrides: Partial<Repository> = {}): Repository {
     install_cmd: "npm ci",
     build_cmd: null,
     test_cmd: "npm test",
+    typecheck_cmd: null,
+    root_dir: null,
+    setup_failing: false,
     created_at: new Date().toISOString(),
     ...overrides,
   };

@@ -11,6 +11,7 @@ import type {
   Installation,
   LLMProvider,
   Proposal,
+  RepoPatchRequest,
   Repository,
   RepoSettings,
   Run,
@@ -174,6 +175,17 @@ export async function connectRepo(
   return apiFetch<Repository>("/repos/connect", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/** Update mutable repository config (root_dir and command overrides). */
+export async function updateRepoConfig(
+  repoId: string,
+  updates: RepoPatchRequest,
+): Promise<Repository> {
+  return apiFetch<Repository>(`/repos/${repoId}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
   });
 }
 

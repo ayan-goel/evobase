@@ -50,7 +50,11 @@ export function RepoView({ repo, runs }: RepoPageData) {
           </Link>
         </div>
 
-        <RepoRunList repoId={repo.id} initialRuns={runs} />
+        <RepoRunList
+          repoId={repo.id}
+          initialRuns={runs}
+          setupFailing={repo.setup_failing}
+        />
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ from app.auth.dependencies import get_current_user
 from app.db.models import Organization, Repository, Run, Settings
 from app.db.session import get_db
 from app.repos.schemas import (
+    RepoPatchRequest,
     RepoConnectRequest,
     RepoConnectResponse,
     RepoListResponse,
@@ -34,6 +35,27 @@ def _latest_status_subq():
         .correlate(Repository)
         .scalar_subquery()
         .label("latest_run_status")
+    )
+
+
+def _setup_failures_subq():
+    """Correlated subquery returning consecutive_setup_failures for a repo."""
+    return (
+        select(Settings.consecutive_setup_failures)
+        .where(Settings.repo_id == Repository.id)
+        .correlate(Repository)
+        .scalar_subquery()
+        .label("setup_failures")
+    )
+
+
+def _build_repo_response(repo: Repository, latest_status, setup_failures) -> RepoResponse:
+    return RepoResponse(
+        **RepoResponse.model_validate(repo).model_dump(
+            exclude={"latest_run_status", "setup_failing"}
+        ),
+        latest_run_status=latest_status,
+        setup_failing=bool(setup_failures and setup_failures > 0),
     )
 
 
@@ -88,6 +110,7 @@ async def connect_repo(
         test_cmd=body.test_cmd,
         typecheck_cmd=body.typecheck_cmd,
         bench_config=body.bench_config,
+        root_dir=body.root_dir or None,
     )
     db.add(repo)
     await db.flush()
@@ -115,11 +138,12 @@ async def list_repos(
     """List all repositories the authenticated user has access to.
 
     Returns repos belonging to organizations owned by the user, newest first.
-    Each repo includes the status of its most recent run (or null if none).
+    Each repo includes the status of its most recent run (or null if none)
+    and a setup_failing flag derived from consecutive_setup_failures.
     """
     rows = (
         await db.execute(
-            select(Repository, _latest_status_subq())
+            select(Repository, _latest_status_subq(), _setup_failures_subq())
             .join(Organization)
             .where(Organization.owner_id == user_id)
             .order_by(Repository.created_at.desc())
@@ -128,11 +152,8 @@ async def list_repos(
 
     return RepoListResponse(
         repos=[
-            RepoResponse(
-                **RepoResponse.model_validate(repo).model_dump(exclude={"latest_run_status"}),
-                latest_run_status=latest_status,
-            )
-            for repo, latest_status in rows
+            _build_repo_response(repo, latest_status, setup_failures)
+            for repo, latest_status, setup_failures in rows
         ],
         count=len(rows),
     )
@@ -147,7 +168,7 @@ async def get_repo(
     """Get details for a single repository, including latest run status."""
     row = (
         await db.execute(
-            select(Repository, _latest_status_subq())
+            select(Repository, _latest_status_subq(), _setup_failures_subq())
             .join(Organization)
             .where(Repository.id == repo_id, Organization.owner_id == user_id)
         )
@@ -159,8 +180,72 @@ async def get_repo(
             detail="Repository not found",
         )
 
-    repo, latest_status = row
-    return RepoResponse(
-        **RepoResponse.model_validate(repo).model_dump(exclude={"latest_run_status"}),
-        latest_run_status=latest_status,
+    repo, latest_status, setup_failures = row
+    return _build_repo_response(repo, latest_status, setup_failures)
+
+
+@router.patch("/{repo_id}", response_model=RepoResponse)
+async def patch_repo(
+    repo_id: uuid.UUID,
+    body: RepoPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> RepoResponse:
+    """Update mutable repository configuration (root_dir and command overrides).
+
+    Changing root_dir resets the consecutive_setup_failures counter so the
+    runner gets a clean slate with the new directory on the next run.
+    """
+    row = (
+        await db.execute(
+            select(Repository, _setup_failures_subq())
+            .join(Organization)
+            .where(Repository.id == repo_id, Organization.owner_id == user_id)
+        )
+    ).one_or_none()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Repository not found",
+        )
+
+    repo, setup_failures = row
+
+    root_dir_changed = (
+        body.root_dir is not None and body.root_dir != (repo.root_dir or "")
     )
+
+    if body.root_dir is not None:
+        repo.root_dir = body.root_dir or None
+    if body.install_cmd is not None:
+        repo.install_cmd = body.install_cmd or None
+    if body.build_cmd is not None:
+        repo.build_cmd = body.build_cmd or None
+    if body.test_cmd is not None:
+        repo.test_cmd = body.test_cmd or None
+    if body.typecheck_cmd is not None:
+        repo.typecheck_cmd = body.typecheck_cmd or None
+
+    if root_dir_changed:
+        settings_result = await db.execute(
+            select(Settings).where(Settings.repo_id == repo_id)
+        )
+        settings = settings_result.scalar_one_or_none()
+        if settings:
+            settings.consecutive_setup_failures = 0
+            settings.paused = False
+
+    await db.commit()
+    await db.refresh(repo)
+
+    latest_status_row = (
+        await db.execute(
+            select(Run.status)
+            .where(Run.repo_id == repo_id)
+            .order_by(desc(Run.created_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    return _build_repo_response(repo, latest_status_row, 0 if root_dir_changed else setup_failures)

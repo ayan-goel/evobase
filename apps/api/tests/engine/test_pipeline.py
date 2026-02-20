@@ -337,6 +337,7 @@ class TestExecuteFullPipeline:
         r.test_cmd = None
         r.typecheck_cmd = None
         r.package_manager = None
+        r.root_dir = None
         return r
 
     def test_returns_no_github_repo_id_result_when_repo_has_none(self) -> None:

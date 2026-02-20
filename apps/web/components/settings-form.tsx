@@ -2,16 +2,15 @@
 
 /**
  * SettingsForm — client component for editing per-repo budget, schedule,
- * and LLM model settings.
+ * LLM model settings, and repository configuration (root_dir, commands).
  *
- * Renders a form with inputs for all mutable settings fields including the
- * AI model selector. On save, POSTs the changed values to the API and shows
- * inline feedback. When a repo is paused, shows a prominent warning and an
- * "Unpause" button.
+ * Renders a form with inputs for all mutable settings fields. On save,
+ * PATCHes the relevant API endpoint and shows inline feedback. When a repo
+ * is paused, shows a prominent warning and an "Unpause" button.
  */
 
 import { useState, useTransition } from "react";
-import { updateRepoSettings } from "@/lib/api";
+import { updateRepoSettings, updateRepoConfig } from "@/lib/api";
 import type { LLMProvider } from "@/lib/types";
 import type { Repository, RepoSettings } from "@/lib/types";
 
@@ -27,6 +26,33 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Repo-level config state (root_dir + commands)
+  const [rootDir, setRootDir] = useState(repo?.root_dir ?? "");
+  const [installCmd, setInstallCmd] = useState(repo?.install_cmd ?? "");
+  const [buildCmd, setBuildCmd] = useState(repo?.build_cmd ?? "");
+  const [testCmd, setTestCmd] = useState(repo?.test_cmd ?? "");
+  const [configSaved, setConfigSaved] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [isConfigPending, startConfigTransition] = useTransition();
+
+  function handleSaveConfig() {
+    startConfigTransition(async () => {
+      try {
+        await updateRepoConfig(repoId, {
+          root_dir: rootDir.trim() || null,
+          install_cmd: installCmd.trim() || null,
+          build_cmd: buildCmd.trim() || null,
+          test_cmd: testCmd.trim() || null,
+        });
+        setConfigSaved(true);
+        setConfigError(null);
+      } catch (err) {
+        setConfigError(err instanceof Error ? err.message : "Failed to save configuration.");
+        setConfigSaved(false);
+      }
+    });
+  }
 
   function handleChange(field: keyof RepoSettings, value: string | number | boolean) {
     setSaved(false);
@@ -126,35 +152,88 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         </div>
       )}
 
-      {/* Detected commands (read-only) */}
-      {repo &&
-        (repo.install_cmd || repo.build_cmd || repo.test_cmd || repo.typecheck_cmd) && (
-          <div className="space-y-3" data-testid="detected-commands">
+      {/* Repository Configuration (root_dir + commands) */}
+      {repo && (
+        <div className="space-y-4 rounded-xl border border-white/8 bg-white/[0.02] p-5" data-testid="repo-config">
+          <div>
             <p className="text-xs font-medium text-white/60 uppercase tracking-wider">
-              Detected commands
+              Repository Configuration
             </p>
-            <div className="space-y-2">
-              {[
-                { label: "Install", value: repo.install_cmd },
-                { label: "Build", value: repo.build_cmd },
-                { label: "Test", value: repo.test_cmd },
-                { label: "Typecheck", value: repo.typecheck_cmd },
-              ]
-                .filter((c) => c.value)
-                .map((c) => (
-                  <div key={c.label}>
-                    <p className="mb-1 text-xs text-white/40">{c.label}</p>
-                    <input
-                      readOnly
-                      value={c.value!}
-                      aria-label={`${c.label} command`}
-                      className="w-full rounded-xl border border-white/8 bg-white/[0.02] px-4 py-2 text-xs font-mono text-white/60 cursor-default focus:outline-none"
-                    />
-                  </div>
-                ))}
+            <p className="mt-1 text-xs text-white/35">
+              Set the project directory for monorepos. Changes reset the setup
+              failure counter and unpause the repo.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-white/50 mb-1">
+                Project directory
+                <span className="ml-1.5 text-white/25">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={rootDir}
+                onChange={(e) => { setRootDir(e.target.value); setConfigSaved(false); }}
+                placeholder="e.g. apps/web, packages/backend"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+              />
+              <p className="mt-1 text-xs text-white/30">
+                Leave blank to use the repository root.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Install command</label>
+              <input
+                type="text"
+                value={installCmd}
+                onChange={(e) => { setInstallCmd(e.target.value); setConfigSaved(false); }}
+                placeholder="e.g. npm ci, pnpm install --frozen-lockfile"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Build command</label>
+              <input
+                type="text"
+                value={buildCmd}
+                onChange={(e) => { setBuildCmd(e.target.value); setConfigSaved(false); }}
+                placeholder="e.g. npm run build"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Test command</label>
+              <input
+                type="text"
+                value={testCmd}
+                onChange={(e) => { setTestCmd(e.target.value); setConfigSaved(false); }}
+                placeholder="e.g. npm test, pytest"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+              />
             </div>
           </div>
-        )}
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleSaveConfig}
+              disabled={isConfigPending}
+              className="rounded-full border border-white/15 bg-white/10 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15 disabled:opacity-50"
+            >
+              {isConfigPending ? "Saving…" : "Save configuration"}
+            </button>
+            {configSaved && (
+              <span className="text-sm text-emerald-400">Configuration saved.</span>
+            )}
+            {configError && (
+              <span className="text-sm text-red-400">{configError}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Schedule */}
       <div className="space-y-1.5">

@@ -102,6 +102,9 @@ class Repository(Base):
     typecheck_cmd: Mapped[Optional[str]] = mapped_column(Text)
     bench_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     installation_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    # Subdirectory within the repo to run detection and commands from.
+    # Set this for monorepos where only one sub-project should be analysed.
+    root_dir: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )

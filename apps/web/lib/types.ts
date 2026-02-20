@@ -11,7 +11,9 @@ export interface Repository {
   build_cmd: string | null;
   test_cmd: string | null;
   typecheck_cmd: string | null;
+  root_dir: string | null;
   latest_run_status?: string | null;
+  setup_failing: boolean;
   created_at: string;
 }
 
@@ -115,6 +117,15 @@ export interface ConnectRepoRequest {
   org_id: string;
   default_branch: string;
   installation_id: number;
+  root_dir?: string | null;
+}
+
+export interface RepoPatchRequest {
+  root_dir?: string | null;
+  install_cmd?: string | null;
+  build_cmd?: string | null;
+  test_cmd?: string | null;
+  typecheck_cmd?: string | null;
 }
 
 export interface LLMModel {

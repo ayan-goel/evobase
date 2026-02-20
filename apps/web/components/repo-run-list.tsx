@@ -13,6 +13,7 @@ type RunWithProposals = Run & { proposals: Proposal[] };
 interface RepoRunListProps {
   repoId: string;
   initialRuns: RunWithProposals[];
+  setupFailing?: boolean;
 }
 
 const POLL_INTERVAL_MS = 5000;
@@ -31,7 +32,7 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
   );
 }
 
-export function RepoRunList({ repoId, initialRuns }: RepoRunListProps) {
+export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
 
   useEffect(() => {
@@ -76,7 +77,13 @@ export function RepoRunList({ repoId, initialRuns }: RepoRunListProps) {
       ) : (
         <div className="space-y-8">
           {runs.map((run) => (
-            <RunSection key={run.id} run={run} proposals={run.proposals} />
+            <RunSection
+              key={run.id}
+              run={run}
+              proposals={run.proposals}
+              repoId={repoId}
+              setupFailing={setupFailing}
+            />
           ))}
         </div>
       )}
@@ -84,7 +91,17 @@ export function RepoRunList({ repoId, initialRuns }: RepoRunListProps) {
   );
 }
 
-function RunSection({ run, proposals }: { run: Run; proposals: Proposal[] }) {
+function RunSection({
+  run,
+  proposals,
+  repoId,
+  setupFailing,
+}: {
+  run: Run;
+  proposals: Proposal[];
+  repoId: string;
+  setupFailing: boolean;
+}) {
   return (
     <section>
       <div className="mb-3 flex items-center gap-3">
@@ -96,11 +113,23 @@ function RunSection({ run, proposals }: { run: Run; proposals: Proposal[] }) {
       </div>
 
       {proposals.length === 0 ? (
-        <p className="text-sm text-white/30 pl-1">
-          {run.status === "running" || run.status === "queued"
-            ? "Run in progress…"
-            : "No proposals generated."}
-        </p>
+        <div className="pl-1">
+          {run.status === "running" || run.status === "queued" ? (
+            <p className="text-sm text-white/30">Run in progress…</p>
+          ) : setupFailing ? (
+            <p className="text-sm text-amber-400/70">
+              Setup failed — install step could not run.{" "}
+              <a
+                href={`/repos/${repoId}/settings`}
+                className="underline underline-offset-2 hover:text-amber-400 transition-colors"
+              >
+                Set a project directory in Settings →
+              </a>
+            </p>
+          ) : (
+            <p className="text-sm text-white/30">No proposals generated.</p>
+          )}
+        </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {proposals.map((proposal) => (

@@ -17,6 +17,8 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
   const router = useRouter();
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Per-repo root_dir overrides: map of github_repo_id → directory string
+  const [rootDirs, setRootDirs] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +46,14 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
   function toggleRepo(repoId: number) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(repoId)) {
-        next.delete(repoId);
-      } else {
-        next.add(repoId);
-      }
+      if (next.has(repoId)) next.delete(repoId);
+      else next.add(repoId);
       return next;
     });
+  }
+
+  function setRootDir(repoId: number, value: string) {
+    setRootDirs((prev) => ({ ...prev, [repoId]: value }));
   }
 
   async function handleConnect() {
@@ -66,12 +69,14 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
       const reposToConnect = repos.filter((r) => selected.has(r.github_repo_id));
 
       for (const repo of reposToConnect) {
+        const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
         await connectRepo({
           github_repo_id: repo.github_repo_id,
           github_full_name: repo.full_name,
           org_id: orgId,
           default_branch: repo.default_branch,
           installation_id: installationId,
+          root_dir: rawDir || null,
         });
       }
 
@@ -128,26 +133,49 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
 
       <div className="space-y-2">
         {repos.map((repo) => (
-          <label
+          <div
             key={repo.github_repo_id}
-            className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05]"
           >
-            <input
-              type="checkbox"
-              checked={selected.has(repo.github_repo_id)}
-              onChange={() => toggleRepo(repo.github_repo_id)}
-              className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">
-                {repo.full_name}
-              </p>
-              <p className="text-xs text-white/40">
-                {repo.default_branch}
-                {repo.private && " · private"}
-              </p>
-            </div>
-          </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selected.has(repo.github_repo_id)}
+                onChange={() => toggleRepo(repo.github_repo_id)}
+                className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">
+                  {repo.full_name}
+                </p>
+                <p className="text-xs text-white/40">
+                  {repo.default_branch}
+                  {repo.private && " · private"}
+                </p>
+              </div>
+            </label>
+
+            {selected.has(repo.github_repo_id) && (
+              <div className="mt-3 pl-7">
+                <label className="block text-xs text-white/40 mb-1">
+                  Project directory{" "}
+                  <span className="text-white/25">(optional — leave blank for repo root)</span>
+                </label>
+                <input
+                  type="text"
+                  value={rootDirs[repo.github_repo_id] ?? ""}
+                  onChange={(e) => setRootDir(repo.github_repo_id, e.target.value)}
+                  placeholder="e.g. apps/web, packages/backend"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-white/25">
+                  For monorepos: specify the sub-project folder that contains{" "}
+                  <code className="text-white/35">package.json</code> or{" "}
+                  <code className="text-white/35">pyproject.toml</code>.
+                </p>
+              </div>
+            )}
+          </div>
         ))}
       </div>
 

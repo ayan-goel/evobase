@@ -30,6 +30,24 @@ class RepoConnectRequest(BaseModel):
     test_cmd: Optional[str] = None
     typecheck_cmd: Optional[str] = None
     bench_config: Optional[dict[str, Any]] = None
+    root_dir: Optional[str] = Field(
+        default=None,
+        description="Subdirectory to use as the project root (for monorepos).",
+    )
+
+
+class RepoPatchRequest(BaseModel):
+    """Payload for updating mutable repository configuration fields."""
+
+    root_dir: Optional[str] = Field(
+        default=None,
+        description="Subdirectory to use as the project root (for monorepos). "
+        "Pass an empty string to clear a previously set value.",
+    )
+    install_cmd: Optional[str] = None
+    build_cmd: Optional[str] = None
+    test_cmd: Optional[str] = None
+    typecheck_cmd: Optional[str] = None
 
 
 class RepoResponse(BaseModel):
@@ -49,7 +67,10 @@ class RepoResponse(BaseModel):
     test_cmd: Optional[str]
     typecheck_cmd: Optional[str] = None
     bench_config: Optional[dict[str, Any]]
+    root_dir: Optional[str] = None
     latest_run_status: Optional[str] = None
+    # True when consecutive_setup_failures > 0 for this repo's settings row.
+    setup_failing: bool = False
     created_at: datetime
 
 

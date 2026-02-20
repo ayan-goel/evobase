@@ -136,6 +136,7 @@ class RunService:
                 build_cmd = repo.build_cmd
                 test_cmd = repo.test_cmd
                 typecheck_cmd = repo.typecheck_cmd
+                root_dir = repo.root_dir
 
                 # LLM settings — prefer per-repo, fall back to env vars
                 llm_provider = settings.llm_provider if settings else "anthropic"
@@ -189,11 +190,33 @@ class RunService:
                     )
 
             # ----------------------------------------------------------------
+            # Step 3b: Resolve working directory (monorepo support)
+            # ----------------------------------------------------------------
+            if root_dir:
+                work_dir = repo_dir / root_dir.strip("/")
+                if not work_dir.is_dir():
+                    logger.error(
+                        "Run %s: root_dir '%s' not found in cloned repo",
+                        run_id, root_dir,
+                    )
+                    _increment_failure_counter(run_id, repo_id, "setup")
+                    return {
+                        "baseline_completed": False,
+                        "agent_skipped": True,
+                        "reason": "root_dir_not_found",
+                        "run_id": run_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                logger.info("Run %s: using subdirectory '%s' as work_dir", run_id, root_dir)
+            else:
+                work_dir = repo_dir
+
+            # ----------------------------------------------------------------
             # Step 4: Detect stack
             # ----------------------------------------------------------------
             from runner.detector.orchestrator import detect
 
-            detection = detect(repo_dir)
+            detection = detect(work_dir)
 
             # Merge in any commands stored on the repository row
             # (these may have been set by a previous run or manually)
@@ -233,7 +256,7 @@ class RunService:
             # ----------------------------------------------------------------
             from runner.validator.executor import run_baseline
 
-            baseline = run_baseline(repo_dir=repo_dir, config=detection)
+            baseline = run_baseline(repo_dir=work_dir, config=detection)
             logger.info(
                 "Run %s: baseline success=%s steps=%d",
                 run_id, baseline.is_success, len(baseline.steps),
@@ -289,7 +312,7 @@ class RunService:
 
             cycle_result = asyncio.run(
                 run_agent_cycle(
-                    repo_dir=repo_dir,
+                    repo_dir=work_dir,
                     detection=detection,
                     llm_config=llm_config,
                     baseline=baseline,
