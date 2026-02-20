@@ -37,6 +37,7 @@ async def generate_agent_patch(
     repo_dir: Path,
     provider: LLMProvider,
     config: LLMConfig,
+    approach_override: Optional[str] = None,
 ) -> Optional[AgentPatch]:
     """Generate a patch for an `AgentOpportunity` using the LLM.
 
@@ -45,6 +46,9 @@ async def generate_agent_patch(
         repo_dir: Absolute path to the checked-out repository.
         provider: Instantiated LLM provider.
         config: LLM configuration.
+        approach_override: When set, replaces `opportunity.approach` in the
+            patch prompt. Used by the multi-approach loop to try different
+            implementation strategies for the same opportunity.
 
     Returns:
         An `AgentPatch` if the LLM produced a valid, constraint-compliant
@@ -72,12 +76,16 @@ async def generate_agent_patch(
     if len(content) > MAX_FILE_CHARS:
         content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 32KB] ..."
 
+    # Resolve which approach description to use for this attempt
+    effective_approach = approach_override if approach_override is not None else opportunity.approach
+
     # Attempt patch generation (with self-correction on constraint violation)
     for attempt in range(1 + MAX_SELF_CORRECTION_ATTEMPTS):
         patch = await _call_patch_agent(
             file_rel_path=file_rel_path,
             content=content,
             opportunity=opportunity,
+            approach=effective_approach,
             provider=provider,
             config=config,
         )
@@ -102,19 +110,10 @@ async def generate_agent_patch(
                     "Patch constraint violation on attempt %d, retrying: %s",
                     attempt + 1, exc,
                 )
-                # Append constraint feedback to the opportunity approach
-                opportunity = AgentOpportunity(
-                    type=opportunity.type,
-                    location=opportunity.location,
-                    rationale=opportunity.rationale,
-                    approach=(
-                        f"{opportunity.approach}\n\n"
-                        f"PREVIOUS ATTEMPT FAILED constraint check: {exc}. "
-                        "Produce a smaller, more focused diff that stays within limits."
-                    ),
-                    risk_level=opportunity.risk_level,
-                    affected_lines=opportunity.affected_lines,
-                    thinking_trace=opportunity.thinking_trace,
+                effective_approach = (
+                    f"{effective_approach}\n\n"
+                    f"PREVIOUS ATTEMPT FAILED constraint check: {exc}. "
+                    "Produce a smaller, more focused diff that stays within limits."
                 )
             else:
                 logger.warning("Patch rejected after %d attempts: %s", attempt + 1, exc)
@@ -127,6 +126,7 @@ async def _call_patch_agent(
     file_rel_path: str,
     content: str,
     opportunity: AgentOpportunity,
+    approach: str,
     provider: LLMProvider,
     config: LLMConfig,
 ) -> Optional[AgentPatch]:
@@ -139,7 +139,7 @@ async def _call_patch_agent(
         content=content,
         opportunity_type=opportunity.type,
         rationale=opportunity.rationale,
-        approach=opportunity.approach,
+        approach=approach,
         risk_level=opportunity.risk_level,
     )
 

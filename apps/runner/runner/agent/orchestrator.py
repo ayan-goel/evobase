@@ -2,13 +2,16 @@
 
 Pipeline:
   1. discover_opportunities() — LLM scans repo, returns AgentOpportunity list
-  2. generate_agent_patch() — LLM generates a diff for each opportunity
-  3. run_candidate_validation() — existing Phase 9 pipeline tests each diff
-  4. Returns all CandidateResult objects (accepted + rejected) for packaging
+  2. For each opportunity, generate_agent_patch() is called once per approach
+     string in opportunity.approaches (up to MAX_PATCH_APPROACHES).
+  3. run_candidate_validation() — existing pipeline tests each diff
+  4. _select_best_variant() — picks the winner by confidence + benchmark delta
+  5. Returns all CandidateResult objects (accepted + rejected) for packaging
 
 Budget enforcement:
   - Stops generating patches once max_candidates is reached.
-  - Skips high-risk opportunities if the budget is nearly exhausted.
+  - Each opportunity counts as one candidate regardless of how many
+    approach variants were tried.
 
 All reasoning traces are attached to the returned results so the packaging
 layer can store them alongside the validation evidence.
@@ -22,7 +25,7 @@ from typing import Optional
 
 from runner.agent.discovery import discover_opportunities
 from runner.agent.patchgen import generate_agent_patch
-from runner.agent.types import AgentOpportunity, AgentPatch, AgentRun
+from runner.agent.types import AgentOpportunity, AgentPatch, AgentRun, PatchVariantResult
 from runner.detector.types import DetectionResult
 from runner.llm.factory import get_provider, validate_model
 from runner.llm.types import LLMConfig
@@ -35,6 +38,9 @@ logger = logging.getLogger(__name__)
 # Default maximum patch attempts per run (overridden by Settings.max_candidates_per_run)
 DEFAULT_MAX_CANDIDATES = 20
 
+# Maximum approach variants to try per opportunity
+MAX_PATCH_APPROACHES = 3
+
 
 @dataclass
 class AgentCycleResult:
@@ -44,6 +50,10 @@ class AgentCycleResult:
     candidate_results: list[CandidateResult] = field(default_factory=list)
     # Parallel index: candidate_results[i] corresponds to agent_run.patches[i]
     opportunity_for_candidate: list[AgentOpportunity] = field(default_factory=list)
+    # All approach variants per candidate (including rejected ones)
+    patch_variants_for_candidate: list[list[PatchVariantResult]] = field(default_factory=list)
+    # Human-readable reason why the winning variant was chosen
+    selection_reasons: list[str] = field(default_factory=list)
 
     @property
     def accepted_count(self) -> int:
@@ -62,14 +72,14 @@ async def run_agent_cycle(
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
 ) -> AgentCycleResult:
-    """Run the full LLM agent cycle: discover → patch → validate.
+    """Run the full LLM agent cycle: discover → patch variants → validate → select.
 
     Args:
         repo_dir: Absolute path to the checked-out repository.
         detection: Output from Phase 5 detector.
         llm_config: Provider + model + API key configuration.
         baseline: Phase 6 baseline result for comparison.
-        max_candidates: Budget cap on validation attempts.
+        max_candidates: Budget cap on validation attempts (per opportunity).
         seen_signatures: Set of (type, file_path) pairs already seen for this
             repo; opportunities matching a signature are skipped before patching.
 
@@ -104,7 +114,7 @@ async def run_agent_cycle(
 
     logger.info("Discovered %d opportunities; generating patches", len(opportunities))
 
-    # Step 2 + 3: Patch generation + validation (sequential, budget-gated)
+    # Step 2 + 3: Multi-approach patch generation + validation (budget-gated)
     candidates_attempted = 0
 
     for opp in opportunities:
@@ -115,51 +125,99 @@ async def run_agent_cycle(
             )
             break
 
-        # Generate patch
-        patch = await generate_agent_patch(
-            opportunity=opp,
-            repo_dir=repo_dir,
-            provider=provider,
-            config=llm_config,
-        )
-        agent_run.patches.append(patch)
-
-        if patch is None:
-            agent_run.errors.append("Patch generation returned None")
-            logger.debug("No patch for opportunity at %s", opp.location)
+        approaches = opp.approaches[:MAX_PATCH_APPROACHES] if opp.approaches else [opp.approach]
+        if not approaches or not any(approaches):
+            logger.debug("Opportunity at %s has no approaches; skipping", opp.location)
             continue
 
-        agent_run.errors.append(None)
+        variants: list[PatchVariantResult] = []
 
-        # Convert AgentPatch → PatchResult for the existing validator
-        proxy_patch = PatchResult(
-            diff=patch.diff,
-            explanation=patch.explanation,
-            touched_files=patch.touched_files,
-            template_name="llm_agent",
-            lines_changed=patch.estimated_lines_changed,
-        )
-
-        # Validate (synchronous — Phase 9 pipeline)
-        try:
-            candidate_result = run_candidate_validation(
-                repo_dir=repo_dir,
-                config=detection,
-                patch=proxy_patch,
-                baseline=baseline,
+        for idx, approach_desc in enumerate(approaches):
+            logger.debug(
+                "Generating patch variant %d/%d for %s (approach: %s…)",
+                idx + 1, len(approaches), opp.location, approach_desc[:60],
             )
-        except Exception as exc:
-            logger.error("Validation raised for %s: %s", opp.location, exc)
-            candidate_result = _make_error_candidate(str(exc))
 
-        result.candidate_results.append(candidate_result)
+            patch = await generate_agent_patch(
+                opportunity=opp,
+                repo_dir=repo_dir,
+                provider=provider,
+                config=llm_config,
+                approach_override=approach_desc,
+            )
+
+            if patch is None:
+                logger.debug(
+                    "Patch generation returned None for variant %d at %s",
+                    idx, opp.location,
+                )
+                candidate_result = _make_error_candidate("Patch generation returned None")
+            else:
+                proxy_patch = PatchResult(
+                    diff=patch.diff,
+                    explanation=patch.explanation,
+                    touched_files=patch.touched_files,
+                    template_name="llm_agent",
+                    lines_changed=patch.estimated_lines_changed,
+                )
+                try:
+                    candidate_result = run_candidate_validation(
+                        repo_dir=repo_dir,
+                        config=detection,
+                        patch=proxy_patch,
+                        baseline=baseline,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Validation raised for variant %d at %s: %s",
+                        idx, opp.location, exc,
+                    )
+                    candidate_result = _make_error_candidate(str(exc))
+
+            variants.append(PatchVariantResult(
+                approach_index=idx,
+                approach_description=approach_desc,
+                patch=patch,
+                candidate_result=candidate_result,
+            ))
+
+            # Stop trying more variants once we have an accepted high-confidence one
+            if candidate_result.is_accepted and _confidence_rank(candidate_result) == 2:
+                logger.debug(
+                    "High-confidence acceptance on variant %d; skipping remaining variants",
+                    idx,
+                )
+                break
+
+        # Select the best variant
+        winner_idx, selection_reason = _select_best_variant(variants)
+
+        if winner_idx < 0:
+            # All approaches failed; still record for traceability
+            for v in variants:
+                v.selection_reason = "rejected"
+            # Use the first variant's result as the candidate (will be is_accepted=False)
+            winner_candidate = variants[0].candidate_result if variants else _make_error_candidate("no variants")
+            winning_patch = variants[0].patch if variants else None
+        else:
+            variants[winner_idx].is_selected = True
+            variants[winner_idx].selection_reason = selection_reason
+            winner_candidate = variants[winner_idx].candidate_result
+            winning_patch = variants[winner_idx].patch
+
+        agent_run.patches.append(winning_patch)
+        agent_run.errors.append(None if winning_patch else "No valid patch")
+
+        result.candidate_results.append(winner_candidate)
         result.opportunity_for_candidate.append(opp)
+        result.patch_variants_for_candidate.append(variants)
+        result.selection_reasons.append(selection_reason)
         candidates_attempted += 1
 
         logger.info(
-            "Candidate %d/%d at %s: accepted=%s",
+            "Candidate %d/%d at %s: accepted=%s variants_tried=%d reason=%s",
             candidates_attempted, max_candidates,
-            opp.location, candidate_result.is_accepted,
+            opp.location, winner_candidate.is_accepted, len(variants), selection_reason,
         )
 
     logger.info(
@@ -167,6 +225,86 @@ async def run_agent_cycle(
         result.total_attempted, result.accepted_count,
     )
     return result
+
+
+def _select_best_variant(
+    variants: list[PatchVariantResult],
+) -> tuple[int, str]:
+    """Pick the best patch variant from the list.
+
+    Selection priority:
+      1. Accepted over rejected
+      2. Higher confidence ("high" > "medium" > "low")
+      3. Greater benchmark improvement percentage
+
+    Returns:
+        (winner_index, human_readable_reason) where winner_index is -1 when
+        all variants failed validation.
+    """
+    if not variants:
+        return -1, "no variants generated"
+
+    accepted = [
+        (i, v) for i, v in enumerate(variants)
+        if v.candidate_result and v.candidate_result.is_accepted
+    ]
+
+    if not accepted:
+        return -1, "no accepted approaches"
+
+    def sort_key(item: tuple[int, PatchVariantResult]) -> tuple[int, float]:
+        _, v = item
+        conf_rank = _confidence_rank(v.candidate_result)
+        bench_pct = 0.0
+        if (
+            v.candidate_result.final_verdict
+            and v.candidate_result.final_verdict.benchmark_comparison
+        ):
+            bench_pct = v.candidate_result.final_verdict.benchmark_comparison.improvement_pct
+        return (conf_rank, bench_pct)
+
+    accepted.sort(key=sort_key, reverse=True)
+    winner_idx, winner = accepted[0]
+    reason = _build_selection_reason(winner, len(accepted), len(variants))
+    return winner_idx, reason
+
+
+def _confidence_rank(candidate: CandidateResult) -> int:
+    """Map confidence string to a sortable integer."""
+    if not candidate.final_verdict:
+        return 0
+    return {"high": 2, "medium": 1, "low": 0}.get(candidate.final_verdict.confidence, 0)
+
+
+def _build_selection_reason(
+    winner: PatchVariantResult,
+    accepted_count: int,
+    total_count: int,
+) -> str:
+    """Build a human-readable reason string for why this variant was chosen."""
+    if not winner.candidate_result.final_verdict:
+        return "accepted approach"
+
+    verdict = winner.candidate_result.final_verdict
+    parts: list[str] = []
+
+    conf = verdict.confidence
+    if conf == "high":
+        parts.append("high confidence")
+    elif conf == "medium":
+        parts.append("medium confidence")
+    else:
+        parts.append("low confidence")
+
+    if verdict.benchmark_comparison and verdict.benchmark_comparison.is_significant:
+        pct = verdict.benchmark_comparison.improvement_pct
+        parts.append(f"{pct:.1f}% benchmark improvement")
+
+    if accepted_count < total_count:
+        rejected = total_count - accepted_count
+        parts.append(f"{rejected} other approach{'es' if rejected > 1 else ''} rejected")
+
+    return "; ".join(parts) if parts else "accepted approach"
 
 
 def _make_error_candidate(error_msg: str) -> CandidateResult:

@@ -458,7 +458,7 @@ def _write_proposals_to_db(
             session.add(opp_row)
             session.flush()  # get opp_row.id
 
-            # Write Attempt row
+            # Write Attempt row (uses the winning patch)
             patch = (
                 cycle_result.agent_run.patches[i]
                 if i < len(cycle_result.agent_run.patches)
@@ -480,6 +480,17 @@ def _write_proposals_to_db(
                     decisive.pipeline_result.to_dict()
                     if decisive and decisive.pipeline_result else None
                 )
+                # Serialize all patch variants for rich UI display
+                variants = (
+                    cycle_result.patch_variants_for_candidate[i]
+                    if i < len(getattr(cycle_result, "patch_variants_for_candidate", []))
+                    else []
+                )
+                selection_reason = (
+                    cycle_result.selection_reasons[i]
+                    if i < len(getattr(cycle_result, "selection_reasons", []))
+                    else None
+                )
                 proposal_row = Proposal(
                     run_id=uuid.UUID(run_id),
                     diff=patch.diff if patch else "",
@@ -489,6 +500,9 @@ def _write_proposals_to_db(
                     metrics_before=_baseline_to_dict(baseline),
                     metrics_after=metrics_after_dict,
                     framework=framework,
+                    patch_variants=[v.to_dict() for v in variants] if variants else None,
+                    selection_reason=selection_reason,
+                    approaches_tried=len(variants) if variants else None,
                     discovery_trace=_discovery_trace_to_dict(agent_opp),
                     patch_trace=_patch_trace_to_dict(patch),
                 )

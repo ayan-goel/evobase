@@ -6,6 +6,7 @@ import { DiffViewer } from "@/components/diff-viewer";
 import { TraceTimeline } from "@/components/trace-timeline";
 import { CreatePRButton } from "@/components/create-pr-button";
 import { AgentReasoning } from "@/components/agent-reasoning";
+import { PatchVariants } from "@/components/patch-variants";
 import type { Artifact, Metrics, Proposal, ThinkingTrace, TraceAttempt } from "@/lib/types";
 
 export const metadata = { title: "Proposal — Coreloop" };
@@ -48,10 +49,21 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
                   Risk {Math.round(proposal.risk_score * 100)}%
                 </span>
               )}
+              {proposal.approaches_tried !== null && proposal.approaches_tried > 1 && (
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-xs text-white/40">
+                  Best of {proposal.approaches_tried} approaches
+                </span>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
               {proposal.summary ?? "Optimization Proposal"}
             </h1>
+            {proposal.selection_reason && (
+              <p className="mt-2 text-xs text-white/35">
+                <span className="text-white/25">Selected: </span>
+                {proposal.selection_reason}
+              </p>
+            )}
           </div>
 
           <CreatePRButton
@@ -76,6 +88,13 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
           <Section title="Diff">
             <DiffViewer diff={proposal.diff} />
           </Section>
+
+          {/* Approach variants — shown when the agent tried multiple strategies */}
+          {proposal.patch_variants && proposal.patch_variants.length > 0 && (
+            <Section title={`Approaches tried (${proposal.patch_variants.length})`}>
+              <PatchVariants variants={proposal.patch_variants} />
+            </Section>
+          )}
 
           {/* Agent reasoning — shown when LLM traces are present */}
           {_hasAgentReasoning(proposal) && (

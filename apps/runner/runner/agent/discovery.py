@@ -211,12 +211,20 @@ def _parse_opportunities(
         for item in raw_opps:
             if not isinstance(item, dict):
                 continue
+            # Support both new `approaches` list and legacy `approach` string
+            approaches_raw = item.get("approaches")
+            if isinstance(approaches_raw, list):
+                approaches = [str(a) for a in approaches_raw if a]
+            else:
+                # Fall back to legacy single-string field
+                legacy = item.get("approach", "")
+                approaches = [str(legacy)] if legacy else []
             opp = AgentOpportunity(
                 type=str(item.get("type", "performance")),
                 location=str(item.get("location", "")),
                 rationale=str(item.get("rationale", "")),
-                approach=str(item.get("approach", "")),
                 risk_level=str(item.get("risk_level", "medium")),
+                approaches=approaches,
                 affected_lines=int(item.get("affected_lines", 0)),
                 thinking_trace=thinking_trace,
             )

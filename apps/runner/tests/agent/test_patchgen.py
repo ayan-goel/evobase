@@ -36,8 +36,8 @@ def _make_opportunity(location: str = "src/utils.ts:10") -> AgentOpportunity:
         type="performance",
         location=location,
         rationale="regex in loop",
-        approach="hoist regex",
         risk_level="low",
+        approaches=["hoist regex"],
     )
 
 
@@ -173,3 +173,33 @@ class TestGenerateAgentPatch:
         # Either returns None (constraint rejected) or a smaller corrected diff
         if result is not None:
             assert result.estimated_lines_changed <= 200
+
+    async def test_approach_override_is_used_instead_of_opportunity_approach(
+        self, tmp_path: Path,
+    ) -> None:
+        """approach_override replaces the opportunity's approach in the prompt."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "utils.ts").write_text("const x = 1;\nconst re = /abc/;\nreturn x;\n")
+
+        captured_prompts: list[str] = []
+
+        async def fake_complete(messages, config):
+            # Capture the user-turn prompt to inspect its approach content
+            for m in messages:
+                if m.role == "user":
+                    captured_prompts.append(m.content)
+            return _make_response(_make_valid_diff())
+
+        mock_provider = MagicMock()
+        mock_provider.complete = fake_complete
+
+        opp = _make_opportunity("src/utils.ts:10")
+        await generate_agent_patch(
+            opp, tmp_path, mock_provider, _make_config(),
+            approach_override="my custom override approach",
+        )
+
+        assert len(captured_prompts) == 1
+        assert "my custom override approach" in captured_prompts[0]
+        # The original approach ("hoist regex") should NOT appear
+        assert "hoist regex" not in captured_prompts[0]

@@ -6,9 +6,12 @@ a `ThinkingTrace` so the reasoning that produced them is preserved.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from runner.llm.types import ThinkingTrace
+
+if TYPE_CHECKING:
+    from runner.validator.types import CandidateResult
 
 
 @dataclass
@@ -17,15 +20,24 @@ class AgentOpportunity:
 
     Carries the model's full reasoning trace so the UI can show the
     developer exactly why the agent flagged this location.
+
+    `approaches` holds 1–3 concrete implementation strategies returned by
+    the discovery LLM. `approach` is a backward-compat property returning
+    the first entry.
     """
 
     type: str                      # e.g. "performance", "tech_debt"
     location: str                  # "<file>:<line>" (repo-relative)
     rationale: str                 # Why this is a problem
-    approach: str                  # What the fix should do
     risk_level: str                # "low" | "medium" | "high"
+    approaches: list[str] = field(default_factory=list)  # Implementation strategies
     affected_lines: int = 0        # Estimated lines the fix will touch
     thinking_trace: Optional[ThinkingTrace] = None  # Discovery reasoning
+
+    @property
+    def approach(self) -> str:
+        """First (or only) approach description — backward-compat accessor."""
+        return self.approaches[0] if self.approaches else ""
 
     @property
     def risk_score(self) -> float:
@@ -37,7 +49,7 @@ class AgentOpportunity:
             "type": self.type,
             "location": self.location,
             "rationale": self.rationale,
-            "approach": self.approach,
+            "approaches": self.approaches,
             "risk_level": self.risk_level,
             "affected_lines": self.affected_lines,
             "risk_score": self.risk_score,
@@ -68,6 +80,51 @@ class AgentPatch:
             "estimated_lines_changed": self.estimated_lines_changed,
             "thinking_trace": self.thinking_trace.to_dict() if self.thinking_trace else None,
         }
+
+
+@dataclass
+class PatchVariantResult:
+    """Result of one patch approach attempt for a single opportunity.
+
+    The orchestrator generates one `PatchVariantResult` per approach string
+    in `AgentOpportunity.approaches`. After all approaches are validated,
+    `_select_best_variant` marks exactly one variant as `is_selected=True`.
+    """
+
+    approach_index: int
+    approach_description: str
+    patch: Optional[AgentPatch]
+    candidate_result: "CandidateResult"
+    is_selected: bool = False
+    selection_reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "approach_index": self.approach_index,
+            "approach_description": self.approach_description,
+            "diff": self.patch.diff if self.patch else "",
+            "patch_trace": (
+                self.patch.thinking_trace.to_dict()
+                if self.patch and self.patch.thinking_trace
+                else None
+            ),
+            "is_selected": self.is_selected,
+            "selection_reason": self.selection_reason,
+            "validation_result": (
+                self.candidate_result.to_dict() if self.candidate_result else None
+            ),
+            "metrics_after": _metrics_after_from_candidate(self.candidate_result),
+        }
+
+
+def _metrics_after_from_candidate(candidate: "CandidateResult") -> Optional[dict]:
+    """Extract the metrics_after dict from the candidate's decisive attempt."""
+    if not candidate or not candidate.attempts:
+        return None
+    decisive = candidate.attempts[-1]
+    if decisive.pipeline_result:
+        return decisive.pipeline_result.to_dict()
+    return None
 
 
 @dataclass

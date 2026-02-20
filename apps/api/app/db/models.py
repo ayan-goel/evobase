@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import BigInteger, JSON, ForeignKey, Numeric, Text, Uuid, func, text
+from sqlalchemy import BigInteger, Integer, JSON, ForeignKey, Numeric, Text, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -273,6 +273,13 @@ class Proposal(Base):
 
     # Denormalized from the run's repository for analytics queries
     framework: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # All patch approach variants tried for this proposal (winner + alternatives)
+    patch_variants: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    # Why the winning variant was selected over the alternatives
+    selection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # How many approach variants were generated and tested
+    approaches_tried: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     discovery_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     patch_trace: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)

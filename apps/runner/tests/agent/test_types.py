@@ -16,42 +16,62 @@ class TestAgentOpportunity:
     def test_risk_score_low(self) -> None:
         opp = AgentOpportunity(
             type="performance", location="src/a.ts:5",
-            rationale="slow", approach="fix", risk_level="low",
+            rationale="slow", risk_level="low",
+            approaches=["fix"],
         )
         assert opp.risk_score == 0.2
 
     def test_risk_score_medium(self) -> None:
         opp = AgentOpportunity(
             type="tech_debt", location="src/b.ts:10",
-            rationale="messy", approach="clean", risk_level="medium",
+            rationale="messy", risk_level="medium",
+            approaches=["clean"],
         )
         assert opp.risk_score == 0.5
 
     def test_risk_score_high(self) -> None:
         opp = AgentOpportunity(
             type="error_handling", location="src/c.ts:1",
-            rationale="crash risk", approach="guard", risk_level="high",
+            rationale="crash risk", risk_level="high",
+            approaches=["guard"],
         )
         assert opp.risk_score == 0.8
 
     def test_risk_score_unknown_defaults_to_medium(self) -> None:
         opp = AgentOpportunity(
             type="other", location="src/d.ts:1",
-            rationale="x", approach="y", risk_level="unknown",
+            rationale="x", risk_level="unknown",
+            approaches=["y"],
         )
         assert opp.risk_score == 0.5
+
+    def test_approach_property_returns_first_entry(self) -> None:
+        opp = AgentOpportunity(
+            type="performance", location="src/a.ts:5",
+            rationale="slow", risk_level="low",
+            approaches=["first approach", "second approach"],
+        )
+        assert opp.approach == "first approach"
+
+    def test_approach_property_returns_empty_when_no_approaches(self) -> None:
+        opp = AgentOpportunity(
+            type="performance", location="src/a.ts:5",
+            rationale="slow", risk_level="low",
+        )
+        assert opp.approach == ""
 
     def test_to_dict_has_all_keys(self) -> None:
         opp = AgentOpportunity(
             type="performance", location="src/a.ts:5",
-            rationale="slow", approach="fix", risk_level="low",
+            rationale="slow", risk_level="low",
+            approaches=["fix"],
             thinking_trace=_make_trace(),
         )
         d = opp.to_dict()
         assert "type" in d
         assert "location" in d
         assert "rationale" in d
-        assert "approach" in d
+        assert "approaches" in d
         assert "risk_level" in d
         assert "risk_score" in d
         assert "thinking_trace" in d
@@ -60,10 +80,20 @@ class TestAgentOpportunity:
     def test_to_dict_without_trace(self) -> None:
         opp = AgentOpportunity(
             type="performance", location="src/a.ts:5",
-            rationale="slow", approach="fix", risk_level="low",
+            rationale="slow", risk_level="low",
+            approaches=["fix"],
         )
         d = opp.to_dict()
         assert d["thinking_trace"] is None
+
+    def test_to_dict_approaches_list(self) -> None:
+        opp = AgentOpportunity(
+            type="performance", location="src/a.ts:5",
+            rationale="slow", risk_level="low",
+            approaches=["strategy A", "strategy B"],
+        )
+        d = opp.to_dict()
+        assert d["approaches"] == ["strategy A", "strategy B"]
 
 
 class TestAgentPatch:

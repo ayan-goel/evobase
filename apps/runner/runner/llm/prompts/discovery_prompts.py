@@ -67,7 +67,11 @@ For each opportunity found, provide:
       "redundant_computation", "sync_io"
   - `location`: "<filename>:<line_number>" pointing to the specific line.
   - `rationale`: why this is a problem and what the measurable impact is.
-  - `approach`: the specific code change that would fix it.
+  - `approaches`: 1–3 distinct, concrete implementation strategies for fixing the
+    issue. List them from most recommended to least. Each entry must be a complete
+    description that can drive patch generation without re-reading the file.
+    Example: ["Wrap with useMemo and correct dependency array",
+              "Extract computation to a module-level constant"]
   - `risk_level`: "low", "medium", or "high" (likelihood of breaking something).
   - `affected_lines`: approximate number of lines the fix would touch.
 
@@ -79,7 +83,7 @@ Respond with ONLY this JSON structure:
       "type": "<type>",
       "location": "<file>:<line>",
       "rationale": "<why it's a problem>",
-      "approach": "<what to change>",
+      "approaches": ["<strategy 1>", "<strategy 2>"],
       "risk_level": "<low|medium|high>",
       "affected_lines": <integer>
     }}

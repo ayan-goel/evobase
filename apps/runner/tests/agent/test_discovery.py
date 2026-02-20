@@ -122,6 +122,54 @@ class TestParseOpportunities:
         result = _parse_opportunities(raw, None)
         assert result == []
 
+    def test_parses_new_approaches_list(self) -> None:
+        raw = json.dumps({
+            "opportunities": [{
+                "type": "performance",
+                "location": "src/a.ts:1",
+                "rationale": "slow",
+                "approaches": ["use useMemo", "extract to constant"],
+                "risk_level": "low",
+                "affected_lines": 2,
+            }]
+        })
+        result = _parse_opportunities(raw, None)
+        assert len(result) == 1
+        assert result[0].approaches == ["use useMemo", "extract to constant"]
+        assert result[0].approach == "use useMemo"  # backward-compat property
+
+    def test_falls_back_to_legacy_approach_string(self) -> None:
+        raw = json.dumps({
+            "opportunities": [{
+                "type": "performance",
+                "location": "src/a.ts:1",
+                "rationale": "slow",
+                "approach": "hoist regex",
+                "risk_level": "low",
+                "affected_lines": 1,
+            }]
+        })
+        result = _parse_opportunities(raw, None)
+        assert len(result) == 1
+        assert result[0].approaches == ["hoist regex"]
+        assert result[0].approach == "hoist regex"
+
+    def test_empty_approaches_list_produces_empty_approaches(self) -> None:
+        raw = json.dumps({
+            "opportunities": [{
+                "type": "performance",
+                "location": "src/a.ts:1",
+                "rationale": "slow",
+                "approaches": [],
+                "risk_level": "low",
+                "affected_lines": 1,
+            }]
+        })
+        result = _parse_opportunities(raw, None)
+        assert len(result) == 1
+        assert result[0].approaches == []
+        assert result[0].approach == ""
+
 
 class TestDiscoverOpportunities:
     async def test_returns_opportunities_from_mock_provider(self, tmp_path: Path) -> None:
@@ -251,8 +299,8 @@ class TestIsNew:
             type=type_,
             location=location,
             rationale="test",
-            approach="fix it",
             risk_level="low",
+            approaches=["fix it"],
         )
 
     def test_new_type_and_file_returns_true(self):

@@ -129,6 +129,9 @@ class TestModelMetadata:
             "created_at",
             "pr_url",
             "framework",
+            "patch_variants",
+            "selection_reason",
+            "approaches_tried",
             "discovery_trace",
             "patch_trace",
         }

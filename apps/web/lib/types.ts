@@ -56,6 +56,32 @@ export interface Metrics {
   error?: string | null;
 }
 
+export interface PatchVariantValidation {
+  is_accepted: boolean;
+  confidence: string;
+  reason: string;
+  gates_passed: string[];
+  gates_failed: string[];
+  benchmark_comparison: {
+    improvement_pct: number;
+    passes_threshold: boolean;
+    is_significant: boolean;
+    baseline_duration_seconds: number;
+    candidate_duration_seconds: number;
+  } | null;
+}
+
+export interface PatchVariant {
+  approach_index: number;
+  approach_description: string;
+  diff: string;
+  is_selected: boolean;
+  selection_reason: string;
+  metrics_after: Metrics | null;
+  patch_trace: ThinkingTrace | null;
+  validation_result: PatchVariantValidation | null;
+}
+
 export interface Proposal {
   id: string;
   run_id: string;
@@ -69,6 +95,9 @@ export interface Proposal {
   created_at: string;
   pr_url: string | null;
   framework: string | null;
+  patch_variants: PatchVariant[];
+  selection_reason: string | null;
+  approaches_tried: number | null;
   artifacts: Artifact[];
   discovery_trace: ThinkingTrace | null;
   patch_trace: ThinkingTrace | null;
