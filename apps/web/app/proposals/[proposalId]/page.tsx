@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getProposal, getArtifactSignedUrl } from "@/lib/api";
+import { getProposal, getArtifactSignedUrl } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { DiffViewer } from "@/components/diff-viewer";

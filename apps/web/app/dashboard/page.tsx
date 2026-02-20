@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepos } from "@/lib/api";
+import { getRepos } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import type { Repository } from "@/lib/types";
 

@@ -117,6 +117,18 @@ export interface ConnectRepoRequest {
   installation_id: number;
 }
 
+export interface LLMModel {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface LLMProvider {
+  id: string;
+  label: string;
+  models: LLMModel[];
+}
+
 export interface TraceAttempt {
   attempt_number: number;
   patch_applied: boolean;

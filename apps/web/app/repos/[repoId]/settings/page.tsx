@@ -9,7 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { NavWithUser } from "@/components/nav-server";
 import { SettingsForm } from "@/components/settings-form";
-import { getRepo, getRepoSettings, getLLMModels } from "@/lib/api";
+import { getRepo, getRepoSettings, getLLMModels } from "@/lib/api-server";
 
 interface PageProps {
   params: Promise<{ repoId: string }>;

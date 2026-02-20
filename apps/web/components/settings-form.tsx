@@ -12,7 +12,7 @@
 
 import { useState, useTransition } from "react";
 import { updateRepoSettings } from "@/lib/api";
-import type { LLMProvider } from "@/lib/api";
+import type { LLMProvider } from "@/lib/types";
 import type { Repository, RepoSettings } from "@/lib/types";
 
 interface SettingsFormProps {

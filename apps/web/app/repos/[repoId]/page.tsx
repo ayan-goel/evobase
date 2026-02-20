@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepo, getRuns, getProposalsByRun } from "@/lib/api";
+import { getRepo, getRuns, getProposalsByRun } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { RepoRunList } from "@/components/repo-run-list";
 import type { Proposal, Repository, Run } from "@/lib/types";

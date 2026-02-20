@@ -10,9 +10,8 @@ vi.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
-describe("apiFetch", () => {
+describe("apiFetch (client)", () => {
   let originalFetch: typeof globalThis.fetch;
-  let originalWindow: typeof globalThis.window;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;

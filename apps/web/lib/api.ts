@@ -9,6 +9,7 @@ import type {
   ConnectRepoRequest,
   GitHubRepo,
   Installation,
+  LLMProvider,
   Proposal,
   Repository,
   RepoSettings,
@@ -16,39 +17,11 @@ import type {
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 
-export interface LLMModel {
-  id: string;
-  label: string;
-  description: string;
-}
-
-export interface LLMProvider {
-  id: string;
-  label: string;
-  models: LLMModel[];
-}
+export type { LLMModel, LLMProvider } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  if (typeof window === "undefined") {
-    try {
-      const { createClient: createServerSupabase } = await import(
-        "@/lib/supabase/server"
-      );
-      const supabase = await createServerSupabase();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        return { Authorization: `Bearer ${session.access_token}` };
-      }
-    } catch {
-      // No server session available
-    }
-    return {};
-  }
-
   try {
     const supabase = createClient();
     const {
@@ -67,7 +40,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 /** Shared fetch wrapper with error handling and automatic auth. */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
-  const isServer = typeof window === "undefined";
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -76,10 +48,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       ...authHeaders,
       ...(init?.headers as Record<string, string> | undefined),
     },
-    ...(isServer ? { cache: "no-store" as const } : {}),
   });
 
-  if (res.status === 401 && !isServer) {
+  if (res.status === 401) {
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
