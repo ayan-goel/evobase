@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockLinkInstallation = vi.fn();
 const mockGet = vi.fn();
+const mockPush = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   linkInstallation: (...args: unknown[]) => mockLinkInstallation(...args),
@@ -10,6 +11,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: mockGet }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 // Stub out RepoPicker to keep tests focused on the callback page logic
@@ -26,12 +28,12 @@ describe("GitHubCallbackPage", () => {
     vi.clearAllMocks();
   });
 
-  it("shows missing param error when installation_id is absent", async () => {
+  it("shows manual entry form when installation_id is absent", async () => {
     mockGet.mockReturnValue(null);
     render(<GitHubCallbackPage />);
     await waitFor(() => {
       expect(
-        screen.getByText(/Missing installation_id parameter/i),
+        screen.getByText(/Enter your GitHub App installation ID/i),
       ).toBeInTheDocument();
     });
   });

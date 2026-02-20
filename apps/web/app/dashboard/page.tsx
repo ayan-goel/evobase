@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getRepos } from "@/lib/api-server";
+import { getInstallations, getRepos } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
-import type { Repository } from "@/lib/types";
+import type { Installation, Repository } from "@/lib/types";
 
 export const metadata = { title: "Dashboard — Coreloop" };
 
@@ -13,7 +13,13 @@ function repoDisplayName(repo: Repository): string {
 }
 
 /** Presentational component — tested in isolation with mock data. */
-export function DashboardView({ repos }: { repos: Repository[] }) {
+export function DashboardView({
+  repos,
+  installations,
+}: {
+  repos: Repository[];
+  installations: Installation[];
+}) {
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -36,7 +42,11 @@ export function DashboardView({ repos }: { repos: Repository[] }) {
         </div>
 
         {repos.length === 0 ? (
-          <EmptyRepos />
+          installations.length > 0 ? (
+            <ResumeSetup installation={installations[0]} />
+          ) : (
+            <EmptyRepos />
+          )
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {repos.map((repo) => (
@@ -101,6 +111,27 @@ function CommandChip({ cmd }: { cmd: string }) {
   );
 }
 
+function ResumeSetup({ installation }: { installation: Installation }) {
+  return (
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-8 text-center">
+      <p className="text-sm text-amber-400 font-medium">
+        GitHub App connected — finish setting up your repositories
+      </p>
+      <p className="mt-2 text-xs text-white/40">
+        You&apos;ve installed the GitHub App as{" "}
+        <span className="text-white/60 font-mono">{installation.account_login}</span>
+        , but haven&apos;t selected any repositories yet.
+      </p>
+      <Link
+        href={`/github/callback?installation_id=${installation.installation_id}`}
+        className="mt-5 inline-flex items-center justify-center rounded-full bg-white text-black h-9 px-5 text-sm font-semibold transition-colors hover:bg-white/90"
+      >
+        Select Repositories
+      </Link>
+    </div>
+  );
+}
+
 function EmptyRepos() {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-8 text-center">
@@ -121,17 +152,17 @@ function EmptyRepos() {
 /** RSC page — fetches data then delegates to DashboardView. */
 export default async function DashboardPage() {
   let repos: Repository[] = [];
+  let installations: Installation[] = [];
 
-  try {
-    repos = await getRepos();
-  } catch {
-    // API not reachable — show empty state rather than crashing
-  }
+  await Promise.allSettled([
+    getRepos().then((r) => { repos = r; }),
+    getInstallations().then((i) => { installations = i; }),
+  ]);
 
   return (
     <>
       <NavWithUser />
-      <DashboardView repos={repos} />
+      <DashboardView repos={repos} installations={installations} />
     </>
   );
 }

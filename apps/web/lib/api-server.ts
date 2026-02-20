@@ -7,6 +7,7 @@
  */
 import { createClient } from "@/lib/supabase/server";
 import type {
+  Installation,
   LLMProvider,
   Proposal,
   Repository,
@@ -93,4 +94,11 @@ export async function getLLMModels(): Promise<LLMProvider[]> {
 
 export async function getMe(): Promise<{ user_id: string; org_id: string }> {
   return apiFetch<{ user_id: string; org_id: string }>("/auth/me");
+}
+
+export async function getInstallations(): Promise<Installation[]> {
+  const data = await apiFetch<{ installations: Installation[]; count: number }>(
+    "/github/installations",
+  );
+  return data.installations;
 }
