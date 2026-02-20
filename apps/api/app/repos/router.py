@@ -184,6 +184,35 @@ async def get_repo(
     return _build_repo_response(repo, latest_status, setup_failures)
 
 
+@router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_repo(
+    repo_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> None:
+    """Remove a repository from Coreloop (does not touch GitHub).
+
+    Cascades to all associated runs, proposals, settings, etc. via the
+    ON DELETE CASCADE constraints on the database foreign keys.
+    """
+    row = (
+        await db.execute(
+            select(Repository)
+            .join(Organization)
+            .where(Repository.id == repo_id, Organization.owner_id == user_id)
+        )
+    ).scalar_one_or_none()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Repository not found",
+        )
+
+    await db.delete(row)
+    await db.commit()
+
+
 @router.patch("/{repo_id}", response_model=RepoResponse)
 async def patch_repo(
     repo_id: uuid.UUID,

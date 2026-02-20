@@ -9,6 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { NavWithUser } from "@/components/nav-server";
 import { SettingsForm } from "@/components/settings-form";
+import { DeleteRepoButton } from "@/components/delete-repo-button";
 import { getRepo, getRepoSettings, getLLMModels } from "@/lib/api-server";
 
 interface PageProps {
@@ -86,6 +87,23 @@ export default async function RepoSettingsPage({ params }: PageProps) {
               {" "}— tests only pass on retry, indicating a non-deterministic suite.
             </li>
           </ul>
+        </div>
+
+        {/* Danger zone */}
+        <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/[0.03] px-5 py-4">
+          <p className="text-xs font-medium text-red-400/70 uppercase tracking-wider mb-3">
+            Danger zone
+          </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-white/70">Remove this repository</p>
+              <p className="mt-0.5 text-xs text-white/35">
+                Deletes all runs, proposals, and settings from Coreloop.
+                Your GitHub repository is not affected.
+              </p>
+            </div>
+            <DeleteRepoButton repoId={repoId} repoLabel={repoLabel} />
+          </div>
         </div>
       </div>
     </main>

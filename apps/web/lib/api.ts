@@ -178,6 +178,11 @@ export async function connectRepo(
   });
 }
 
+/** Remove a repository from Coreloop (does not delete it from GitHub). */
+export async function deleteRepo(repoId: string): Promise<void> {
+  await apiFetch(`/repos/${repoId}`, { method: "DELETE" });
+}
+
 /** Update mutable repository config (root_dir and command overrides). */
 export async function updateRepoConfig(
   repoId: string,
