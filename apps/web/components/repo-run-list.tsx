@@ -6,7 +6,6 @@ import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ProposalCard } from "@/components/proposal-card";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
-import { FrameworkBadge } from "@/components/framework-badge";
 import type { Proposal, Run } from "@/lib/types";
 
 type RunWithProposals = Run & { proposals: Proposal[] };
@@ -15,7 +14,6 @@ interface RepoRunListProps {
   repoId: string;
   initialRuns: RunWithProposals[];
   setupFailing?: boolean;
-  framework?: string | null;
 }
 
 const POLL_INTERVAL_MS = 5000;
@@ -34,7 +32,7 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
   );
 }
 
-export function RepoRunList({ repoId, initialRuns, setupFailing = false, framework }: RepoRunListProps) {
+export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
 
   useEffect(() => {
@@ -59,6 +57,8 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false, framewo
         sha: null,
         status: "queued",
         compute_minutes: null,
+        failure_step: null,
+        commit_message: null,
         created_at: new Date().toISOString(),
         proposals: [],
       },
@@ -85,7 +85,6 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false, framewo
               proposals={run.proposals}
               repoId={repoId}
               setupFailing={setupFailing}
-              framework={framework}
             />
           ))}
         </div>
@@ -94,26 +93,52 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false, framewo
   );
 }
 
+const FAILURE_MESSAGES: Record<string, { title: string; hint: string }> = {
+  install: {
+    title: "Install failed",
+    hint: "Your install command could not complete. Check your project directory and install command in Settings.",
+  },
+  build: {
+    title: "Build is failing",
+    hint: "Fix your build errors, then push a commit to re-run the analysis automatically.",
+  },
+  test: {
+    title: "Tests are failing",
+    hint: "Fix your failing tests, then push a commit to re-run the analysis automatically.",
+  },
+  unknown: {
+    title: "Setup failed",
+    hint: "A pipeline step could not complete. Check your commands in Settings.",
+  },
+};
+
 function RunSection({
   run,
   proposals,
   repoId,
   setupFailing,
-  framework,
 }: {
   run: Run;
   proposals: Proposal[];
   repoId: string;
   setupFailing: boolean;
-  framework?: string | null;
 }) {
+  const sha = run.sha ? run.sha.slice(0, 7) : "no sha";
+  const msg = run.commit_message
+    ? run.commit_message.length > 72
+      ? run.commit_message.slice(0, 72) + "…"
+      : run.commit_message
+    : null;
+
   return (
     <section>
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex items-center gap-3 flex-wrap">
         <RunStatusBadge status={run.status} />
-        {framework && <FrameworkBadge framework={framework} size="sm" />}
         <span className="text-xs text-white/40 font-mono">
-          {run.sha ? run.sha.slice(0, 7) : "no sha"}
+          {sha}
+          {msg && (
+            <span className="text-white/30 font-sans ml-1.5">— {msg}</span>
+          )}
         </span>
         <span className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
       </div>
@@ -122,6 +147,11 @@ function RunSection({
         <div className="pl-1">
           {run.status === "running" || run.status === "queued" ? (
             <p className="text-sm text-white/30">Run in progress…</p>
+          ) : run.failure_step ? (
+            <BaselineFailureMessage
+              failureStep={run.failure_step}
+              repoId={repoId}
+            />
           ) : setupFailing ? (
             <p className="text-sm text-amber-400/70">
               Setup failed — install step could not run.{" "}
@@ -133,7 +163,7 @@ function RunSection({
               </a>
             </p>
           ) : (
-            <p className="text-sm text-white/30">No proposals generated.</p>
+            <p className="text-sm text-white/30">No opportunities found this run.</p>
           )}
         </div>
       ) : (
@@ -144,6 +174,30 @@ function RunSection({
         </div>
       )}
     </section>
+  );
+}
+
+function BaselineFailureMessage({
+  failureStep,
+  repoId,
+}: {
+  failureStep: string;
+  repoId: string;
+}) {
+  const { title, hint } = FAILURE_MESSAGES[failureStep] ?? FAILURE_MESSAGES.unknown;
+  return (
+    <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-4 py-3">
+      <p className="text-sm font-medium text-amber-400">{title}</p>
+      <p className="mt-0.5 text-xs text-amber-300/70">
+        {hint}{" "}
+        <a
+          href={`/repos/${repoId}/settings`}
+          className="underline underline-offset-2 hover:text-amber-300 transition-colors"
+        >
+          Settings →
+        </a>
+      </p>
+    </div>
   );
 }
 

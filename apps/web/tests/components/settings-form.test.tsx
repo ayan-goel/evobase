@@ -36,6 +36,7 @@ const mockUpdateRepoSettings = vi.mocked(updateRepoSettings);
 const baseSettings: RepoSettings = {
   repo_id: "repo-1",
   compute_budget_minutes: 60,
+  max_prs_per_day: 5,
   max_proposals_per_run: 10,
   max_candidates_per_run: 20,
   schedule: "0 2 * * *",
@@ -43,6 +44,8 @@ const baseSettings: RepoSettings = {
   consecutive_setup_failures: 0,
   consecutive_flaky_runs: 0,
   last_run_at: null,
+  llm_provider: "anthropic",
+  llm_model: "claude-sonnet-4-5",
 };
 
 afterEach(() => {
@@ -55,10 +58,11 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("SettingsForm", () => {
-  it("renders schedule input with initial value", () => {
+  it("renders max_prs_per_day input with initial value", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
-    const input = screen.getByPlaceholderText("0 2 * * *") as HTMLInputElement;
-    expect(input.value).toBe("0 2 * * *");
+    const input = screen.getByDisplayValue("5") as HTMLInputElement;
+    expect(input.type).toBe("number");
+    expect(input.value).toBe("5");
   });
 
   it("renders compute budget input", () => {
@@ -150,7 +154,7 @@ describe("SettingsForm", () => {
     await waitFor(() => {
       expect(mockUpdateRepoSettings).toHaveBeenCalledWith(
         "repo-1",
-        expect.objectContaining({ compute_budget_minutes: 60 })
+        expect.objectContaining({ compute_budget_minutes: 60, max_prs_per_day: 5 })
       );
     });
   });

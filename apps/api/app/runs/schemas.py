@@ -32,6 +32,10 @@ class RunResponse(BaseModel):
     status: str
     compute_minutes: Optional[float]
     trace_id: Optional[str] = None
+    # failure_step: first pipeline step that failed ("install", "build", "test"), or None
+    failure_step: Optional[str] = None
+    # commit_message: subject line of the HEAD commit, for display in the UI
+    commit_message: Optional[str] = None
     created_at: datetime
 
 

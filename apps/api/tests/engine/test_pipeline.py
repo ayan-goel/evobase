@@ -396,6 +396,51 @@ class TestExecuteFullPipeline:
         assert result["reason"] == "baseline_failed"
         assert result["baseline_completed"] is False
 
+    def test_baseline_failure_persists_failing_step(self) -> None:
+        """When baseline fails, failure_step is set to the first non-zero step."""
+        run = self._make_run_mock()
+        repo = self._make_repo_mock()
+
+        # Build a baseline that has a failing "test" step
+        failed_baseline = _make_baseline(is_success=False)
+        install_step = MagicMock()
+        install_step.name = "install"
+        install_step.exit_code = 0
+        test_step = MagicMock()
+        test_step.name = "test"
+        test_step.exit_code = 1
+        failed_baseline.steps = [install_step, test_step]
+
+        captured_run_row = MagicMock(spec=Run)
+        captured_run_row.failure_step = None
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection()), \
+             patch("runner.validator.executor.run_baseline", return_value=failed_baseline), \
+             patch("app.runs.service._increment_failure_counter"):
+
+            call_count = [0]
+
+            def mock_get(model, pk):
+                call_count[0] += 1
+                if model == Run:
+                    return captured_run_row
+                if model == Repository:
+                    return repo
+                return _make_settings()
+
+            session = MagicMock()
+            session.get.side_effect = mock_get
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            result = RunService().execute_full_pipeline(str(run.id))
+
+        assert result["reason"] == "baseline_failed"
+        assert result["failure_step"] == "test"
+        assert captured_run_row.failure_step == "test"
+
     def test_returns_no_test_cmd_when_tests_not_detected(self) -> None:
         """If no test command exists, agent cycle is skipped to prevent unvalidated proposals."""
         run = self._make_run_mock()
@@ -514,6 +559,38 @@ class TestExecuteFullPipeline:
 
             with pytest.raises(ValueError, match="not found"):
                 RunService().execute_full_pipeline(str(uuid.uuid4()))
+
+    def test_commit_message_persisted_after_clone(self) -> None:
+        """commit_message from git log is stored on the Run row alongside the SHA."""
+        run = self._make_run_mock()
+        repo = self._make_repo_mock()
+
+        captured_run_row = MagicMock(spec=Run)
+        captured_run_row.sha = None
+        captured_run_row.commit_message = None
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.sandbox.checkout.get_head_sha", return_value="abc1234567890"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection()), \
+             patch("runner.validator.executor.run_baseline", return_value=_make_baseline(is_success=False)), \
+             patch("app.runs.service._increment_failure_counter"), \
+             patch("subprocess.run") as mock_subproc:
+
+            # Simulate git log returning a commit message
+            mock_subproc.return_value.returncode = 0
+            mock_subproc.return_value.stdout = "fix: resolve memory leak in cache layer\n"
+
+            session = MagicMock()
+            session.get.side_effect = lambda m, pk: (
+                captured_run_row if m == Run else (repo if m == Repository else _make_settings())
+            )
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            RunService().execute_full_pipeline(str(run.id))
+
+        assert captured_run_row.commit_message == "fix: resolve memory leak in cache layer"
 
 
 def _make_settings(

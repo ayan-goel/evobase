@@ -62,7 +62,6 @@ export function RepoView({ repo, runs }: RepoPageData) {
           repoId={repo.id}
           initialRuns={runs}
           setupFailing={repo.setup_failing}
-          framework={repo.framework}
         />
       </div>
     </div>

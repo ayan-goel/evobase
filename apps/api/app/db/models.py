@@ -169,6 +169,10 @@ class Run(Base):
     # trace_id links the run to the originating HTTP request (X-Request-ID)
     # and threads through all Celery worker logs for grep-ability.
     trace_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # failure_step: first pipeline step that failed ("install", "build", "test")
+    failure_step: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # commit_message: subject line of the commit at head_sha, for the UI
+    commit_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )

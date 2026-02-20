@@ -60,9 +60,30 @@ class TestWebhookEndpoint:
 
     @patch("app.github.router.verify_webhook_signature", return_value=True)
     async def test_unknown_event_acknowledged(self, mock_verify, seeded_client):
+        """A completely unrecognised event type is silently acknowledged."""
         response = await seeded_client.post(
             "/github/webhooks",
             content=b'{}',
+            headers={
+                "X-Hub-Signature-256": "sha256=valid",
+                "X-GitHub-Event": "star",
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["action"] == "ignored"
+
+    @patch("app.github.router.verify_webhook_signature", return_value=True)
+    async def test_push_non_default_branch_ignored(self, mock_verify, seeded_client):
+        """Push to a non-default branch does not enqueue a run."""
+        payload = {
+            "ref": "refs/heads/feature-branch",
+            "repository": {"full_name": "org/repo", "default_branch": "main"},
+            "head_commit": {"id": "abc1234"},
+        }
+        response = await seeded_client.post(
+            "/github/webhooks",
+            content=json.dumps(payload),
             headers={
                 "X-Hub-Signature-256": "sha256=valid",
                 "X-GitHub-Event": "push",
@@ -70,7 +91,100 @@ class TestWebhookEndpoint:
             },
         )
         assert response.status_code == 200
-        assert response.json()["action"] == "ignored"
+        assert response.json()["action"] == "non_default_branch"
+
+    @patch("app.github.router.verify_webhook_signature", return_value=True)
+    async def test_push_unregistered_repo_acknowledged(self, mock_verify, seeded_client):
+        """Push for a repo not in our DB is acknowledged without error."""
+        payload = {
+            "ref": "refs/heads/main",
+            "repository": {"full_name": "unknown/repo", "default_branch": "main"},
+            "head_commit": {"id": "abc1234"},
+        }
+        response = await seeded_client.post(
+            "/github/webhooks",
+            content=json.dumps(payload),
+            headers={
+                "X-Hub-Signature-256": "sha256=valid",
+                "X-GitHub-Event": "push",
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["action"] == "repo_not_found"
+
+    @patch("app.github.router.verify_webhook_signature", return_value=True)
+    @patch("app.github.router.create_and_enqueue_run", new_callable=AsyncMock)
+    async def test_push_default_branch_enqueues_run(
+        self, mock_enqueue, mock_verify, seeded_client, seeded_db
+    ):
+        """Push to default branch enqueues a run for the matching repo."""
+        from app.db.models import Repository, Organization
+        from sqlalchemy import select
+
+        # Give the seeded repo a github_full_name so the push handler can find it
+        result = await seeded_db.execute(select(Repository).where(Repository.id == STUB_REPO_ID))
+        repo = result.scalar_one()
+        repo.github_full_name = "org/test-repo"
+        await seeded_db.commit()
+
+        mock_run = Run(id=uuid.uuid4(), repo_id=STUB_REPO_ID, sha="abc1234", status="queued")
+        mock_enqueue.return_value = mock_run
+
+        payload = {
+            "ref": "refs/heads/main",
+            "repository": {"full_name": "org/test-repo", "default_branch": "main"},
+            "head_commit": {"id": "abc1234"},
+        }
+        response = await seeded_client.post(
+            "/github/webhooks",
+            content=json.dumps(payload),
+            headers={
+                "X-Hub-Signature-256": "sha256=valid",
+                "X-GitHub-Event": "push",
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["action"] == "run_enqueued"
+        mock_enqueue.assert_called_once()
+
+    @patch("app.github.router.verify_webhook_signature", return_value=True)
+    @patch("app.github.router.create_and_enqueue_run", new_callable=AsyncMock)
+    async def test_push_skipped_when_run_in_flight(
+        self, mock_enqueue, mock_verify, seeded_client, seeded_db
+    ):
+        """Push does not enqueue a run if one is already queued/running."""
+        from app.db.models import Repository, Run
+        from sqlalchemy import select
+
+        result = await seeded_db.execute(select(Repository).where(Repository.id == STUB_REPO_ID))
+        repo = result.scalar_one()
+        repo.github_full_name = "org/inflight-repo"
+        await seeded_db.flush()
+
+        # Seed an existing in-flight run
+        in_flight = Run(repo_id=STUB_REPO_ID, sha="HEAD", status="running")
+        seeded_db.add(in_flight)
+        await seeded_db.commit()
+
+        payload = {
+            "ref": "refs/heads/main",
+            "repository": {"full_name": "org/inflight-repo", "default_branch": "main"},
+            "head_commit": {"id": "def5678"},
+        }
+        response = await seeded_client.post(
+            "/github/webhooks",
+            content=json.dumps(payload),
+            headers={
+                "X-Hub-Signature-256": "sha256=valid",
+                "X-GitHub-Event": "push",
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["action"] == "run_already_in_flight"
+        mock_enqueue.assert_not_called()
 
 
 class TestCreatePrEndpoint:

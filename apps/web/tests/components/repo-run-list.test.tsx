@@ -32,6 +32,8 @@ function makeRun(
     sha: "abc1234",
     status,
     compute_minutes: null,
+    failure_step: null,
+    commit_message: null,
     created_at: new Date().toISOString(),
     proposals: [],
     ...overrides,
@@ -92,5 +94,53 @@ describe("RepoRunList", () => {
     });
 
     expect(screen.getByText("running")).toBeDefined();
+  });
+
+  it("shows commit message next to SHA when present", () => {
+    const run = makeRun("completed", {
+      sha: "abc1234",
+      commit_message: "feat: add dark mode toggle",
+    });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/feat: add dark mode toggle/)).toBeDefined();
+  });
+
+  it("truncates long commit messages to 72 characters", () => {
+    const longMsg = "a".repeat(80);
+    const run = makeRun("completed", { sha: "abc1234", commit_message: longMsg });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/^— a{72}…$/)).toBeDefined();
+  });
+
+  it("shows no-proposals message when run completed with no failure_step", () => {
+    const run = makeRun("completed", { failure_step: null });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/no opportunities found/i)).toBeDefined();
+  });
+
+  it("shows build failure message when failure_step is build", () => {
+    const run = makeRun("completed", { failure_step: "build" });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/Build is failing/i)).toBeDefined();
+    expect(screen.getByText(/Fix your build errors/i)).toBeDefined();
+  });
+
+  it("shows test failure message when failure_step is test", () => {
+    const run = makeRun("completed", { failure_step: "test" });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/Tests are failing/i)).toBeDefined();
+    expect(screen.getByText(/Fix your failing tests/i)).toBeDefined();
+  });
+
+  it("shows install failure message when failure_step is install", () => {
+    const run = makeRun("completed", { failure_step: "install" });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/Install failed/i)).toBeDefined();
+  });
+
+  it("shows generic setup failed for unknown failure_step", () => {
+    const run = makeRun("completed", { failure_step: "unknown" });
+    render(<RepoRunList repoId="repo-1" initialRuns={[run]} />);
+    expect(screen.getByText(/Setup failed/i)).toBeDefined();
   });
 });

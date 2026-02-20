@@ -93,7 +93,10 @@ class TestModelMetadata:
     def test_run_table_columns(self):
         table = Run.__table__
         column_names = {c.name for c in table.columns}
-        expected = {"id", "repo_id", "sha", "status", "compute_minutes", "trace_id", "created_at"}
+        expected = {
+            "id", "repo_id", "sha", "status", "compute_minutes",
+            "trace_id", "failure_step", "commit_message", "created_at",
+        }
         assert column_names == expected
 
     def test_opportunity_table_columns(self):

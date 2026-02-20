@@ -31,6 +31,7 @@ from app.github.schemas import (
 )
 from app.github.service import create_pr_for_proposal
 from app.github.webhooks import parse_installation_event, verify_webhook_signature
+from app.runs.service import create_and_enqueue_run
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ async def handle_webhook(
     Verifies the HMAC signature before processing. Handles:
     - installation (created/deleted): upsert or remove github_installations row
     - installation_repositories: upsert installation and log repo list
+    - push: trigger a new run when a commit lands on the default branch
     """
     body = await request.body()
 
@@ -119,6 +121,47 @@ async def handle_webhook(
             )
 
         return WebhookResponse(received=True, event=x_github_event, action=action)
+
+    if x_github_event == "push":
+        ref = payload.get("ref", "")
+        default_branch = payload.get("repository", {}).get("default_branch", "main")
+
+        # Only react to pushes on the default branch
+        if ref != f"refs/heads/{default_branch}":
+            return WebhookResponse(received=True, event="push", action="non_default_branch")
+
+        full_name = payload.get("repository", {}).get("full_name", "")
+        head_sha = (payload.get("head_commit") or {}).get("id") or "HEAD"
+
+        # Find the registered repository by its full name
+        repo_result = await db.execute(
+            select(Repository).where(Repository.github_full_name == full_name)
+        )
+        repo_row = repo_result.scalar_one_or_none()
+        if not repo_row:
+            logger.info("Push webhook: repo %s not registered, ignoring", full_name)
+            return WebhookResponse(received=True, event="push", action="repo_not_found")
+
+        # Skip if a run is already queued or running for this repo
+        in_flight_result = await db.execute(
+            select(Run).where(
+                Run.repo_id == repo_row.id,
+                Run.status.in_(["queued", "running"]),
+            )
+        )
+        if in_flight_result.scalars().first():
+            logger.info(
+                "Push webhook: run already in flight for %s, skipping", full_name
+            )
+            return WebhookResponse(received=True, event="push", action="run_already_in_flight")
+
+        run = await create_and_enqueue_run(db, repo_row.id, sha=head_sha)
+        await db.commit()
+        logger.info(
+            "Push webhook: enqueued run %s for %s @ %s",
+            run.id, full_name, head_sha[:7],
+        )
+        return WebhookResponse(received=True, event="push", action="run_enqueued")
 
     return WebhookResponse(received=True, event=x_github_event, action="ignored")
 

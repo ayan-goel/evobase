@@ -198,15 +198,28 @@ class RunService:
                         run_id, sha, exc,
                     )
 
-            # Capture the actual HEAD SHA and persist it so the UI can show it
+            # Capture the actual HEAD SHA + commit message and persist them
             try:
                 head_sha = get_head_sha(repo_dir)
+
+                # Extract commit subject line from the local clone — no extra API call needed
+                import subprocess as _subprocess
+                _git_msg = _subprocess.run(
+                    ["git", "log", "-1", "--format=%s", head_sha],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                commit_message = _git_msg.stdout.strip()[:200] if _git_msg.returncode == 0 else None
+
                 with get_sync_db() as session:
                     run_row = session.get(Run, uuid.UUID(run_id))
                     if run_row:
                         run_row.sha = head_sha
+                        run_row.commit_message = commit_message
                         session.commit()
-                logger.info("Run %s: HEAD sha=%s", run_id, head_sha[:7])
+                logger.info("Run %s: HEAD sha=%s msg=%r", run_id, head_sha[:7], commit_message)
             except Exception as exc:
                 logger.warning("Run %s: could not capture HEAD SHA: %s", run_id, exc)
 
@@ -289,11 +302,27 @@ class RunService:
                     "Run %s: baseline failed — incrementing setup failure counter",
                     run_id,
                 )
+                # Find the first step that failed and persist it so the UI can
+                # show a specific, actionable message (install / build / test).
+                failed_step = next(
+                    (s.name for s in baseline.steps if s.exit_code != 0),
+                    "unknown",
+                )
+                try:
+                    with get_sync_db() as session:
+                        run_row = session.get(Run, uuid.UUID(run_id))
+                        if run_row:
+                            run_row.failure_step = failed_step
+                            session.commit()
+                except Exception as exc:
+                    logger.warning("Run %s: could not persist failure_step: %s", run_id, exc)
+
                 _increment_failure_counter(run_id, repo_id, "setup")
                 return {
                     "baseline_completed": False,
                     "agent_skipped": True,
                     "reason": "baseline_failed",
+                    "failure_step": failed_step,
                     "run_id": run_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }

@@ -26,6 +26,10 @@ export interface Run {
   sha: string | null;
   status: RunStatus;
   compute_minutes: number | null;
+  /** First pipeline step that failed: "install" | "build" | "test" | "unknown" */
+  failure_step: string | null;
+  /** Subject line of the HEAD commit, shown next to the SHA in the run header */
+  commit_message: string | null;
   created_at: string;
 }
 
