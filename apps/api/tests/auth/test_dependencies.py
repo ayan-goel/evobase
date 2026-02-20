@@ -1,9 +1,17 @@
 """Tests for JWT-based authentication dependency."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    SECP256R1,
+    generate_private_key,
+)
+from cryptography.hazmat.backends import default_backend
 from httpx import AsyncClient
+from jose import jwt as jose_jwt
+from jose.backends import ECKey
 
 from tests.conftest import STUB_USER_ID, TEST_JWT_SECRET, _make_jwt
 
@@ -88,3 +96,78 @@ class TestGetCurrentUserViaAPI:
         user = result.scalar_one_or_none()
         assert user is not None
         assert user.email == "new@example.com"
+
+    async def test_es256_jwt_is_accepted(self, app, seeded_db) -> None:
+        """ES256-signed JWTs (Supabase ECC P-256 key) are verified via JWKS."""
+        from datetime import datetime, timezone, timedelta
+        from httpx import ASGITransport, AsyncClient as HC
+
+        # Generate a throwaway EC P-256 key pair
+        private_key = generate_private_key(SECP256R1(), default_backend())
+        ec_key = ECKey(private_key, algorithm="ES256")
+        public_jwk = ec_key.public_key().to_dict()
+        public_jwk["kid"] = "test-ec-kid"
+
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": str(STUB_USER_ID),
+            "aud": "authenticated",
+            "email": "dev@coreloop.local",
+            "exp": now + timedelta(hours=1),
+            "iat": now,
+        }
+        token = jose_jwt.encode(
+            payload,
+            ec_key.to_dict(),
+            algorithm="ES256",
+            headers={"kid": "test-ec-kid"},
+        )
+
+        fake_jwks = {"keys": [public_jwk]}
+        mock_fetch = AsyncMock(return_value=fake_jwks)
+
+        import app.auth.dependencies as deps
+        original_cache = deps._jwks_cache
+        deps._jwks_cache = None
+
+        transport = ASGITransport(app=app)
+        with patch("app.auth.dependencies._fetch_jwks", mock_fetch):
+            async with HC(
+                transport=transport,
+                base_url="http://test",
+                headers={"Authorization": f"Bearer {token}"},
+            ) as ac:
+                res = await ac.get("/repos")
+                assert res.status_code == 200
+
+        deps._jwks_cache = original_cache
+
+    async def test_unsupported_alg_raises_401(self, app, seeded_db) -> None:
+        """JWTs signed with an unknown algorithm are rejected."""
+        from httpx import ASGITransport, AsyncClient as HC
+        from datetime import datetime, timezone, timedelta
+
+        # RS256 is not in our allowed list
+        payload = {
+            "sub": str(STUB_USER_ID),
+            "aud": "authenticated",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        # Craft a token with a fake RS256 header (will fail header parse / alg check)
+        token = jose_jwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
+        # Manually tamper the header to claim RS256
+        import base64, json
+        header_b64 = base64.urlsafe_b64encode(
+            json.dumps({"alg": "RS256", "typ": "JWT"}).encode()
+        ).rstrip(b"=").decode()
+        parts = token.split(".")
+        bad_token = f"{header_b64}.{parts[1]}.{parts[2]}"
+
+        transport = ASGITransport(app=app)
+        async with HC(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {bad_token}"},
+        ) as ac:
+            res = await ac.get("/repos")
+            assert res.status_code == 401
