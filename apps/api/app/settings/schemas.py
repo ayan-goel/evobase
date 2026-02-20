@@ -18,6 +18,7 @@ class SettingsResponse(BaseModel):
 
     repo_id: uuid.UUID
     compute_budget_minutes: int
+    max_prs_per_day: int
     max_proposals_per_run: int
     max_candidates_per_run: int
     schedule: str
@@ -38,6 +39,9 @@ class SettingsUpdateRequest(BaseModel):
 
     compute_budget_minutes: Optional[int] = Field(
         default=None, gt=0, description="Daily compute budget in minutes"
+    )
+    max_prs_per_day: Optional[int] = Field(
+        default=None, ge=1, le=50, description="Maximum proposals opened per 24-hour window"
     )
     max_proposals_per_run: Optional[int] = Field(
         default=None, gt=0, description="Maximum accepted proposals per run"

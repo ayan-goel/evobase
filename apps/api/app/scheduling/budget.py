@@ -68,6 +68,7 @@ async def get_or_create_settings(
     return Settings(
         repo_id=repo_id,
         compute_budget_minutes=DEFAULT_BUDGET_MINUTES,
+        max_prs_per_day=5,
         max_proposals_per_run=DEFAULT_MAX_PROPOSALS,
         max_candidates_per_run=DEFAULT_MAX_CANDIDATES,
         schedule="0 2 * * *",

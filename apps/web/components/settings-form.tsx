@@ -65,9 +65,9 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
       try {
         const updated = await updateRepoSettings(repoId, {
           compute_budget_minutes: settings.compute_budget_minutes,
+          max_prs_per_day: settings.max_prs_per_day,
           max_proposals_per_run: settings.max_proposals_per_run,
           max_candidates_per_run: settings.max_candidates_per_run,
-          schedule: settings.schedule,
           paused: settings.paused,
           llm_provider: settings.llm_provider,
           llm_model: settings.llm_model,
@@ -235,21 +235,21 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         </div>
       )}
 
-      {/* Schedule */}
+      {/* Max PRs per day */}
       <div className="space-y-1.5">
         <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
-          Schedule (cron)
+          Max PRs per day
         </label>
         <input
-          type="text"
-          value={settings.schedule}
-          onChange={(e) => handleChange("schedule", e.target.value)}
-          placeholder="0 2 * * *"
+          type="number"
+          min={1}
+          max={50}
+          value={settings.max_prs_per_day}
+          onChange={(e) => handleChange("max_prs_per_day", parseInt(e.target.value, 10) || 1)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-white/25 focus:outline-none focus:ring-0"
         />
         <p className="text-xs text-white/35">
-          Standard cron expression — e.g.{" "}
-          <code className="text-white/55">0 2 * * *</code> = every day at 02:00 UTC
+          The agent stops opening new PRs once this limit is reached in a 24-hour window.
         </p>
       </div>
 

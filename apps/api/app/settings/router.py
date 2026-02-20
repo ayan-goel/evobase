@@ -106,6 +106,8 @@ async def update_settings(
 
     if body.compute_budget_minutes is not None:
         settings.compute_budget_minutes = body.compute_budget_minutes
+    if body.max_prs_per_day is not None:
+        settings.max_prs_per_day = body.max_prs_per_day
     if body.max_proposals_per_run is not None:
         settings.max_proposals_per_run = body.max_proposals_per_run
     if body.max_candidates_per_run is not None:

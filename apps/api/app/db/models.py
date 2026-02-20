@@ -336,6 +336,7 @@ class Settings(Base):
         primary_key=True,
     )
     compute_budget_minutes: Mapped[int] = mapped_column(nullable=False, default=60)
+    max_prs_per_day: Mapped[int] = mapped_column(nullable=False, default=5)
     max_proposals_per_run: Mapped[int] = mapped_column(nullable=False, default=10)
     max_candidates_per_run: Mapped[int] = mapped_column(nullable=False, default=20)
     schedule: Mapped[str] = mapped_column(Text, nullable=False, default="0 2 * * *")

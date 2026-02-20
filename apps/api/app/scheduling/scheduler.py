@@ -97,8 +97,10 @@ def _dispatch_due_repos() -> None:
     from sqlalchemy import create_engine, select
     from sqlalchemy.orm import Session
 
+    from sqlalchemy import func
+
     from app.core.config import get_settings
-    from app.db.models import Repository, Run, Settings
+    from app.db.models import Proposal, Repository, Run, Settings
     from app.engine.tasks import execute_run
 
     app_settings = get_settings()
@@ -120,11 +122,28 @@ def _dispatch_due_repos() -> None:
             if not _is_schedule_due(settings.schedule, settings.last_run_at):
                 continue
 
+            from datetime import datetime, timedelta, timezone
+            now = datetime.now(timezone.utc)
+
+            # Daily PR limit: count proposals created in the last 24 hours
+            since_24h = now - timedelta(hours=24)
+            proposals_today = db.execute(
+                select(func.count(Proposal.id))
+                .join(Run, Proposal.run_id == Run.id)
+                .where(Run.repo_id == repo.id)
+                .where(Proposal.created_at >= since_24h)
+            ).scalar_one()
+
+            max_prs = settings.max_prs_per_day
+            if proposals_today >= max_prs:
+                logger.info(
+                    "Skipping repo %s: daily PR limit reached (%d / %d)",
+                    repo.id, proposals_today, max_prs,
+                )
+                continue
+
             # Compute budget check: count runs today
-            from datetime import datetime, timezone
-            today_start = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             runs_today = db.execute(
                 select(Run)
                 .where(Run.repo_id == repo.id)
