@@ -96,11 +96,19 @@ describe("DashboardView", () => {
     expect(links.every((l) => l.getAttribute("href") === "/github/install")).toBe(true);
   });
 
-  it("shows connect repository button in header", () => {
+  it("header connect button goes to /github/install when no installation exists", () => {
     render(<DashboardView repos={[makeRepo()]} installations={[]} />);
     const links = screen.getAllByRole("link", { name: /Connect Repository/i });
-    expect(links.length).toBeGreaterThanOrEqual(1);
     expect(links[0].getAttribute("href")).toBe("/github/install");
+  });
+
+  it("header connect button goes to repo picker when installation already exists", () => {
+    const installation = makeInstallation({ installation_id: 99999 });
+    render(<DashboardView repos={[makeRepo()]} installations={[installation]} />);
+    const links = screen.getAllByRole("link", { name: /Connect Repository/i });
+    expect(links[0].getAttribute("href")).toBe(
+      `/github/callback?installation_id=${installation.installation_id}`,
+    );
   });
 
   it("shows setting up badge when latest run is queued", () => {

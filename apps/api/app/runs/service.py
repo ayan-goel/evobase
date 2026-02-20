@@ -73,11 +73,19 @@ class RunService:
     """
 
     def transition_to_running(self, run_id: str) -> None:
-        """Transition a run from queued to running and persist to DB."""
+        """Transition a run from queued to running and persist to DB.
+
+        Idempotent: if the run is already ``running`` (e.g. the task was
+        redelivered after a worker crash), this is a no-op so the pipeline
+        can proceed rather than raising a state-machine error.
+        """
         with get_sync_db() as session:
             run = session.get(Run, uuid.UUID(run_id))
             if not run:
                 raise ValueError(f"Run {run_id} not found")
+            if run.status == "running":
+                logger.info("Run %s: already running (redelivered task); continuing", run_id)
+                return
             validate_transition(run.status, "running")
             run.status = "running"
             session.commit()
@@ -296,7 +304,24 @@ class RunService:
             _upload_baseline_artifacts(run_id, repo_id, baseline)
 
             # ----------------------------------------------------------------
-            # Step 8: LLM agent cycle
+            # Step 8: Guard — skip agent cycle if no test command
+            # ----------------------------------------------------------------
+            if not detection.test_cmd:
+                logger.warning(
+                    "Run %s: no test command detected — skipping agent cycle "
+                    "(proposals without test validation would be untrustworthy)",
+                    run_id,
+                )
+                return {
+                    "baseline_completed": True,
+                    "agent_skipped": True,
+                    "reason": "no_test_cmd",
+                    "run_id": run_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+
+            # ----------------------------------------------------------------
+            # Step 9: LLM agent cycle
             # ----------------------------------------------------------------
             api_key = _resolve_api_key(llm_provider)
             if not api_key:

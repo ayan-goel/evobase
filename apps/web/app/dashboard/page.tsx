@@ -21,6 +21,13 @@ export function DashboardView({
   repos: Repository[];
   installations: Installation[];
 }) {
+  // If a GitHub App installation already exists, skip the GitHub redirect and
+  // go straight to the repo picker. Otherwise start the installation flow.
+  const connectHref =
+    installations.length > 0
+      ? `/github/callback?installation_id=${installations[0].installation_id}`
+      : "/github/install";
+
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -35,7 +42,7 @@ export function DashboardView({
             </p>
           </div>
           <Link
-            href="/github/install"
+            href={connectHref}
             className="shrink-0 rounded-full bg-white text-black h-9 px-5 text-sm font-semibold transition-colors hover:bg-white/90 inline-flex items-center justify-center"
           >
             Connect Repository

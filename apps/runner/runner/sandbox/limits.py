@@ -21,10 +21,12 @@ Limits chosen:
     SIGTRAP (exit 133). 4 GB is a safe ceiling that blocks truly runaway
     processes while allowing all typical install/build/test workloads.
 
-  RLIMIT_CPU (CPU seconds): 60 seconds
+  RLIMIT_CPU (CPU seconds): 300 seconds
     Prevents infinite CPU loops from consuming the entire worker core.
     This is wall-CPU time, not wall-clock time — a well-behaved process
-    that sleeps won't be killed prematurely.
+    that sleeps won't be killed prematurely. Matches the wall-clock
+    DEFAULT_TIMEOUT in executor.py. 60s was too low for npm ci on
+    projects with 300+ transitive dependencies (SIGXCPU, exit 152).
 """
 
 import sys
@@ -53,8 +55,10 @@ def apply_resource_limits() -> None:
         _MEM_LIMIT = 4 * 1024 * 1024 * 1024  # 4 GB
         resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT, resource.RLIM_INFINITY))
 
-        # 60 CPU-seconds hard limit (separate from wall-clock timeout)
-        _CPU_LIMIT = 60
+        # 300 CPU-seconds soft limit — matches the wall-clock DEFAULT_TIMEOUT.
+        # 60s was too low: npm ci on mid-size projects easily exceeds 60 CPU
+        # seconds during dependency resolution and linking (SIGXCPU, exit 152).
+        _CPU_LIMIT = 300
         resource.setrlimit(resource.RLIMIT_CPU, (_CPU_LIMIT, resource.RLIM_INFINITY))
 
     except (ImportError, ValueError, resource.error) as exc:

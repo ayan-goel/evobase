@@ -32,6 +32,9 @@ celery_app.conf.update(
     # Prevents task loss if the worker crashes mid-execution.
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    # Re-deliver unacked tasks after 5 minutes (default is 1 hour).
+    # Keeps recovery fast after worker crashes or deployments.
+    broker_transport_options={"visibility_timeout": 300},
 )
 
 # Auto-discover tasks in engine and scheduling modules

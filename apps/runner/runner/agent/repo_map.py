@@ -28,7 +28,32 @@ SKIP_DIRS = {
 }
 
 # File extensions to include with line counts
-SCANNABLE_EXTENSIONS = {".js", ".jsx", ".mjs", ".ts", ".tsx", ".cjs"}
+SCANNABLE_EXTENSIONS = {
+    # JavaScript / TypeScript
+    ".js", ".jsx", ".mjs", ".ts", ".tsx", ".cjs",
+    # Python
+    ".py", ".pyi",
+    # Go
+    ".go",
+    # Rust
+    ".rs",
+    # Ruby
+    ".rb",
+    # JVM
+    ".java", ".kt", ".scala",
+    # C / C++
+    ".c", ".cpp", ".h", ".hpp",
+    # C#
+    ".cs",
+    # Swift
+    ".swift",
+    # Vue / Svelte
+    ".vue", ".svelte",
+    # PHP
+    ".php",
+    # Shell
+    ".sh",
+}
 
 # Extensions to list without line counts (config / docs)
 OTHER_EXTENSIONS = {".json", ".yaml", ".yml", ".md", ".toml", ".env.example"}

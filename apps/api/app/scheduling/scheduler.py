@@ -177,6 +177,73 @@ def _dispatch_due_repos() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Orphan run reaper
+# ---------------------------------------------------------------------------
+
+ORPHAN_THRESHOLD_MINUTES = 15
+REAPER_INTERVAL_SECONDS = 300  # 5 minutes
+
+
+@celery_app.task(
+    name="coreloop.reap_orphaned_runs",
+    bind=True,
+    max_retries=0,
+    ignore_result=True,
+)
+def reap_orphaned_runs(self) -> None:
+    """Periodic task: fail runs stuck in 'running' for too long.
+
+    When a Celery worker dies mid-task (deployment, OOM, crash), the run
+    stays in ``running`` state with no worker executing it. This reaper
+    transitions those orphaned runs to ``failed`` so the UI doesn't show
+    a perpetual spinner and the repo is free to accept new runs.
+    """
+    try:
+        _reap_orphaned_runs()
+    except Exception:
+        logger.exception("Orphan reaper tick failed")
+
+
+def _reap_orphaned_runs() -> None:
+    """Core reaper logic — separated for testability."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import create_engine, select, update
+    from sqlalchemy.orm import Session
+
+    from app.core.config import get_settings
+    from app.db.models import Run
+
+    app_settings = get_settings()
+    engine = create_engine(
+        app_settings.database_url.replace("postgresql+asyncpg", "postgresql"),
+        echo=False,
+    )
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=ORPHAN_THRESHOLD_MINUTES)
+
+    with Session(engine) as db:
+        orphans = db.execute(
+            select(Run)
+            .where(Run.status == "running")
+            .where(Run.created_at < cutoff)
+        ).scalars().all()
+
+        for run in orphans:
+            run.status = "failed"
+            logger.warning(
+                "Reaped orphaned run %s (created %s, stuck in 'running' for >%d min)",
+                run.id, run.created_at, ORPHAN_THRESHOLD_MINUTES,
+            )
+
+        if orphans:
+            db.commit()
+            logger.info("Orphan reaper: transitioned %d run(s) to failed", len(orphans))
+        else:
+            logger.debug("Orphan reaper: no orphaned runs found")
+
+
+# ---------------------------------------------------------------------------
 # Celery beat schedule — applied when the Celery queue module is imported.
 # Beat is started separately: celery -A app.engine.queue beat
 # ---------------------------------------------------------------------------
@@ -185,5 +252,9 @@ celery_app.conf.beat_schedule = {
     "trigger-scheduled-runs": {
         "task": "coreloop.trigger_scheduled_runs",
         "schedule": TRIGGER_INTERVAL_SECONDS,
+    },
+    "reap-orphaned-runs": {
+        "task": "coreloop.reap_orphaned_runs",
+        "schedule": REAPER_INTERVAL_SECONDS,
     },
 }

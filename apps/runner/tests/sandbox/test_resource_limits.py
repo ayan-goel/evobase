@@ -34,7 +34,7 @@ class TestApplyResourceLimits:
         )
 
     def test_sets_cpu_limit(self) -> None:
-        """RLIMIT_CPU must be set to 60 seconds."""
+        """RLIMIT_CPU must be set to 300 seconds (matches wall-clock timeout)."""
         mock_resource = MagicMock()
         mock_resource.RLIMIT_AS = 5
         mock_resource.RLIMIT_CPU = 0
@@ -46,7 +46,7 @@ class TestApplyResourceLimits:
 
         mock_resource.setrlimit.assert_any_call(
             mock_resource.RLIMIT_CPU,
-            (60, mock_resource.RLIM_INFINITY),
+            (300, mock_resource.RLIM_INFINITY),
         )
 
     def test_no_op_on_windows(self) -> None:

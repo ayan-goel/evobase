@@ -287,6 +287,21 @@ class TestRunServiceTransitions:
 
         assert run.status == "failed"
 
+    def test_transition_to_running_is_idempotent(self) -> None:
+        """Redelivered tasks should not fail when the run is already running."""
+        run = self._make_run("running")
+
+        with patch("app.runs.service.get_sync_db") as mock_db:
+            session = MagicMock()
+            session.get.return_value = run
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            RunService().transition_to_running(str(run.id))
+
+        assert run.status == "running"
+        session.commit.assert_not_called()
+
     def test_transition_run_not_found_raises(self) -> None:
         with patch("app.runs.service.get_sync_db") as mock_db:
             session = MagicMock()
@@ -380,6 +395,30 @@ class TestExecuteFullPipeline:
 
         assert result["reason"] == "baseline_failed"
         assert result["baseline_completed"] is False
+
+    def test_returns_no_test_cmd_when_tests_not_detected(self) -> None:
+        """If no test command exists, agent cycle is skipped to prevent unvalidated proposals."""
+        run = self._make_run_mock()
+        repo = self._make_repo_mock()
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection(test_cmd=None)), \
+             patch("runner.validator.executor.run_baseline", return_value=_make_baseline()), \
+             patch("app.runs.service._upload_baseline_artifacts"):
+
+            session = MagicMock()
+            session.get.side_effect = lambda m, pk: run if m == Run else (
+                repo if m == Repository else _make_settings()
+            )
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            result = RunService().execute_full_pipeline(str(run.id))
+
+        assert result["reason"] == "no_test_cmd"
+        assert result["baseline_completed"] is True
+        assert result["agent_skipped"] is True
 
     def test_returns_no_llm_key_result_when_key_missing(self) -> None:
         """If no LLM API key is configured, agent cycle is skipped."""

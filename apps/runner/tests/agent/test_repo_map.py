@@ -74,3 +74,29 @@ class TestBuildRepoMap:
         assert "package.json" in result
         # JSON files don't get line counts
         assert "[" not in result.split("package.json")[1].split("\n")[0]
+
+    def test_includes_python_files(self, tmp_path: Path) -> None:
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        result = build_repo_map(tmp_path)
+        assert "main.py" in result
+        assert "1 lines" in result
+
+    def test_includes_go_files(self, tmp_path: Path) -> None:
+        (tmp_path / "main.go").write_text("package main\n\nfunc main() {}\n")
+        result = build_repo_map(tmp_path)
+        assert "main.go" in result
+
+    def test_includes_rust_files(self, tmp_path: Path) -> None:
+        (tmp_path / "lib.rs").write_text("fn main() {}\n")
+        result = build_repo_map(tmp_path)
+        assert "lib.rs" in result
+
+    def test_includes_java_files(self, tmp_path: Path) -> None:
+        (tmp_path / "App.java").write_text("public class App {}\n")
+        result = build_repo_map(tmp_path)
+        assert "App.java" in result
+
+    def test_includes_ruby_files(self, tmp_path: Path) -> None:
+        (tmp_path / "app.rb").write_text("puts 'hi'\n")
+        result = build_repo_map(tmp_path)
+        assert "app.rb" in result

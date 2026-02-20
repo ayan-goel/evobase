@@ -5,6 +5,7 @@ Tests cover:
 - trigger_scheduled_runs task registration
 - beat_schedule is configured on the celery app
 - Celery task is discoverable
+- reap_orphaned_runs task registration and beat schedule
 """
 
 from datetime import datetime, timedelta, timezone
@@ -14,8 +15,11 @@ import pytest
 
 from app.engine.queue import celery_app
 from app.scheduling.scheduler import (
+    ORPHAN_THRESHOLD_MINUTES,
+    REAPER_INTERVAL_SECONDS,
     TRIGGER_INTERVAL_SECONDS,
     _is_schedule_due,
+    reap_orphaned_runs,
     trigger_scheduled_runs,
 )
 
@@ -86,6 +90,10 @@ class TestTaskRegistration:
         registered = celery_app.tasks.keys()
         assert "coreloop.trigger_scheduled_runs" in registered
 
+    def test_reaper_task_is_registered(self) -> None:
+        registered = celery_app.tasks.keys()
+        assert "coreloop.reap_orphaned_runs" in registered
+
     def test_beat_schedule_configured(self) -> None:
         beat = celery_app.conf.beat_schedule
         assert "trigger-scheduled-runs" in beat
@@ -93,9 +101,22 @@ class TestTaskRegistration:
         assert entry["task"] == "coreloop.trigger_scheduled_runs"
         assert entry["schedule"] == TRIGGER_INTERVAL_SECONDS
 
+    def test_reaper_beat_schedule_configured(self) -> None:
+        beat = celery_app.conf.beat_schedule
+        assert "reap-orphaned-runs" in beat
+        entry = beat["reap-orphaned-runs"]
+        assert entry["task"] == "coreloop.reap_orphaned_runs"
+        assert entry["schedule"] == REAPER_INTERVAL_SECONDS
+
     def test_trigger_interval_is_reasonable(self) -> None:
         # Should run at most hourly (3600s) and at least every 4h
         assert 600 <= TRIGGER_INTERVAL_SECONDS <= 14400
+
+    def test_reaper_interval_is_reasonable(self) -> None:
+        assert 60 <= REAPER_INTERVAL_SECONDS <= 600
+
+    def test_orphan_threshold_is_reasonable(self) -> None:
+        assert 5 <= ORPHAN_THRESHOLD_MINUTES <= 60
 
 
 # ---------------------------------------------------------------------------
@@ -122,3 +143,27 @@ class TestTriggerScheduledRuns:
         with patch("app.scheduling.scheduler._dispatch_due_repos") as mock_dispatch:
             trigger_scheduled_runs.apply(args=[])
             mock_dispatch.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# reap_orphaned_runs task
+# ---------------------------------------------------------------------------
+
+
+class TestReapOrphanedRuns:
+    def test_task_is_celery_task(self) -> None:
+        assert hasattr(reap_orphaned_runs, "delay")
+        assert hasattr(reap_orphaned_runs, "apply_async")
+
+    def test_task_does_not_raise_on_reaper_error(self) -> None:
+        """The task swallows exceptions to avoid beat crash loops."""
+        with patch(
+            "app.scheduling.scheduler._reap_orphaned_runs",
+            side_effect=RuntimeError("DB down"),
+        ):
+            reap_orphaned_runs.apply(args=[])
+
+    def test_task_calls_reaper(self) -> None:
+        with patch("app.scheduling.scheduler._reap_orphaned_runs") as mock_reap:
+            reap_orphaned_runs.apply(args=[])
+            mock_reap.assert_called_once()
