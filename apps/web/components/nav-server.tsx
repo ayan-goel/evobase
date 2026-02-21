@@ -2,7 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
 
 /** Server wrapper that fetches session user and passes to the client Nav. */
-export async function NavWithUser() {
+export async function NavWithUser({
+  maxWidthClass,
+}: {
+  maxWidthClass?: string;
+} = {}) {
   let navUser = null;
 
   try {
@@ -23,5 +27,5 @@ export async function NavWithUser() {
     // Session unavailable — render without user
   }
 
-  return <Nav user={navUser} />;
+  return <Nav user={navUser} maxWidthClass={maxWidthClass} />;
 }

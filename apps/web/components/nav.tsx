@@ -12,10 +12,11 @@ interface NavUser {
 
 interface NavProps {
   user?: NavUser | null;
+  maxWidthClass?: string;
 }
 
 /** Glassy floating navigation bar shared across dashboard pages. */
-export function Nav({ user }: NavProps) {
+export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -27,7 +28,7 @@ export function Nav({ user }: NavProps) {
 
   return (
     <nav
-      className="fixed top-4 left-1/2 z-50 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl"
+      className={`fixed top-4 left-1/2 z-50 -translate-x-1/2 w-[calc(100%-2rem)] ${maxWidthClass}`}
       aria-label="Main navigation"
     >
       <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl">
