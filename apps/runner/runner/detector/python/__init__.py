@@ -30,12 +30,7 @@ def detect_python(repo_dir: Path) -> DetectionResult:
         result.evidence.append(f"package_manager: {pm_signal.command} ({pm_signal.source})")
         all_confidences.append(pm_signal.confidence)
 
-    # 2. Install command
-    pm = result.package_manager or "pip"
-    result.install_cmd = INSTALL_CMDS.get(pm, FALLBACK_INSTALL_CMD)
-    result.evidence.append(f"install_cmd: {result.install_cmd} (derived from {pm})")
-
-    # 3. Framework — pyproject.toml first, requirements.txt fallback
+    # 2. Framework — pyproject.toml first, requirements.txt fallback
     fw_signal = pyproject.detect_framework(repo_dir)
     if fw_signal is None:
         fw_signal = requirements.detect_framework(repo_dir)
@@ -45,7 +40,7 @@ def detect_python(repo_dir: Path) -> DetectionResult:
         result.evidence.append(f"framework: {fw_signal.command} ({fw_signal.source})")
         all_confidences.append(fw_signal.confidence)
 
-    # 4. Command signals from pyproject.toml scripts
+    # 3. Command signals from pyproject.toml scripts
     pkg_signals = pyproject.parse_pyproject(repo_dir)
     for category in ("build", "test", "typecheck"):
         best = _pick_best(pkg_signals.get(category, []))
@@ -54,11 +49,16 @@ def detect_python(repo_dir: Path) -> DetectionResult:
             result.evidence.append(f"{category}_cmd: {best.command} ({best.source})")
             all_confidences.append(best.confidence)
 
-    # 5. Default test command if none detected
+    # 4. Default test command if none detected
     if result.test_cmd is None:
         framework = result.framework
         result.test_cmd = FRAMEWORK_TEST_CMDS.get(framework or "", DEFAULT_TEST_CMD)
         result.evidence.append(f"test_cmd: {result.test_cmd} (default for {framework or 'python'})")
+
+    # 5. Install command
+    pm = result.package_manager or "pip"
+    result.install_cmd = _resolve_install_command(repo_dir, pm)
+    result.evidence.append(f"install_cmd: {result.install_cmd} (derived from {pm})")
 
     result.confidence = min(all_confidences) if all_confidences else 0.5
     return result
@@ -68,3 +68,41 @@ def _pick_best(signals: list[CommandSignal]) -> CommandSignal | None:
     if not signals:
         return None
     return max(signals, key=lambda s: s.confidence)
+
+
+def _resolve_install_command(repo_dir: Path, package_manager: str) -> str:
+    """Build install command with test/dev dependency awareness.
+
+    For pip projects, include common dev/test requirements files when present.
+    For pipenv, use --dev because baseline always attempts to run tests.
+    """
+    pm = (package_manager or "pip").lower()
+
+    if pm == "pip":
+        req_files = _discover_pip_requirement_files(repo_dir)
+        if req_files:
+            return " && ".join(f"pip install -r {req_file}" for req_file in req_files)
+        return FALLBACK_INSTALL_CMD
+
+    if pm == "pipenv":
+        return "pipenv install --dev"
+
+    return INSTALL_CMDS.get(pm, FALLBACK_INSTALL_CMD)
+
+
+def _discover_pip_requirement_files(repo_dir: Path) -> list[str]:
+    """Return ordered requirements files to install for pip projects."""
+    candidates = [
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements_test.txt",
+        "requirements/test.txt",
+        "requirements/dev.txt",
+        "requirements/ci.txt",
+    ]
+
+    discovered: list[str] = []
+    for rel in candidates:
+        if (repo_dir / rel).exists():
+            discovered.append(rel)
+    return discovered

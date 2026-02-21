@@ -157,7 +157,7 @@ class TestPackageManagerDetection:
         (tmp_path / "Pipfile.lock").write_text("{}\n")
         result = detect_python(tmp_path)
         assert result.package_manager == "pipenv"
-        assert result.install_cmd == "pipenv install"
+        assert result.install_cmd == "pipenv install --dev"
 
     def test_poetry_from_pyproject_section(self, tmp_path):
         _pyproject(tmp_path, "[tool.poetry]\nname = 'myapp'\n")
@@ -169,6 +169,28 @@ class TestPackageManagerDetection:
         result = detect_python(tmp_path)
         assert result.package_manager == "pip"
         assert result.install_cmd == "pip install -r requirements.txt"
+
+    def test_pip_includes_requirements_dev_when_present(self, tmp_path):
+        _requirements(tmp_path, "flask\n")
+        (tmp_path / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+        result = detect_python(tmp_path)
+        assert result.package_manager == "pip"
+        assert result.install_cmd == (
+            "pip install -r requirements.txt && "
+            "pip install -r requirements-dev.txt"
+        )
+
+    def test_pip_includes_requirements_subdir_test_files(self, tmp_path):
+        _requirements(tmp_path, "fastapi\n")
+        _write(tmp_path / "requirements" / "test.txt", "pytest\n")
+        _write(tmp_path / "requirements" / "dev.txt", "ruff\n")
+        result = detect_python(tmp_path)
+        assert result.package_manager == "pip"
+        assert result.install_cmd == (
+            "pip install -r requirements.txt && "
+            "pip install -r requirements/test.txt && "
+            "pip install -r requirements/dev.txt"
+        )
 
 
 # ---------------------------------------------------------------------------

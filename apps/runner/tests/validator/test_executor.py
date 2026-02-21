@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from runner.detector.types import DetectionResult
-from runner.validator.executor import run_baseline, run_step
+from runner.validator.executor import _install_step_env, run_baseline, run_step
 from runner.validator.types import PipelineError
 
 
@@ -91,6 +91,26 @@ class TestRunStep:
         assert call_kwargs["timeout"] == 60
 
 
+class TestInstallStepEnv:
+    @pytest.mark.parametrize("pm", ["npm", "pnpm", "yarn", "bun", "NPM"])
+    def test_js_package_managers_force_dev_dependencies(self, pm):
+        env = _install_step_env(pm)
+        assert env is not None
+        assert env["NODE_ENV"] == "development"
+        assert env["NPM_CONFIG_PRODUCTION"] == "false"
+
+    def test_bundler_env_includes_test_dev_groups(self):
+        env = _install_step_env("bundler")
+        assert env is not None
+        assert env["BUNDLE_DEPLOYMENT"] == "false"
+        assert env["BUNDLE_FROZEN"] == "false"
+        assert env["BUNDLE_WITHOUT"] == ""
+
+    @pytest.mark.parametrize("pm", [None, "", "pip", "poetry", "cargo"])
+    def test_non_js_package_managers_have_no_env_override(self, pm):
+        assert _install_step_env(pm) is None
+
+
 class TestRunBaseline:
     """Test the full baseline pipeline with mocked subprocess."""
 
@@ -120,6 +140,60 @@ class TestRunBaseline:
         assert result.is_success is True
         assert len(result.steps) == 3
         assert result.error is None
+
+    @patch("runner.validator.executor.run_step")
+    def test_install_step_uses_dev_env_for_npm(self, mock_step, tmp_path):
+        """Install step forces devDependencies for JS package managers."""
+        mock_step.side_effect = [
+            MagicMock(is_success=True, name="install", duration_seconds=5.0),
+            MagicMock(is_success=True, name="build", duration_seconds=10.0),
+            MagicMock(is_success=True, name="test", duration_seconds=8.0),
+        ]
+        config = self._make_config(package_manager="npm")
+
+        run_baseline(tmp_path, config)
+
+        install_call = mock_step.call_args_list[0]
+        assert install_call.args[0] == "install"
+        assert install_call.kwargs["env"]["NODE_ENV"] == "development"
+        assert install_call.kwargs["env"]["NPM_CONFIG_PRODUCTION"] == "false"
+
+    @patch("runner.validator.executor.run_step")
+    def test_install_step_has_no_env_override_for_non_js_pm(self, mock_step, tmp_path):
+        mock_step.side_effect = [
+            MagicMock(is_success=True, name="install", duration_seconds=5.0),
+            MagicMock(is_success=True, name="build", duration_seconds=10.0),
+            MagicMock(is_success=True, name="test", duration_seconds=8.0),
+        ]
+        config = self._make_config(package_manager="pip", install_cmd="pip install -r requirements.txt")
+
+        run_baseline(tmp_path, config)
+
+        install_call = mock_step.call_args_list[0]
+        assert install_call.args[0] == "install"
+        assert install_call.kwargs["env"] is None
+
+    @patch("runner.validator.executor.run_step")
+    def test_install_step_uses_bundler_env(self, mock_step, tmp_path):
+        mock_step.side_effect = [
+            MagicMock(is_success=True, name="install", duration_seconds=5.0),
+            MagicMock(is_success=True, name="build", duration_seconds=10.0),
+            MagicMock(is_success=True, name="test", duration_seconds=8.0),
+        ]
+        config = self._make_config(
+            package_manager="bundler",
+            install_cmd="bundle install",
+            build_cmd="bundle exec rake build",
+            test_cmd="bundle exec rspec",
+        )
+
+        run_baseline(tmp_path, config)
+
+        install_call = mock_step.call_args_list[0]
+        assert install_call.args[0] == "install"
+        assert install_call.kwargs["env"]["BUNDLE_DEPLOYMENT"] == "false"
+        assert install_call.kwargs["env"]["BUNDLE_FROZEN"] == "false"
+        assert install_call.kwargs["env"]["BUNDLE_WITHOUT"] == ""
 
     @patch("runner.validator.executor.run_step")
     def test_install_failure_aborts_pipeline(self, mock_step, tmp_path):

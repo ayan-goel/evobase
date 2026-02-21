@@ -9,6 +9,7 @@ stdout/stderr capture for artifact storage.
 """
 
 import logging
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -25,6 +26,37 @@ CRITICAL_STEPS = {"install", "test"}
 
 # Default timeout per step (seconds)
 DEFAULT_TIMEOUT = 300
+
+# JS package managers that need devDependencies during baseline validation.
+JS_PACKAGE_MANAGERS = {"npm", "pnpm", "yarn", "bun"}
+RUBY_PACKAGE_MANAGERS = {"bundler"}
+
+
+def _install_step_env(package_manager: Optional[str]) -> Optional[dict]:
+    """Return env overrides for install step.
+
+    Railway/production environments commonly set language-specific dependency
+    filtering env vars. We normalize install-time env so baseline validation
+    has the dependencies needed to run build/test commands.
+    """
+    pm = (package_manager or "").lower()
+    if pm not in JS_PACKAGE_MANAGERS and pm not in RUBY_PACKAGE_MANAGERS:
+        return None
+
+    env = dict(os.environ)
+    if pm in JS_PACKAGE_MANAGERS:
+        env["NODE_ENV"] = "development"
+        # npm/yarn honor this flag and install devDependencies even when process
+        # env defaults to production.
+        env["NPM_CONFIG_PRODUCTION"] = "false"
+
+    if pm in RUBY_PACKAGE_MANAGERS:
+        # Bundler deploy mode (or BUNDLE_WITHOUT) can exclude test/development
+        # groups, making baseline test runs fail despite healthy repos.
+        env["BUNDLE_DEPLOYMENT"] = "false"
+        env["BUNDLE_FROZEN"] = "false"
+        env["BUNDLE_WITHOUT"] = ""
+    return env
 
 
 def run_step(
@@ -116,7 +148,12 @@ def run_baseline(
 
     try:
         # 1. Install (critical)
-        install_step = run_step("install", config.install_cmd or "npm ci", repo_dir)
+        install_step = run_step(
+            "install",
+            config.install_cmd or "npm ci",
+            repo_dir,
+            env=_install_step_env(config.package_manager),
+        )
         result.steps.append(install_step)
 
         if not install_step.is_success:
