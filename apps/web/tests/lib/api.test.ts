@@ -96,4 +96,21 @@ describe("apiFetch (client)", () => {
 
     expect(capturedHeaders?.Authorization).toBeUndefined();
   });
+
+  it("handles 204 No Content responses (delete endpoint)", async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: "test-token-123" } },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      headers: { get: (_key: string) => null },
+      json: () => Promise.reject(new Error("No JSON body")),
+      text: () => Promise.resolve(""),
+    }) as unknown as typeof fetch;
+
+    const { deleteRepo } = await import("@/lib/api");
+    await expect(deleteRepo("repo-1")).resolves.toBeUndefined();
+  });
 });

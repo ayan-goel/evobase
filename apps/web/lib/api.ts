@@ -63,7 +63,34 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`API ${res.status}: ${path} — ${body}`);
   }
 
-  return res.json() as Promise<T>;
+  // 204/205 are intentionally body-less (e.g. DELETE endpoints).
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
+  // Prefer JSON when available, but tolerate empty or non-JSON bodies.
+  const contentLength = res.headers?.get?.("content-length");
+  if (contentLength === "0") {
+    return undefined as T;
+  }
+
+  const contentType = res.headers?.get?.("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return res.json() as Promise<T>;
+  }
+
+  // Some APIs return JSON without a content-type header.
+  try {
+    return await res.json() as T;
+  } catch {
+    const text = await res.text().catch(() => "");
+    if (!text) return undefined as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
+  }
 }
 
 /** List all repos accessible to the current user. */
