@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Patterns that indicate a specific command category.
 # Checked against `run:` step values (case-insensitive).
 INSTALL_PATTERNS = ["install", "ci"]
-BUILD_PATTERNS = ["build", "compile", "assemble", "package"]
+BUILD_PATTERNS = ["build", "compile", "assemble", "package", "cmake", "make", "ninja"]
 TEST_PATTERNS = [
     "test",
     "spec",
@@ -24,11 +24,16 @@ TEST_PATTERNS = [
     "vitest",
     "mocha",
     "pytest",
+    "python -m unittest",
+    "unittest",
     "rspec",
+    "rake test",
     "cargo test",
     "go test",
     "mvn test",
     "gradle test",
+    "ctest",
+    "make test",
 ]
 TYPECHECK_PATTERNS = [
     "typecheck",
@@ -37,6 +42,7 @@ TYPECHECK_PATTERNS = [
     "mypy",
     "pyright",
     "go vet",
+    "golangci-lint",
     "cargo clippy",
 ]
 
@@ -57,6 +63,9 @@ PM_INDICATORS: dict[str, str] = {
     "go mod download": "go",
     "go mod tidy": "go",
     "cargo fetch": "cargo",
+    "cmake ": "cmake",
+    "make ": "make",
+    "ninja ": "ninja",
     "mvnw": "maven",
     "mvn ": "maven",
     "gradlew": "gradle",
@@ -93,9 +102,10 @@ _ECOSYSTEM_HINTS: dict[str, tuple[str, ...]] = {
         "rails ",
         "ruby ",
     ),
-    "go": ("go ", "gofmt", "golangci"),
+    "go": ("go ", "gofmt", "golangci", "golangci-lint"),
     "rust": ("cargo ", "rustc", "clippy"),
     "java": ("mvn", "gradle", "javac", "java ", "kotlinc"),
+    "cpp": ("cmake", "ctest", "make ", "ninja", "clang++", "g++", "gcc ", "clang "),
 }
 
 

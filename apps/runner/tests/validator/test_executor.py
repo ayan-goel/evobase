@@ -90,6 +90,51 @@ class TestRunStep:
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["timeout"] == 60
 
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_js_resource_profile_for_js_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("build", "npm run build", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "js"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_default_resource_profile_for_non_js_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("test", "pytest -q", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "default"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_jvm_resource_profile_for_gradle_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("build", "./gradlew build", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "jvm"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_native_resource_profile_for_rust_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("build", "cargo build --release", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "native"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_native_resource_profile_for_cpp_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("build", "cmake --build build", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "native"
+
 
 class TestInstallStepEnv:
     @pytest.mark.parametrize("pm", ["npm", "pnpm", "yarn", "bun", "NPM"])

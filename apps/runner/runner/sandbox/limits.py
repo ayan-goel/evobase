@@ -12,25 +12,103 @@ Platform notes:
   - Windows: `resource` module is unavailable. `apply_resource_limits()`
     is a no-op on Windows so tests and development on Windows are unaffected.
 
-Limits chosen:
-  RLIMIT_AS (virtual address space): 4 GB
-    Prevents a subprocess from allocating unbounded memory. Node.js / V8
-    maps several GB of virtual address space at startup (for the isolate
-    heap cage) even though physical pages are only committed on demand.
-    512 MB trips this limit before npm can execute a single line, causing
-    SIGTRAP (exit 133). 4 GB is a safe ceiling that blocks truly runaway
-    processes while allowing all typical install/build/test workloads.
+Memory policy:
+  - Default profile: 4 GB virtual-address-space cap (`RLIMIT_AS`).
+  - JS profile: 12 GB virtual-address-space cap by default.
+    Node + Wasm-heavy workloads (Next.js builds / Vitest) can exceed 4 GB of
+    *virtual* mappings even when physical memory is available.
+  - JVM profile: 12 GB virtual-address-space cap by default.
+    Gradle/Maven builds can start multiple JVMs and require larger virtual
+    address mappings than the default profile.
+  - Native profile: 16 GB virtual-address-space cap by default.
+    Rust and C/C++ linker-heavy builds can use large address-space mappings
+    during compile/link phases.
 
-  RLIMIT_CPU (CPU seconds): 300 seconds
-    Prevents infinite CPU loops from consuming the entire worker core.
-    This is wall-CPU time, not wall-clock time — a well-behaved process
-    that sleeps won't be killed prematurely. Matches the wall-clock
-    DEFAULT_TIMEOUT in executor.py. 60s was too low for npm ci on
-    projects with 300+ transitive dependencies (SIGXCPU, exit 152).
+Environment overrides:
+  - CORELOOP_RESOURCE_PROFILE: "default" | "js" | "jvm" | "native"
+  - CORELOOP_RLIMIT_AS_BYTES: integer bytes for default profile
+  - CORELOOP_RLIMIT_AS_BYTES_JS: integer bytes for js profile
+  - CORELOOP_RLIMIT_AS_BYTES_JVM: integer bytes for jvm profile
+  - CORELOOP_RLIMIT_AS_BYTES_NATIVE: integer bytes for native profile
+  - CORELOOP_RLIMIT_CPU_SECONDS: integer seconds for CPU limit
+
+If either memory env value is set to 0 or negative, RLIMIT_AS is skipped for
+that profile. This is useful on high-memory dedicated workers.
 """
 
+import os
 import sys
 from typing import Optional
+
+# Default memory caps
+_DEFAULT_MEM_LIMIT_BYTES = 4 * 1024 * 1024 * 1024   # 4 GB
+_DEFAULT_JS_MEM_LIMIT_BYTES = 12 * 1024 * 1024 * 1024  # 12 GB
+_DEFAULT_JVM_MEM_LIMIT_BYTES = 12 * 1024 * 1024 * 1024  # 12 GB
+_DEFAULT_NATIVE_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
+_DEFAULT_CPU_LIMIT_SECONDS = 300
+
+# Environment overrides
+_RESOURCE_PROFILE_ENV = "CORELOOP_RESOURCE_PROFILE"
+_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES"
+_JS_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_JS"
+_JVM_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_JVM"
+_NATIVE_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_NATIVE"
+_CPU_LIMIT_ENV = "CORELOOP_RLIMIT_CPU_SECONDS"
+
+
+def _parse_optional_positive_int(raw: Optional[str]) -> Optional[int]:
+    if raw is None:
+        return None
+    value = int(raw.strip())
+    if value <= 0:
+        return 0
+    return value
+
+
+def _resolve_memory_limit_bytes() -> Optional[int]:
+    profile = os.environ.get(_RESOURCE_PROFILE_ENV, "default").strip().lower()
+
+    if profile == "js":
+        js_override = _parse_optional_positive_int(os.environ.get(_JS_MEM_LIMIT_ENV))
+        if js_override is not None:
+            return js_override
+        base_override = _parse_optional_positive_int(os.environ.get(_MEM_LIMIT_ENV))
+        if base_override is not None:
+            return base_override
+        return _DEFAULT_JS_MEM_LIMIT_BYTES
+
+    if profile == "jvm":
+        jvm_override = _parse_optional_positive_int(os.environ.get(_JVM_MEM_LIMIT_ENV))
+        if jvm_override is not None:
+            return jvm_override
+        base_override = _parse_optional_positive_int(os.environ.get(_MEM_LIMIT_ENV))
+        if base_override is not None:
+            return base_override
+        return _DEFAULT_JVM_MEM_LIMIT_BYTES
+
+    if profile == "native":
+        native_override = _parse_optional_positive_int(os.environ.get(_NATIVE_MEM_LIMIT_ENV))
+        if native_override is not None:
+            return native_override
+        base_override = _parse_optional_positive_int(os.environ.get(_MEM_LIMIT_ENV))
+        if base_override is not None:
+            return base_override
+        return _DEFAULT_NATIVE_MEM_LIMIT_BYTES
+
+    base_override = _parse_optional_positive_int(os.environ.get(_MEM_LIMIT_ENV))
+    if base_override is not None:
+        return base_override
+    return _DEFAULT_MEM_LIMIT_BYTES
+
+
+def _resolve_cpu_limit_seconds() -> int:
+    raw = os.environ.get(_CPU_LIMIT_ENV)
+    if not raw:
+        return _DEFAULT_CPU_LIMIT_SECONDS
+    parsed = int(raw.strip())
+    if parsed <= 0:
+        return _DEFAULT_CPU_LIMIT_SECONDS
+    return parsed
 
 
 def apply_resource_limits() -> None:
@@ -49,19 +127,14 @@ def apply_resource_limits() -> None:
     try:
         import resource
 
-        # 4 GB virtual address space hard limit — Node.js / V8 maps several GB
-        # of virtual space at startup even for lightweight tasks, so anything
-        # below ~2 GB causes an immediate SIGTRAP before npm can run.
-        _MEM_LIMIT = 4 * 1024 * 1024 * 1024  # 4 GB
-        resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT, resource.RLIM_INFINITY))
+        mem_limit = _resolve_memory_limit_bytes()
+        if mem_limit and mem_limit > 0:
+            resource.setrlimit(resource.RLIMIT_AS, (mem_limit, resource.RLIM_INFINITY))
 
-        # 300 CPU-seconds soft limit — matches the wall-clock DEFAULT_TIMEOUT.
-        # 60s was too low: npm ci on mid-size projects easily exceeds 60 CPU
-        # seconds during dependency resolution and linking (SIGXCPU, exit 152).
-        _CPU_LIMIT = 300
-        resource.setrlimit(resource.RLIMIT_CPU, (_CPU_LIMIT, resource.RLIM_INFINITY))
+        cpu_limit = _resolve_cpu_limit_seconds()
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, resource.RLIM_INFINITY))
 
-    except (ImportError, ValueError, resource.error) as exc:
+    except (ImportError, ValueError, OSError) as exc:
         # Log but don't raise — a failed rlimit shouldn't abort the pipeline.
         # The wall-clock timeout is still in effect.
         import logging

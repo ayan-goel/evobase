@@ -5,13 +5,24 @@ from runner.validator.types import BaselineResult, StepResult
 
 
 def classify_pipeline_failure(result: BaselineResult) -> StepFailure:
-    """Classify the first failed step from a baseline result."""
-    failed = next((step for step in result.steps if step.exit_code != 0), None)
-    if not failed:
+    """Classify baseline failure, preferring critical failed gates.
+
+    Baseline fails only on critical gates (install/test). Optional steps like
+    build/typecheck can fail earlier in the sequence and should not mask the
+    decisive test/install failure used for adaptive retry decisions.
+    """
+    failed_steps = [step for step in result.steps if step.exit_code != 0]
+    if not failed_steps:
         return StepFailure(
             step_name="unknown",
             reason_code=FailureReasonCode.UNKNOWN,
         )
+
+    critical_failed = next(
+        (step for step in failed_steps if step.name in {"install", "test"}),
+        None,
+    )
+    failed = critical_failed or failed_steps[0]
 
     reason = _classify_step_failure(failed)
     return StepFailure(
@@ -30,6 +41,15 @@ def _classify_step_failure(step: StepResult) -> FailureReasonCode:
         (
             "out of memory",
             "heap out of memory",
+            "outofmemoryerror",
+            "java heap space",
+            "gc overhead limit exceeded",
+            "metaspace",
+            "linker command failed",
+            "ld terminated with signal 9",
+            "collect2: fatal error",
+            "cannot allocate memory",
+            "ld: final link failed",
             "wasm",
             "webassembly.instantiate()",
         ),
@@ -58,13 +78,36 @@ def _classify_step_failure(step: StepResult) -> FailureReasonCode:
             "cannot find module 'vitest'",
             "cannot find module \"vitest\"",
             "cannot find module 'typescript'",
+            "modulenotfounderror: no module named 'pytest'",
+            "modulenotfounderror: no module named 'mypy'",
+            "importerror: cannot import name 'pytest'",
+            "importerror: cannot import name \"pytest\"",
             "command not found: vitest",
             "vitest: not found",
             "tsc: not found",
             "jest: not found",
+            "pytest: command not found",
+            "mypy: command not found",
+            "cannot load such file -- rspec",
+            "uninitialized constant rspec",
+            "rspec: command not found",
         ),
     ):
         return FailureReasonCode.MISSING_DEV_DEPENDENCIES
+
+    if _contains_any(
+        text,
+        (
+            "missing go.sum entry",
+            "go.mod and go.sum are out of sync",
+            "go: inconsistent vendoring",
+            "no required module provides package",
+            "go: module",
+            "proxy.golang.org",
+            "context deadline exceeded",
+        ),
+    ):
+        return FailureReasonCode.INSTALL_FAILED
 
     if _contains_any(
         text,

@@ -37,7 +37,7 @@ class DetectionResult:
     typecheck_cmd: Optional[str] = None
     bench_cmd: Optional[str] = None
     framework: Optional[str] = None
-    language: Optional[str] = None  # "javascript" | "python" | "go" | "rust"
+    language: Optional[str] = None  # "javascript" | "python" | "go" | "rust" | "java" | "ruby" | "cpp"
     confidence: float = 0.0
     evidence: list[str] = field(default_factory=list)
 

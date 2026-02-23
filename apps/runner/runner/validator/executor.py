@@ -33,6 +33,11 @@ DEFAULT_TIMEOUT = 300
 # JS package managers that need devDependencies during baseline validation.
 JS_PACKAGE_MANAGERS = {"npm", "pnpm", "yarn", "bun"}
 RUBY_PACKAGE_MANAGERS = {"bundler"}
+_RESOURCE_PROFILE_ENV = "CORELOOP_RESOURCE_PROFILE"
+_RESOURCE_PROFILE_DEFAULT = "default"
+_RESOURCE_PROFILE_JS = "js"
+_RESOURCE_PROFILE_JVM = "jvm"
+_RESOURCE_PROFILE_NATIVE = "native"
 
 
 def _install_step_env(package_manager: Optional[str]) -> Optional[dict]:
@@ -153,6 +158,66 @@ def _append_test_args(test_command: str, args: list[str]) -> str:
     return f"{command} {arg_string}"
 
 
+def _prepare_subprocess_env(command: str, env: Optional[dict]) -> dict:
+    """Merge caller env with inherited env and inject resource profile."""
+    merged_env = dict(os.environ)
+    if env:
+        merged_env.update(env)
+    merged_env.setdefault(_RESOURCE_PROFILE_ENV, _infer_resource_profile(command))
+    return merged_env
+
+
+def _infer_resource_profile(command: str) -> str:
+    """Infer resource-limit profile from command text."""
+    normalized = " ".join(command.strip().lower().split())
+    js_hints = (
+        "npm ",
+        "pnpm ",
+        "yarn ",
+        "bun ",
+        "node ",
+        "npx ",
+        "next ",
+        "vitest",
+        "jest",
+        "tsc ",
+        "vite ",
+        "webpack ",
+    )
+    if any(hint in normalized for hint in js_hints):
+        return _RESOURCE_PROFILE_JS
+
+    jvm_hints = (
+        "mvn ",
+        "mvnw",
+        "gradle ",
+        "gradlew",
+        "java ",
+        "javac ",
+        "kotlinc ",
+    )
+    if any(hint in normalized for hint in jvm_hints):
+        return _RESOURCE_PROFILE_JVM
+
+    native_hints = (
+        "cargo ",
+        "rustc ",
+        "cmake ",
+        "ctest ",
+        "make ",
+        "ninja ",
+        "clang++",
+        "g++",
+        "ld ",
+        "lld ",
+        "mold ",
+        "-fuse-ld=",
+    )
+    if any(hint in normalized for hint in native_hints):
+        return _RESOURCE_PROFILE_NATIVE
+    return _RESOURCE_PROFILE_DEFAULT
+
+
 def run_step(
     name: str,
     command: str,
@@ -166,7 +231,15 @@ def run_step(
     Raises no exceptions — always returns a StepResult.
     Timeout is enforced to prevent runaway processes.
     """
-    logger.info("Running step '%s': %s (cwd=%s)", name, command, cwd)
+    subprocess_env = _prepare_subprocess_env(command, env)
+    resource_profile = subprocess_env.get(_RESOURCE_PROFILE_ENV, _RESOURCE_PROFILE_DEFAULT)
+    logger.info(
+        "Running step '%s': %s (cwd=%s, resource_profile=%s)",
+        name,
+        command,
+        cwd,
+        resource_profile,
+    )
     start = time.monotonic()
 
     try:
@@ -177,7 +250,7 @@ def run_step(
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=env,
+            env=subprocess_env,
             preexec_fn=apply_resource_limits,
         )
         duration = time.monotonic() - start

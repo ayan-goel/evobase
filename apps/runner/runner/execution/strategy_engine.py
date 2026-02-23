@@ -43,6 +43,13 @@ def run_with_strategy(
         bench_command=bench_cmd,
         settings=settings,
     )
+    logger.info(
+        "Baseline strategy config mode=%s max_attempts=%d language=%s pm=%s",
+        settings.mode.value,
+        settings.max_attempts,
+        detection.language,
+        detection.package_manager,
+    )
 
     adapter = _resolve_adapter(detection)
     attempt_plan = adapter.build_strict_plan(context)
@@ -107,12 +114,13 @@ def _execute_attempt(
     """Execute one baseline attempt plan."""
     result = BaselineResult()
     try:
+        shared_env = plan.shared_env
         install_step = run_step(
             "install",
             plan.install_command,
             repo_dir,
             timeout=timeout_seconds,
-            env=plan.install_env,
+            env=_merge_step_env(shared_env, plan.install_env),
         )
         result.steps.append(install_step)
         if not install_step.is_success:
@@ -124,6 +132,7 @@ def _execute_attempt(
                 plan.build_command,
                 repo_dir,
                 timeout=timeout_seconds,
+                env=shared_env,
             )
             result.steps.append(build_step)
             if not build_step.is_success:
@@ -135,6 +144,7 @@ def _execute_attempt(
                 plan.typecheck_command,
                 repo_dir,
                 timeout=timeout_seconds,
+                env=shared_env,
             )
             result.steps.append(typecheck_step)
             if not typecheck_step.is_success:
@@ -146,7 +156,7 @@ def _execute_attempt(
                 plan.test_command,
                 repo_dir,
                 timeout=timeout_seconds,
-                env=plan.test_env,
+                env=_merge_step_env(shared_env, plan.test_env),
             )
             result.steps.append(test_step)
             if not test_step.is_success:
@@ -158,6 +168,7 @@ def _execute_attempt(
                 plan.bench_command,
                 repo_dir,
                 timeout=timeout_seconds,
+                env=shared_env,
             )
             result.steps.append(bench_step)
             if bench_step.is_success:
@@ -177,6 +188,15 @@ def _execute_attempt(
         return result
 
 
+def _merge_step_env(shared_env: Optional[dict], step_env: Optional[dict]) -> Optional[dict]:
+    if not shared_env and not step_env:
+        return None
+    merged = dict(shared_env or {})
+    if step_env:
+        merged.update(step_env)
+    return merged
+
+
 class BaseAdapter:
     """Default adapter: deterministic strict plan with no adaptive retry."""
 
@@ -191,6 +211,7 @@ class BaseAdapter:
             typecheck_command=detection.typecheck_cmd,
             test_command=detection.test_cmd,
             bench_command=context.bench_command,
+            shared_env=None,
             install_env=None,
             test_env=None,
             metadata={},
@@ -272,24 +293,49 @@ class PythonAdapter(BaseAdapter):
         previous_plan: ExecutionAttemptPlan,
         failure: StepFailure,
     ) -> Optional[ExecutionAttemptPlan]:
-        if failure.step_name != "install":
-            return None
-        if failure.reason_code not in {
-            FailureReasonCode.COMMAND_NOT_FOUND,
-            FailureReasonCode.WRAPPER_MISSING,
-        }:
-            return None
+        if (
+            failure.step_name == "install"
+            and failure.reason_code in {
+                FailureReasonCode.COMMAND_NOT_FOUND,
+                FailureReasonCode.WRAPPER_MISSING,
+            }
+        ):
+            fallback_requirements = context.repo_dir / "requirements.txt"
+            if not fallback_requirements.exists():
+                return None
+            if previous_plan.install_command.strip() == "pip install -r requirements.txt":
+                return None
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            return replace(
+                previous_plan,
+                install_command="pip install -r requirements.txt",
+                metadata=metadata,
+            )
 
-        fallback_requirements = context.repo_dir / "requirements.txt"
-        if not fallback_requirements.exists():
-            return None
-        if previous_plan.install_command.strip() == "pip install -r requirements.txt":
-            return None
-        return replace(
-            previous_plan,
-            install_command="pip install -r requirements.txt",
-            metadata={"adaptive_reason": failure.reason_code.value},
-        )
+        if (
+            failure.reason_code == FailureReasonCode.MISSING_DEV_DEPENDENCIES
+            and failure.step_name in {"install", "test"}
+        ):
+            if previous_plan.metadata.get("python_dev_retry") == "1":
+                return None
+            dev_install = _python_install_with_dev_dependencies(
+                command=previous_plan.install_command,
+                package_manager=context.detection.package_manager or "",
+                repo_dir=context.repo_dir,
+            )
+            if dev_install == previous_plan.install_command:
+                return None
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            metadata["python_dev_retry"] = "1"
+            return replace(
+                previous_plan,
+                install_command=dev_install,
+                metadata=metadata,
+            )
+
+        return None
 
 
 class RubyAdapter(BaseAdapter):
@@ -297,11 +343,7 @@ class RubyAdapter(BaseAdapter):
 
     def build_strict_plan(self, context: ExecutionContext) -> ExecutionAttemptPlan:
         plan = super().build_strict_plan(context)
-        return replace(plan, install_env=_bundler_install_env())
-
-
-class GoAdapter(BaseAdapter):
-    """Go adapter with optional module graph refresh fallback."""
+        return replace(plan, install_env=_bundler_install_env(max_jobs=2))
 
     def build_adaptive_plan(
         self,
@@ -313,20 +355,26 @@ class GoAdapter(BaseAdapter):
             return None
         if failure.reason_code not in {
             FailureReasonCode.INSTALL_FAILED,
-            FailureReasonCode.COMMAND_NOT_FOUND,
+            FailureReasonCode.MISSING_DEV_DEPENDENCIES,
+            FailureReasonCode.OOM,
+            FailureReasonCode.CONCURRENCY_OOM,
         }:
             return None
-        if "go mod tidy" in previous_plan.install_command:
+        if previous_plan.metadata.get("ruby_install_retry") == "1":
             return None
+
+        metadata = dict(previous_plan.metadata)
+        metadata["adaptive_reason"] = failure.reason_code.value
+        metadata["ruby_install_retry"] = "1"
         return replace(
             previous_plan,
-            install_command="go mod tidy && go mod download",
-            metadata={"adaptive_reason": failure.reason_code.value},
+            install_env=_bundler_install_env(max_jobs=1),
+            metadata=metadata,
         )
 
 
-class RustAdapter(BaseAdapter):
-    """Rust adapter with lock refresh fallback."""
+class GoAdapter(BaseAdapter):
+    """Go adapter with optional module graph refresh fallback."""
 
     def build_adaptive_plan(
         self,
@@ -334,37 +382,174 @@ class RustAdapter(BaseAdapter):
         previous_plan: ExecutionAttemptPlan,
         failure: StepFailure,
     ) -> Optional[ExecutionAttemptPlan]:
-        if failure.step_name != "install":
+        if failure.step_name == "install":
+            if failure.reason_code not in {
+                FailureReasonCode.INSTALL_FAILED,
+                FailureReasonCode.COMMAND_NOT_FOUND,
+            }:
+                return None
+            if "go mod tidy" in previous_plan.install_command:
+                return None
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            return replace(
+                previous_plan,
+                install_command="go mod tidy && go mod download",
+                metadata=metadata,
+            )
+
+        if (
+            failure.step_name == "test"
+            and failure.reason_code in {FailureReasonCode.CONCURRENCY_OOM, FailureReasonCode.OOM}
+            and previous_plan.test_command
+            and "go test" in previous_plan.test_command
+        ):
+            if previous_plan.metadata.get("go_test_retry") == "1":
+                return None
+            throttled_test = _append_go_test_throttle_flags(previous_plan.test_command)
+            if throttled_test == previous_plan.test_command:
+                return None
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            metadata["go_test_retry"] = "1"
+            return replace(
+                previous_plan,
+                test_command=throttled_test,
+                metadata=metadata,
+            )
+
+        return None
+
+
+class RustAdapter(BaseAdapter):
+    """Rust adapter with linker-aware adaptive fallback."""
+
+    def build_strict_plan(self, context: ExecutionContext) -> ExecutionAttemptPlan:
+        plan = super().build_strict_plan(context)
+        metadata = dict(plan.metadata)
+        metadata["rust_memory_profile"] = "strict"
+        return replace(
+            plan,
+            shared_env=_rust_shared_env(max_jobs=2),
+            metadata=metadata,
+        )
+
+    def build_adaptive_plan(
+        self,
+        context: ExecutionContext,
+        previous_plan: ExecutionAttemptPlan,
+        failure: StepFailure,
+    ) -> Optional[ExecutionAttemptPlan]:
+        if failure.step_name == "install" and failure.reason_code == FailureReasonCode.INSTALL_FAILED:
+            if "cargo update" in previous_plan.install_command:
+                return None
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            return replace(
+                previous_plan,
+                install_command="cargo update && cargo fetch",
+                metadata=metadata,
+            )
+
+        linker_like_failure = failure.reason_code in {
+            FailureReasonCode.OOM,
+            FailureReasonCode.CONCURRENCY_OOM,
+        } or _is_native_linker_failure(failure.stderr, failure.stdout)
+        if not linker_like_failure:
             return None
-        if failure.reason_code != FailureReasonCode.INSTALL_FAILED:
+        if previous_plan.metadata.get("rust_memory_profile") == "adaptive":
             return None
-        if "cargo update" in previous_plan.install_command:
-            return None
+
+        metadata = dict(previous_plan.metadata)
+        metadata["adaptive_reason"] = failure.reason_code.value
+        metadata["rust_memory_profile"] = "adaptive"
         return replace(
             previous_plan,
-            install_command="cargo update && cargo fetch",
-            metadata={"adaptive_reason": failure.reason_code.value},
+            shared_env=_rust_shared_env(max_jobs=1),
+            metadata=metadata,
+        )
+
+
+class CppAdapter(BaseAdapter):
+    """C/C++ adapter with bounded parallelism for linker-heavy builds."""
+
+    def build_strict_plan(self, context: ExecutionContext) -> ExecutionAttemptPlan:
+        plan = super().build_strict_plan(context)
+        metadata = dict(plan.metadata)
+        metadata["cpp_memory_profile"] = "strict"
+        return replace(
+            plan,
+            shared_env=_cpp_shared_env(max_jobs=2),
+            metadata=metadata,
+        )
+
+    def build_adaptive_plan(
+        self,
+        context: ExecutionContext,
+        previous_plan: ExecutionAttemptPlan,
+        failure: StepFailure,
+    ) -> Optional[ExecutionAttemptPlan]:
+        linker_like_failure = failure.reason_code in {
+            FailureReasonCode.OOM,
+            FailureReasonCode.CONCURRENCY_OOM,
+        } or _is_native_linker_failure(failure.stderr, failure.stdout)
+        if not linker_like_failure:
+            return None
+        if previous_plan.metadata.get("cpp_memory_profile") == "adaptive":
+            return None
+
+        metadata = dict(previous_plan.metadata)
+        metadata["adaptive_reason"] = failure.reason_code.value
+        metadata["cpp_memory_profile"] = "adaptive"
+        return replace(
+            previous_plan,
+            shared_env=_cpp_shared_env(max_jobs=1),
+            metadata=metadata,
         )
 
 
 class JvmAdapter(BaseAdapter):
     """JVM adapter with wrapper-missing fallback to system toolchains."""
 
+    def build_strict_plan(self, context: ExecutionContext) -> ExecutionAttemptPlan:
+        plan = super().build_strict_plan(context)
+        metadata = dict(plan.metadata)
+        metadata["jvm_memory_profile"] = "strict"
+        return replace(
+            plan,
+            shared_env=_jvm_shared_env(heap_mb=4096, max_workers=2),
+            metadata=metadata,
+        )
+
     def build_adaptive_plan(
         self,
         context: ExecutionContext,
         previous_plan: ExecutionAttemptPlan,
         failure: StepFailure,
     ) -> Optional[ExecutionAttemptPlan]:
-        if failure.reason_code != FailureReasonCode.WRAPPER_MISSING:
+        if failure.reason_code == FailureReasonCode.WRAPPER_MISSING:
+            mapped = _replace_jvm_wrapper_commands(previous_plan)
+            if mapped == previous_plan:
+                return None
+            metadata = dict(mapped.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            return replace(mapped, metadata=metadata)
+
+        if failure.reason_code not in {
+            FailureReasonCode.OOM,
+            FailureReasonCode.CONCURRENCY_OOM,
+        }:
+            return None
+        if previous_plan.metadata.get("jvm_memory_profile") == "adaptive":
             return None
 
-        mapped = _replace_jvm_wrapper_commands(previous_plan)
-        if mapped == previous_plan:
-            return None
+        metadata = dict(previous_plan.metadata)
+        metadata["adaptive_reason"] = failure.reason_code.value
+        metadata["jvm_memory_profile"] = "adaptive"
         return replace(
-            mapped,
-            metadata={"adaptive_reason": failure.reason_code.value},
+            previous_plan,
+            shared_env=_jvm_shared_env(heap_mb=3072, max_workers=1),
+            metadata=metadata,
         )
 
 
@@ -399,6 +584,8 @@ def _resolve_adapter(detection: DetectionResult) -> EcosystemAdapter:
         return GoAdapter()
     if language == "rust" or package_manager == "cargo":
         return RustAdapter()
+    if language == "cpp" or package_manager in {"cmake", "make"}:
+        return CppAdapter()
     if language == "java" or package_manager in {"maven", "gradle"}:
         return JvmAdapter()
     return BaseAdapter()
@@ -426,6 +613,10 @@ def _fallback_install_command(detection: DetectionResult) -> str:
         return "go mod download"
     if pm == "cargo":
         return "cargo fetch"
+    if pm == "cmake":
+        return "cmake -S . -B build"
+    if pm == "make":
+        return "true"
     if pm == "maven":
         return "mvn -q -DskipTests install"
     if pm == "gradle":
@@ -447,12 +638,117 @@ def _js_test_env() -> dict:
     return env
 
 
-def _bundler_install_env() -> dict:
+def _python_install_with_dev_dependencies(command: str, package_manager: str, repo_dir: Path) -> str:
+    normalized = command.strip()
+    pm = package_manager.lower()
+
+    requirements = repo_dir / "requirements.txt"
+    requirements_dev = repo_dir / "requirements-dev.txt"
+    if pm in {"pip", ""}:
+        if requirements.exists() and requirements_dev.exists():
+            return "pip install -r requirements.txt -r requirements-dev.txt"
+        if requirements_dev.exists():
+            return "pip install -r requirements-dev.txt"
+        if requirements.exists():
+            return "pip install -r requirements.txt"
+        return normalized
+
+    lowered = normalized.lower()
+    if pm == "poetry":
+        if "--with dev" in lowered:
+            return normalized
+        if normalized.startswith("poetry install"):
+            return f"{normalized} --with dev"
+        return "poetry install --with dev"
+    if pm == "pipenv":
+        if "--dev" in lowered:
+            return normalized
+        if normalized.startswith("pipenv install"):
+            return f"{normalized} --dev"
+        return "pipenv install --dev"
+    if pm == "uv":
+        if normalized.startswith("uv sync"):
+            if "--dev" in lowered:
+                return normalized
+            return f"{normalized} --dev"
+        return "uv sync --dev"
+
+    return normalized
+
+
+def _bundler_install_env(max_jobs: int = 2) -> dict:
     env = dict(os.environ)
     env["BUNDLE_DEPLOYMENT"] = "false"
     env["BUNDLE_FROZEN"] = "false"
     env["BUNDLE_WITHOUT"] = ""
+    env["BUNDLE_JOBS"] = str(max_jobs)
     return env
+
+
+def _jvm_shared_env(heap_mb: int, max_workers: int) -> dict:
+    env = dict(os.environ)
+    java_flags = (
+        f"-Xms256m -Xmx{heap_mb}m -XX:MaxMetaspaceSize=768m "
+        "-XX:+UseSerialGC -XX:+HeapDumpOnOutOfMemoryError"
+    )
+    gradle_flags = (
+        f"-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false "
+        f"-Dorg.gradle.workers.max={max_workers}"
+    )
+    env["JAVA_TOOL_OPTIONS"] = _append_env_tokens(env.get("JAVA_TOOL_OPTIONS"), java_flags)
+    env["MAVEN_OPTS"] = _append_env_tokens(env.get("MAVEN_OPTS"), java_flags)
+    env["GRADLE_OPTS"] = _append_env_tokens(env.get("GRADLE_OPTS"), gradle_flags)
+    return env
+
+
+def _rust_shared_env(max_jobs: int) -> dict:
+    env = dict(os.environ)
+    env["CARGO_BUILD_JOBS"] = str(max_jobs)
+    env["CARGO_INCREMENTAL"] = "0"
+    return env
+
+
+def _cpp_shared_env(max_jobs: int) -> dict:
+    env = dict(os.environ)
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(max_jobs)
+    env["MAKEFLAGS"] = f"-j{max_jobs}"
+    return env
+
+
+def _is_native_linker_failure(stderr: str, stdout: str = "") -> bool:
+    text = f"{stdout}\n{stderr}".lower()
+    linker_hints = (
+        "linker command failed",
+        "linking with",
+        "collect2: fatal error",
+        "ld: out of memory",
+        "cannot allocate memory",
+        "terminated with signal 9",
+        "killed",
+    )
+    return any(hint in text for hint in linker_hints)
+
+
+def _append_env_tokens(existing: Optional[str], additional: str) -> str:
+    if not existing:
+        return additional
+    return f"{existing} {additional}"
+
+
+def _append_go_test_throttle_flags(test_command: str) -> str:
+    command = test_command.strip()
+    lowered = f" {command.lower()} "
+    if "go test" not in lowered:
+        return command
+
+    args: list[str] = []
+    if " -parallel " not in lowered and " -parallel=" not in lowered:
+        args.append("-parallel=1")
+    if " -p " not in lowered and " -p=" not in lowered:
+        args.append("-p=1")
+    if not args:
+        return command
+    return f"{command} {' '.join(args)}"
 
 
 def _is_vitest_command(repo_dir: Path, test_command: str) -> bool:

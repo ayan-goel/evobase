@@ -12,6 +12,7 @@ Language priority (first match wins):
   pyproject.toml / requirements.txt → Python
   Gemfile                           → Ruby
   pom.xml / build.gradle            → JVM (Java/Kotlin)
+  CMakeLists.txt / Makefile+native  → C/C++
   package.json (default)            → JavaScript / TypeScript
 """
 
@@ -56,6 +57,8 @@ def detect(repo_dir: Path) -> DetectionResult:
         or (repo_dir / "build.gradle.kts").exists()
     ):
         return _detect_jvm(repo_dir)
+    if _is_cpp_repo(repo_dir):
+        return _detect_cpp(repo_dir)
     return _detect_js(repo_dir)
 
 
@@ -258,6 +261,35 @@ def _detect_rust(repo_dir: Path) -> DetectionResult:
     return result
 
 
+def _detect_cpp(repo_dir: Path) -> DetectionResult:
+    """Detect a C/C++ project via CMakeLists.txt or Makefile markers."""
+    from runner.detector.cpp import detect_cpp
+    result = detect_cpp(repo_dir)
+
+    ci_signals = parse_ci_workflows(repo_dir)
+    ci_signals.pop("package_manager", None)
+
+    all_confidences: list[float] = [result.confidence] if result.confidence else []
+
+    for category in ("build", "test", "typecheck"):
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="cpp",
+                signals=ci_signals.get(category, []),
+            )
+        )
+        if ci_best and getattr(result, f"{category}_cmd") is None:
+            setattr(result, f"{category}_cmd", ci_best.command)
+            result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
+            all_confidences.append(ci_best.confidence)
+
+    if all_confidences:
+        result.confidence = min(all_confidences)
+
+    _log_result(result)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -271,6 +303,28 @@ def _pick_best(signals: list[CommandSignal]) -> CommandSignal | None:
     if not signals:
         return None
     return max(signals, key=lambda s: s.confidence)
+
+
+def _is_cpp_repo(repo_dir: Path) -> bool:
+    if (repo_dir / "CMakeLists.txt").exists():
+        return True
+    if not (repo_dir / "Makefile").exists():
+        return False
+    return _has_native_source_markers(repo_dir)
+
+
+def _has_native_source_markers(repo_dir: Path) -> bool:
+    extensions = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
+    top_level_candidates = [repo_dir] + [
+        repo_dir / name for name in ("src", "source", "cpp", "csrc", "native", "include")
+    ]
+    for base_dir in top_level_candidates:
+        if not base_dir.exists() or not base_dir.is_dir():
+            continue
+        for path in base_dir.rglob("*"):
+            if path.is_file() and path.suffix.lower() in extensions:
+                return True
+    return False
 
 
 def _log_result(result: DetectionResult) -> None:

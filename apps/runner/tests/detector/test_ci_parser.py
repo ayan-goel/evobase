@@ -312,6 +312,21 @@ class TestCategorizeCommand:
     def test_compile_matches_build(self):
         assert _categorize_command("npm run compile") == "build"
 
+    def test_cmake_matches_build(self):
+        assert _categorize_command("cmake --build build") == "build"
+
+    def test_ctest_matches_test(self):
+        assert _categorize_command("ctest --test-dir build") == "test"
+
+    def test_unittest_matches_test(self):
+        assert _categorize_command("python -m unittest discover -v") == "test"
+
+    def test_rake_test_matches_test(self):
+        assert _categorize_command("bundle exec rake test") == "test"
+
+    def test_golangci_lint_matches_typecheck(self):
+        assert _categorize_command("golangci-lint run ./...") == "typecheck"
+
 
 class TestInferCommandEcosystems:
     def test_detects_python_command(self):
@@ -322,6 +337,18 @@ class TestInferCommandEcosystems:
         ecosystems = infer_command_ecosystems("./gradlew test")
         assert "java" in ecosystems
 
+    def test_detects_cpp_command(self):
+        ecosystems = infer_command_ecosystems("cmake --build build --parallel")
+        assert "cpp" in ecosystems
+
+    def test_detects_python_unittest_command(self):
+        ecosystems = infer_command_ecosystems("python -m unittest discover")
+        assert "python" in ecosystems
+
+    def test_detects_go_linter_command(self):
+        ecosystems = infer_command_ecosystems("golangci-lint run ./...")
+        assert "go" in ecosystems
+
     def test_returns_empty_for_generic_command(self):
-        ecosystems = infer_command_ecosystems("make test")
+        ecosystems = infer_command_ecosystems("echo hello")
         assert ecosystems == set()

@@ -160,3 +160,86 @@ jobs:
         result = detect(tmp_path)
         assert result.language == "javascript"
         assert result.package_manager == "npm"
+
+    def test_cpp_repo_ignores_js_ci_test_command(self, tmp_path):
+        (tmp_path / "CMakeLists.txt").write_text(
+            """
+cmake_minimum_required(VERSION 3.20)
+project(native_app LANGUAGES C CXX)
+add_executable(app src/main.cpp)
+""".strip(),
+            encoding="utf-8",
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.cpp").write_text("int main() { return 0; }", encoding="utf-8")
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+""".strip(),
+            encoding="utf-8",
+        )
+
+        result = detect(tmp_path)
+        assert result.language == "cpp"
+        assert result.test_cmd != "npm test"
+        assert "ctest" in (result.test_cmd or "")
+
+    def test_go_repo_ignores_ruby_ci_test_command(self, tmp_path):
+        (tmp_path / "go.mod").write_text(
+            "module example.com/app\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bundle exec rspec
+""".strip(),
+            encoding="utf-8",
+        )
+
+        result = detect(tmp_path)
+        assert result.language == "go"
+        assert result.test_cmd != "bundle exec rspec"
+        assert "go test" in (result.test_cmd or "")
+
+    def test_ruby_repo_ignores_go_ci_typecheck_command(self, tmp_path):
+        (tmp_path / "Gemfile").write_text(
+            """
+source "https://rubygems.org"
+gem "rails"
+""".strip(),
+            encoding="utf-8",
+        )
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            """
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: go vet ./...
+""".strip(),
+            encoding="utf-8",
+        )
+
+        result = detect(tmp_path)
+        assert result.language == "ruby"
+        assert result.typecheck_cmd != "go vet ./..."
