@@ -247,13 +247,15 @@ function renderFileAnalysing(event: RunEvent) {
   const fileIndex = (d.file_index as number | undefined) ?? 0;
   const totalFiles = (d.total_files as number | undefined) ?? 0;
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2 text-sm opacity-60">
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        <span className="inline-flex h-2 w-2 rounded-full bg-blue-400/70" />
+    <div className="flex items-center gap-3 rounded-lg border border-blue-500/25 bg-blue-500/[0.04] px-4 py-3 text-sm">
+      <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400/40" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-400" />
       </span>
-      <span className="min-w-0 flex-1 text-white/40 text-xs">
-        Started analysing <Mono>{file ? shortenPath(file) : "…"}</Mono>
-      </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
+        <Mono>{file ? shortenPath(file) : "…"}</Mono>
+        <span className="text-xs italic text-blue-400/60">analysing…</span>
+      </div>
       <span className="shrink-0 text-[10px] text-white/20 font-mono tabular-nums">
         {fileIndex + 1}/{totalFiles}
       </span>
@@ -318,8 +320,8 @@ function renderFileAnalysed(event: RunEvent) {
                   ) : null}
                 </div>
                 {opp.rationale ? (
-                  <p className="mt-1.5 text-xs text-white/40">
-                    {opp.rationale}
+                  <p className="mt-1.5 text-xs text-white/40 leading-relaxed">
+                    <InlineMarkdown text={opp.rationale} />
                   </p>
                 ) : null}
                 {opp.approaches.length > 0 ? (
@@ -327,9 +329,11 @@ function renderFileAnalysed(event: RunEvent) {
                     <p className="font-medium text-white/40 mb-1">
                       Approaches ({opp.approaches.length}):
                     </p>
-                    <ol className="list-decimal list-inside space-y-0.5">
+                    <ol className="list-decimal list-inside space-y-1">
                       {opp.approaches.map((approach, approachIdx) => (
-                        <li key={approachIdx}>{approach}</li>
+                        <li key={approachIdx} className="leading-relaxed">
+                          <InlineMarkdown text={approach} />
+                        </li>
                       ))}
                     </ol>
                   </div>
@@ -406,7 +410,9 @@ function renderPatchApproachStarted(event: RunEvent) {
               </p>
             ) : null}
             {detail.rationale ? (
-              <p className="text-xs text-white/40">{detail.rationale}</p>
+              <p className="text-xs text-white/40 leading-relaxed">
+                <InlineMarkdown text={detail.rationale} />
+              </p>
             ) : null}
             {detail.approachDescFull ? (
               <div>
@@ -414,7 +420,7 @@ function renderPatchApproachStarted(event: RunEvent) {
                   Full approach
                 </p>
                 <p className="text-xs text-white/60 leading-relaxed">
-                  {detail.approachDescFull}
+                  <InlineMarkdown text={detail.approachDescFull} />
                 </p>
               </div>
             ) : null}
@@ -500,7 +506,7 @@ function renderPatchApproachCompleted(event: RunEvent) {
 
             {detail.approachDescFull ? (
               <p className="text-xs text-white/50 leading-relaxed">
-                {detail.approachDescFull}
+                <InlineMarkdown text={detail.approachDescFull} />
               </p>
             ) : null}
 
@@ -525,7 +531,7 @@ function renderPatchApproachCompleted(event: RunEvent) {
                   Patch explanation
                 </p>
                 <p className="text-xs text-white/55 leading-relaxed">
-                  {detail.explanation}
+                  <InlineMarkdown text={detail.explanation} />
                 </p>
               </div>
             ) : null}
@@ -1283,4 +1289,25 @@ function shortenPath(path: string): string {
   const parts = path.split("/");
   if (parts.length <= 2) return path;
   return `…/${parts.slice(-2).join("/")}`;
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  const parts = text.split(/(`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+          return (
+            <code
+              key={i}
+              className="font-mono text-emerald-300/80 bg-white/[0.06] rounded px-1 py-0.5 text-[11px] break-all"
+            >
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
 }

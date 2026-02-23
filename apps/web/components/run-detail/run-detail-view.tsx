@@ -281,15 +281,44 @@ function GroupedTimeline({
     const result: Array<
       { type: "header"; phase: string } | { type: "event"; event: RunEvent }
     > = [];
+
+    // Pre-index all analysed events by file so the analysing row can be
+    // promoted to the analysed state at the same timeline position.
+    const analysedByFile = new Map<string, RunEvent>();
+    for (const event of events) {
+      if (event.type === "discovery.file.analysed") {
+        const file = event.data.file as string | undefined;
+        if (file) analysedByFile.set(file, event);
+      }
+    }
+    // IDs of analysed events that have already been placed at the analysing
+    // position — skip them when encountered in the normal pass.
+    const skippedIds = new Set<string>();
+
     let lastPhase: string | null = null;
 
     for (const event of events) {
+      if (skippedIds.has(event.id)) continue;
+
       const normPhase = _normalisePhase(event.phase);
       if (normPhase !== lastPhase) {
         result.push({ type: "header", phase: normPhase });
         lastPhase = normPhase;
       }
-      result.push({ type: "event", event });
+
+      if (event.type === "discovery.file.analysing") {
+        const file = event.data.file as string | undefined;
+        const analysed = file ? analysedByFile.get(file) : undefined;
+        if (analysed) {
+          // Promote the analysed event to this position; skip it later.
+          skippedIds.add(analysed.id);
+          result.push({ type: "event", event: analysed });
+        } else {
+          result.push({ type: "event", event });
+        }
+      } else {
+        result.push({ type: "event", event });
+      }
     }
 
     return result;

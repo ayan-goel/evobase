@@ -145,6 +145,63 @@ describe("EventCard", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("renders backtick code spans in rationale as <code> elements", () => {
+    const { container } = render(
+      <EventCard
+        event={makeEvent({
+          type: "discovery.file.analysed",
+          phase: "discovery",
+          data: {
+            file: "components/foo.tsx",
+            file_index: 0,
+            total_files: 1,
+            opportunities_found: 1,
+            opportunities: [
+              {
+                file: "components/foo.tsx",
+                location: "components/foo.tsx:10",
+                type: "performance",
+                rationale: "The `useMemo` hook is missing here.",
+                risk_level: "low",
+                affected_lines: 2,
+                approaches: [
+                  "Wrap with `React.memo` to prevent re-renders.",
+                ],
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /1 opportunity found/i }));
+
+    const codeElements = container.querySelectorAll("code");
+    const codeTexts = Array.from(codeElements).map((el) => el.textContent);
+    expect(codeTexts).toContain("useMemo");
+    expect(codeTexts).toContain("React.memo");
+  });
+
+  it("renders discovery.file.analysing as a blue card with analysing badge", () => {
+    render(
+      <EventCard
+        event={makeEvent({
+          type: "discovery.file.analysing",
+          phase: "discovery",
+          data: {
+            file: "components/run-detail/event-card.tsx",
+            file_index: 0,
+            total_files: 5,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/event-card\.tsx/i)).toBeDefined();
+    expect(screen.getByText(/analysing…/i)).toBeDefined();
+    expect(screen.getByText("1/5")).toBeDefined();
+  });
+
   it("renders expandable patch.approach.started row with enriched detail", () => {
     render(
       <EventCard
