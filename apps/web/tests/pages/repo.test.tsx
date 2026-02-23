@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { RepoView } from "@/app/repos/[repoId]/page";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
@@ -63,6 +63,10 @@ function makeProposal(): Proposal {
 }
 
 describe("RepoView", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it("renders repo heading with github_repo_id when github_full_name is absent", () => {
     render(<RepoView repo={makeRepo()} runs={[]} />);
     expect(screen.getByRole("heading", { name: "Repo #123" })).toBeDefined();
@@ -122,5 +126,66 @@ describe("RepoView", () => {
     render(<RepoView repo={makeRepo()} runs={[]} />);
     const link = screen.getByRole("link", { name: "Dashboard" });
     expect(link.getAttribute("href")).toBe("/dashboard");
+  });
+
+  it("shows Clear button when there are runs", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    expect(screen.getByRole("button", { name: "Clear" })).toBeDefined();
+  });
+
+  it("does not show Clear button when there are no runs", () => {
+    render(<RepoView repo={makeRepo()} runs={[]} />);
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
+  it("shows meta row with proposal count for completed runs", () => {
+    render(
+      <RepoView
+        repo={makeRepo()}
+        runs={[makeRun("completed", [makeProposal()])]}
+      />,
+    );
+    expect(screen.getByText(/1 proposal found/)).toBeDefined();
+  });
+
+  it("shows 'No opportunities' in meta row for completed run with no proposals", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun("completed", [])]} />);
+    expect(screen.getByText("No opportunities")).toBeDefined();
+  });
+
+  it("shows compute time in meta row when available", () => {
+    const run = { ...makeRun("completed"), compute_minutes: 3.2 };
+    render(<RepoView repo={makeRepo()} runs={[run]} />);
+    expect(screen.getByText(/3\.2 min compute/)).toBeDefined();
+  });
+
+  it("hides runs and shows hidden notice after clicking Clear", () => {
+    const oldRun = {
+      ...makeRun("completed"),
+      id: "run-old",
+      created_at: new Date(Date.now() - 10000).toISOString(),
+    };
+    render(<RepoView repo={makeRepo()} runs={[oldRun]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(screen.getByText(/older run.*hidden/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: "View all runs" })).toBeDefined();
+  });
+
+  it("restores hidden runs when View all is clicked", () => {
+    const oldRun = {
+      ...makeRun("completed"),
+      id: "run-old",
+      created_at: new Date(Date.now() - 10000).toISOString(),
+    };
+    render(<RepoView repo={makeRepo()} runs={[oldRun]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText(/older run.*hidden/i)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "View all" }));
+    expect(screen.queryByText(/older run.*hidden/i)).toBeNull();
+    expect(screen.getByText("abc1234")).toBeDefined();
   });
 });

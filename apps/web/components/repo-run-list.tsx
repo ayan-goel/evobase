@@ -18,6 +18,7 @@ interface RepoRunListProps {
 }
 
 const POLL_INTERVAL_MS = 5000;
+const HIDE_BEFORE_KEY = (repoId: string) => `hideBefore:${repoId}`;
 
 function hasActiveRun(runs: RunWithProposals[]): boolean {
   return runs.some((r) => r.status === "queued" || r.status === "running");
@@ -41,7 +42,14 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
 
 export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
+  const [hideBefore, setHideBefore] = useState<number | null>(null);
   const activeRunStatus = getActiveRunStatus(runs);
+
+  // Load persisted hideBefore on mount (client-only)
+  useEffect(() => {
+    const stored = localStorage.getItem(HIDE_BEFORE_KEY(repoId));
+    if (stored) setHideBefore(Number(stored));
+  }, [repoId]);
 
   useEffect(() => {
     if (!hasActiveRun(runs)) return;
@@ -74,24 +82,81 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
     ]);
   }
 
+  function handleClear() {
+    const ts = Date.now();
+    localStorage.setItem(HIDE_BEFORE_KEY(repoId), String(ts));
+    setHideBefore(ts);
+  }
+
+  function handleViewAll() {
+    localStorage.removeItem(HIDE_BEFORE_KEY(repoId));
+    setHideBefore(null);
+  }
+
+  // Always show active (queued/running) runs regardless of hideBefore
+  const visibleRuns = hideBefore
+    ? runs.filter(
+        (r) =>
+          r.status === "queued" ||
+          r.status === "running" ||
+          new Date(r.created_at).getTime() >= hideBefore,
+      )
+    : runs;
+
+  const hiddenCount = runs.length - visibleRuns.length;
+
   return (
     <>
       <OnboardingBanner runs={runs} />
 
-      <div className="mb-8 flex shrink-0 items-center gap-2 justify-end">
+      <div className="mb-6 flex items-center gap-2">
         <TriggerRunButton
           repoId={repoId}
           onQueued={handleQueued}
           activeStatus={activeRunStatus}
         />
+        {runs.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-xs text-white/40 hover:border-white/20 hover:text-white/60 transition-colors"
+          >
+            Clear
+          </button>
+        )}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={handleViewAll}
+            className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-xs text-white/40 hover:border-white/20 hover:text-white/60 transition-colors"
+          >
+            View all runs
+          </button>
+        )}
       </div>
 
-      {runs.length === 0 ? (
+      {hiddenCount > 0 && (
+        <div className="mb-5 flex items-center gap-2 rounded-lg border border-white/[0.05] bg-white/[0.015] px-4 py-2.5">
+          <span className="text-xs text-white/35">
+            {hiddenCount} older run{hiddenCount !== 1 ? "s" : ""} hidden
+          </span>
+          <span className="text-white/15">·</span>
+          <button
+            type="button"
+            onClick={handleViewAll}
+            className="text-xs text-white/50 underline underline-offset-2 hover:text-white/70 transition-colors"
+          >
+            View all
+          </button>
+        </div>
+      )}
+
+      {visibleRuns.length === 0 ? (
         <EmptyRuns />
       ) : (
-        <div className="space-y-8">
-          {runs.map((run) => (
-            <RunSection
+        <div className="space-y-4">
+          {visibleRuns.map((run) => (
+            <RunCard
               key={run.id}
               run={run}
               proposals={run.proposals}
@@ -124,7 +189,7 @@ const FAILURE_MESSAGES: Record<string, { title: string; hint: string }> = {
   },
 };
 
-function RunSection({
+function RunCard({
   run,
   proposals,
   repoId,
@@ -143,12 +208,14 @@ function RunSection({
     : null;
 
   const isActive = run.status === "running" || run.status === "queued";
+  const isTerminal = run.status === "completed" || run.status === "failed";
 
   return (
-    <section>
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition-colors hover:border-white/[0.12]">
+      {/* Header row */}
       <Link
         href={`/repos/${repoId}/runs/${run.id}`}
-        className="mb-3 flex items-center gap-3 flex-wrap group cursor-pointer"
+        className="flex items-center gap-3 flex-wrap group cursor-pointer"
       >
         <RunStatusBadge status={run.status} />
         <span className="text-xs text-white/40 font-mono group-hover:text-white/60 transition-colors">
@@ -163,42 +230,67 @@ function RunSection({
         </span>
       </Link>
 
-      {proposals.length === 0 ? (
-        <div className="pl-1">
-          {isActive ? (
-            <Link
-              href={`/repos/${repoId}/runs/${run.id}`}
-              className="text-sm text-blue-400/60 hover:text-blue-400/80 transition-colors"
-            >
-              View live progress →
-            </Link>
+      {/* Meta row — only for terminal runs */}
+      {isTerminal && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-white/30">
+          {run.status === "completed" ? (
+            <span>
+              {proposals.length > 0
+                ? `${proposals.length} proposal${proposals.length !== 1 ? "s" : ""} found`
+                : "No opportunities"}
+            </span>
           ) : run.failure_step ? (
-            <BaselineFailureMessage
-              failureStep={run.failure_step}
-              repoId={repoId}
-            />
-          ) : run.status === "failed" && setupFailing ? (
-            <p className="text-sm text-amber-400/70">
-              Setup failed — install step could not run.{" "}
-              <a
-                href={`/repos/${repoId}/settings`}
-                className="underline underline-offset-2 hover:text-amber-400 transition-colors"
-              >
-                Set a project directory in Settings →
-              </a>
-            </p>
+            <span className="text-amber-400/60">
+              {FAILURE_MESSAGES[run.failure_step]?.title ?? "Setup failed"}
+            </span>
           ) : (
-            <p className="text-sm text-white/30">No opportunities found this run.</p>
+            <span className="text-red-400/50">Run failed</span>
+          )}
+          {run.compute_minutes != null && (
+            <>
+              <span className="text-white/15">·</span>
+              <span>~{run.compute_minutes.toFixed(1)} min compute</span>
+            </>
           )}
         </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {proposals.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} />
-          ))}
-        </div>
       )}
-    </section>
+
+      {/* Body */}
+      <div className="mt-3">
+        {proposals.length === 0 ? (
+          <>
+            {isActive ? (
+              <Link
+                href={`/repos/${repoId}/runs/${run.id}`}
+                className="text-sm text-blue-400/60 hover:text-blue-400/80 transition-colors"
+              >
+                View live progress →
+              </Link>
+            ) : run.failure_step ? (
+              <BaselineFailureMessage failureStep={run.failure_step} repoId={repoId} />
+            ) : run.status === "failed" && setupFailing ? (
+              <p className="text-sm text-amber-400/70">
+                Setup failed — install step could not run.{" "}
+                <a
+                  href={`/repos/${repoId}/settings`}
+                  className="underline underline-offset-2 hover:text-amber-400 transition-colors"
+                >
+                  Set a project directory in Settings →
+                </a>
+              </p>
+            ) : (
+              <p className="text-sm text-white/30">No opportunities found this run.</p>
+            )}
+          </>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {proposals.map((proposal) => (
+              <ProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
