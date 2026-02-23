@@ -218,6 +218,35 @@ def _infer_resource_profile(command: str) -> str:
     return _RESOURCE_PROFILE_DEFAULT
 
 
+_RLIMIT_ENV_KEYS = (
+    "CORELOOP_RESOURCE_PROFILE",
+    "CORELOOP_RLIMIT_AS_BYTES",
+    "CORELOOP_RLIMIT_AS_BYTES_JS",
+    "CORELOOP_RLIMIT_AS_BYTES_JVM",
+    "CORELOOP_RLIMIT_AS_BYTES_NATIVE",
+    "CORELOOP_RLIMIT_CPU_SECONDS",
+)
+
+
+def _make_preexec_fn(subprocess_env: dict):
+    """Create a preexec_fn that propagates resource-limit env before applying limits.
+
+    preexec_fn runs in the forked child before exec(), so os.environ still
+    reflects the parent process. The subprocess env dict (passed to
+    subprocess.run(env=...)) only takes effect at exec() time — too late for
+    preexec_fn. We bridge the gap by syncing the resource-limit keys into
+    os.environ inside the child fork, which is safe because the fork is
+    isolated from the parent.
+    """
+    captured = {k: subprocess_env[k] for k in _RLIMIT_ENV_KEYS if k in subprocess_env}
+
+    def _preexec() -> None:
+        os.environ.update(captured)
+        apply_resource_limits()
+
+    return _preexec
+
+
 def run_step(
     name: str,
     command: str,
@@ -251,7 +280,7 @@ def run_step(
             text=True,
             timeout=timeout,
             env=subprocess_env,
-            preexec_fn=apply_resource_limits,
+            preexec_fn=_make_preexec_fn(subprocess_env),
         )
         duration = time.monotonic() - start
 

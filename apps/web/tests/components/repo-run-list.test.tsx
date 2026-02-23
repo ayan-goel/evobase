@@ -94,6 +94,7 @@ describe("RepoRunList", () => {
     });
 
     expect(screen.getByText("running")).toBeDefined();
+    expect(screen.getByText("Running")).toBeDefined();
   });
 
   it("shows commit message next to SHA when present", () => {

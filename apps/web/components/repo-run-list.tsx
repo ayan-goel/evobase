@@ -22,6 +22,12 @@ function hasActiveRun(runs: RunWithProposals[]): boolean {
   return runs.some((r) => r.status === "queued" || r.status === "running");
 }
 
+function getActiveRunStatus(runs: RunWithProposals[]): Run["status"] | null {
+  if (runs.some((r) => r.status === "running")) return "running";
+  if (runs.some((r) => r.status === "queued")) return "queued";
+  return null;
+}
+
 async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[]> {
   const runs = await getRuns(repoId);
   return Promise.all(
@@ -34,6 +40,7 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
 
 export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
+  const activeRunStatus = getActiveRunStatus(runs);
 
   useEffect(() => {
     if (!hasActiveRun(runs)) return;
@@ -71,7 +78,11 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
       <OnboardingBanner runs={runs} />
 
       <div className="mb-8 flex shrink-0 items-center gap-2 justify-end">
-        <TriggerRunButton repoId={repoId} onQueued={handleQueued} />
+        <TriggerRunButton
+          repoId={repoId}
+          onQueued={handleQueued}
+          activeStatus={activeRunStatus}
+        />
       </div>
 
       {runs.length === 0 ? (

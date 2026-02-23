@@ -127,6 +127,7 @@ def apply_resource_limits() -> None:
     try:
         import resource
 
+        profile = os.environ.get(_RESOURCE_PROFILE_ENV, "default").strip().lower()
         mem_limit = _resolve_memory_limit_bytes()
         if mem_limit and mem_limit > 0:
             resource.setrlimit(resource.RLIMIT_AS, (mem_limit, resource.RLIM_INFINITY))
@@ -134,9 +135,15 @@ def apply_resource_limits() -> None:
         cpu_limit = _resolve_cpu_limit_seconds()
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, resource.RLIM_INFINITY))
 
+        import logging
+        logging.getLogger(__name__).debug(
+            "Resource limits applied: profile=%s mem=%s cpu=%ds",
+            profile,
+            f"{mem_limit / (1024**3):.1f}GB" if mem_limit else "unlimited",
+            cpu_limit,
+        )
+
     except (ImportError, ValueError, OSError) as exc:
-        # Log but don't raise — a failed rlimit shouldn't abort the pipeline.
-        # The wall-clock timeout is still in effect.
         import logging
         logging.getLogger(__name__).warning(
             "Failed to apply resource limits: %s", exc

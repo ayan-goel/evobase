@@ -90,6 +90,21 @@ describe("TriggerRunButton", () => {
     });
   });
 
+  it("shows Running badge when activeStatus is running", () => {
+    render(<TriggerRunButton repoId="repo-1" activeStatus="running" />);
+    expect(screen.getByText("Running")).toBeDefined();
+  });
+
+  it("returns to Trigger Run when parent clears active status", async () => {
+    const { rerender } = render(<TriggerRunButton repoId="repo-1" activeStatus="queued" />);
+    expect(screen.getByText("Queued")).toBeDefined();
+
+    rerender(<TriggerRunButton repoId="repo-1" activeStatus={null} />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Trigger Run" })).toBeDefined();
+    });
+  });
+
   it("returns to error state (button re-enabled) after failure", async () => {
     mockTriggerRun.mockRejectedValue(new Error("Network error"));
 

@@ -1,19 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { triggerRun } from "@/lib/api";
+import type { RunStatus } from "@/lib/types";
 
 interface TriggerRunButtonProps {
   repoId: string;
   /** Called after a run is successfully queued, with the new run id. */
   onQueued?: (runId: string) => void;
+  /** Live status from the current active run, if any. */
+  activeStatus?: RunStatus | null;
 }
 
 type State = "idle" | "loading" | "queued" | "error";
 
-export function TriggerRunButton({ repoId, onQueued }: TriggerRunButtonProps) {
+export function TriggerRunButton({ repoId, onQueued, activeStatus }: TriggerRunButtonProps) {
   const [state, setState] = useState<State>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // When parent polling confirms there is no active run anymore, clear the
+  // local queued state so the action button reappears.
+  useEffect(() => {
+    if (activeStatus === null && state === "queued") {
+      setState("idle");
+    }
+  }, [activeStatus, state]);
 
   async function handleClick() {
     setState("loading");
@@ -28,11 +39,31 @@ export function TriggerRunButton({ repoId, onQueued }: TriggerRunButtonProps) {
     }
   }
 
-  if (state === "queued") {
+  const displayStatus =
+    activeStatus === "queued" || activeStatus === "running"
+      ? activeStatus
+      : state === "queued"
+        ? "queued"
+        : null;
+
+  if (displayStatus) {
+    const isRunning = displayStatus === "running";
     return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        Queued
+      <span
+        className={
+          isRunning
+            ? "inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-300"
+            : "inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400"
+        }
+      >
+        <span
+          className={
+            isRunning
+              ? "h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse"
+              : "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"
+          }
+        />
+        {isRunning ? "Running" : "Queued"}
       </span>
     );
   }

@@ -4,13 +4,16 @@ Tests run_step() and run_baseline() with mocked subprocess calls.
 No actual commands are executed.
 """
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from runner.sandbox.limits import apply_resource_limits
+
 from runner.detector.types import DetectionResult
-from runner.validator.executor import _install_step_env, _prepare_test_step, run_baseline, run_step
+from runner.validator.executor import _install_step_env, _make_preexec_fn, _prepare_test_step, run_baseline, run_step
 from runner.validator.types import PipelineError
 
 
@@ -134,6 +137,54 @@ class TestRunStep:
 
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "native"
+
+
+class TestMakePreexecFn:
+    """Verify that _make_preexec_fn propagates resource-limit env keys to os.environ."""
+
+    @patch("runner.validator.executor.apply_resource_limits")
+    def test_syncs_resource_profile_into_os_environ(self, mock_apply):
+        """preexec_fn must set CORELOOP_RESOURCE_PROFILE in os.environ so
+        apply_resource_limits (which reads os.environ) sees the correct profile."""
+        subprocess_env = {
+            "CORELOOP_RESOURCE_PROFILE": "js",
+            "CORELOOP_RLIMIT_AS_BYTES_JS": "0",
+            "PATH": "/usr/bin",
+        }
+
+        preexec = _make_preexec_fn(subprocess_env)
+        preexec()
+
+        assert os.environ.get("CORELOOP_RESOURCE_PROFILE") == "js"
+        assert os.environ.get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+        mock_apply.assert_called_once()
+
+    @patch("runner.validator.executor.apply_resource_limits")
+    def test_does_not_propagate_non_rlimit_keys(self, mock_apply):
+        subprocess_env = {
+            "CORELOOP_RESOURCE_PROFILE": "native",
+            "PATH": "/custom/path",
+            "NODE_ENV": "development",
+        }
+
+        old_path = os.environ.get("PATH")
+        preexec = _make_preexec_fn(subprocess_env)
+        preexec()
+
+        assert os.environ.get("PATH") == old_path
+        assert os.environ.get("CORELOOP_RESOURCE_PROFILE") == "native"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_run_step_passes_preexec_with_env(self, mock_run, tmp_path):
+        """run_step must pass a preexec_fn that carries the subprocess env, not the bare function."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("test", "npm test", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        preexec = call_kwargs["preexec_fn"]
+        assert preexec is not apply_resource_limits
+        assert callable(preexec)
 
 
 class TestInstallStepEnv:
