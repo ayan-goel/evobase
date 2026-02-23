@@ -65,11 +65,25 @@ def _get_engine():
             "postgresql+asyncpg://postgres:postgres@localhost:54322/postgres",
         )
         sync_url = _build_sync_url(db_url)
-        logger.debug("Sync DB engine: %s", re.sub(r":[^@]+@", ":***@", sync_url))
+        redacted = re.sub(r":[^@]+@", ":***@", sync_url)
+        logger.info("Creating sync DB engine: %s", redacted)
         try:
-            _sync_engine = create_engine(sync_url, pool_pre_ping=True)
+            is_sqlite = sync_url.startswith("sqlite")
+            connect_args = {} if is_sqlite else {"connect_timeout": 10}
+            _sync_engine = create_engine(
+                sync_url,
+                pool_pre_ping=True,
+                pool_size=2,
+                max_overflow=3,
+                pool_timeout=15,
+                connect_args=connect_args,
+            )
+            # Eagerly verify the connection is reachable
+            if not is_sqlite:
+                with _sync_engine.connect() as conn:
+                    conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+                logger.info("Sync DB engine connected successfully")
         except Exception as exc:
-            # Last resort: in-memory SQLite so tests can run without a real DB
             logger.warning(
                 "Could not create sync engine (%s); falling back to SQLite", exc
             )

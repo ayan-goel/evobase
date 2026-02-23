@@ -39,3 +39,22 @@ celery_app.conf.update(
 
 # Auto-discover tasks in engine and scheduling modules
 celery_app.autodiscover_tasks(["app.engine", "app.scheduling"])
+
+
+# ---------------------------------------------------------------------------
+# Worker startup: verify DB connectivity so we fail fast if Postgres is
+# unreachable instead of silently hanging on the first task.
+# ---------------------------------------------------------------------------
+from celery.signals import worker_ready  # noqa: E402
+
+@worker_ready.connect
+def _check_db_on_startup(**kwargs):
+    import logging
+    _logger = logging.getLogger(__name__)
+    try:
+        from app.db.sync_session import get_sync_db
+        with get_sync_db() as session:
+            session.execute(__import__("sqlalchemy").text("SELECT 1"))
+        _logger.info("Worker DB health check passed")
+    except Exception as exc:
+        _logger.error("Worker DB health check FAILED: %s", exc)

@@ -79,7 +79,9 @@ class RunService:
         redelivered after a worker crash), this is a no-op so the pipeline
         can proceed rather than raising a state-machine error.
         """
+        logger.info("Run %s: opening sync DB session...", run_id)
         with get_sync_db() as session:
+            logger.info("Run %s: querying run row...", run_id)
             run = session.get(Run, uuid.UUID(run_id))
             if not run:
                 raise ValueError(f"Run {run_id} not found")
@@ -89,6 +91,7 @@ class RunService:
             validate_transition(run.status, "running")
             run.status = "running"
             session.commit()
+            logger.info("Run %s: committed status change", run_id)
         logger.info("Run %s: queued -> running", run_id)
 
     def execute_baseline(self, run_id: str) -> dict:

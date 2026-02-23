@@ -54,7 +54,9 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
 
     try:
         # Transition: queued -> running
+        logger.info("Run %s: transitioning to running...", run_id)
         run_service.transition_to_running(run_id)
+        logger.info("Run %s: transition complete, starting pipeline...", run_id)
 
         # Execute the full pipeline
         result = run_service.execute_full_pipeline(run_id)
@@ -66,9 +68,16 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
         return {"run_id": run_id, "status": "completed", **result}
 
     except Exception as exc:
-        logger.error("Run failed: %s — %s", run_id, str(exc))
+        logger.error(
+            "Run failed: %s — %s: %s", run_id, type(exc).__name__, str(exc),
+            exc_info=True,
+        )
 
-        # Transition: running -> failed
-        run_service.transition_to_failed(run_id, str(exc))
+        try:
+            run_service.transition_to_failed(run_id, str(exc))
+        except Exception as inner:
+            logger.error(
+                "Run %s: could not transition to failed: %s", run_id, inner
+            )
 
         return {"run_id": run_id, "status": "failed", "error": str(exc)}
