@@ -29,6 +29,9 @@ class SettingsResponse(BaseModel):
     # LLM model configuration
     llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-5"
+    # Baseline execution strategy controls
+    execution_mode: str = "adaptive"
+    max_strategy_attempts: int = 2
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -61,4 +64,15 @@ class SettingsUpdateRequest(BaseModel):
     )
     llm_model: Optional[str] = Field(
         default=None, description="Model name within the chosen provider"
+    )
+    execution_mode: Optional[str] = Field(
+        default=None,
+        pattern="^(strict|adaptive)$",
+        description='Execution strategy mode: "strict" or "adaptive"',
+    )
+    max_strategy_attempts: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=3,
+        description="Maximum baseline strategy attempts per run (1-3)",
     )

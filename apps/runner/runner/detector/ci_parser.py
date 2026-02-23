@@ -16,9 +16,29 @@ logger = logging.getLogger(__name__)
 # Patterns that indicate a specific command category.
 # Checked against `run:` step values (case-insensitive).
 INSTALL_PATTERNS = ["install", "ci"]
-BUILD_PATTERNS = ["build", "compile"]
-TEST_PATTERNS = ["test", "spec", "jest", "vitest", "mocha", "pytest"]
-TYPECHECK_PATTERNS = ["typecheck", "type-check", "tsc"]
+BUILD_PATTERNS = ["build", "compile", "assemble", "package"]
+TEST_PATTERNS = [
+    "test",
+    "spec",
+    "jest",
+    "vitest",
+    "mocha",
+    "pytest",
+    "rspec",
+    "cargo test",
+    "go test",
+    "mvn test",
+    "gradle test",
+]
+TYPECHECK_PATTERNS = [
+    "typecheck",
+    "type-check",
+    "tsc",
+    "mypy",
+    "pyright",
+    "go vet",
+    "cargo clippy",
+]
 
 # Package manager indicators found in CI steps
 PM_INDICATORS: dict[str, str] = {
@@ -29,6 +49,53 @@ PM_INDICATORS: dict[str, str] = {
     "pnpm install": "pnpm",
     "pnpm/action-setup": "pnpm",
     "bun install": "bun",
+    "pip install": "pip",
+    "poetry install": "poetry",
+    "pipenv install": "pipenv",
+    "uv sync": "uv",
+    "bundle install": "bundler",
+    "go mod download": "go",
+    "go mod tidy": "go",
+    "cargo fetch": "cargo",
+    "mvnw": "maven",
+    "mvn ": "maven",
+    "gradlew": "gradle",
+    "gradle ": "gradle",
+}
+
+# Heuristic hints for ecosystem compatibility checks in the orchestrator.
+_ECOSYSTEM_HINTS: dict[str, tuple[str, ...]] = {
+    "javascript": (
+        "npm ",
+        "pnpm ",
+        "yarn ",
+        "bun ",
+        "vitest",
+        "jest",
+        "tsc",
+        "node ",
+    ),
+    "python": (
+        "pip ",
+        "pipenv ",
+        "poetry ",
+        "uv ",
+        "pytest",
+        "python ",
+        "mypy",
+        "pyright",
+    ),
+    "ruby": (
+        "bundle ",
+        "bundler",
+        "rspec",
+        "rake",
+        "rails ",
+        "ruby ",
+    ),
+    "go": ("go ", "gofmt", "golangci"),
+    "rust": ("cargo ", "rustc", "clippy"),
+    "java": ("mvn", "gradle", "javac", "java ", "kotlinc"),
 }
 
 
@@ -156,3 +223,17 @@ def _categorize_command(run_cmd: str) -> str | None:
             return "install"
 
     return None
+
+
+def infer_command_ecosystems(command: str) -> set[str]:
+    """Infer likely ecosystem(s) for a command using keyword hints.
+
+    Returns an empty set for generic commands where ecosystem is ambiguous.
+    """
+    lowered = command.lower()
+    inferred = {
+        ecosystem
+        for ecosystem, hints in _ECOSYSTEM_HINTS.items()
+        if any(hint in lowered for hint in hints)
+    }
+    return inferred

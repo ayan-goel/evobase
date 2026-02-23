@@ -153,7 +153,7 @@ class TestModelMetadata:
             "repo_id", "compute_budget_minutes", "max_prs_per_day",
             "max_proposals_per_run", "max_candidates_per_run", "schedule",
             "paused", "consecutive_setup_failures", "consecutive_flaky_runs", "last_run_at",
-            "llm_provider", "llm_model",
+            "llm_provider", "llm_model", "execution_mode", "max_strategy_attempts",
         }
         assert column_names == expected
 

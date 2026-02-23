@@ -396,6 +396,31 @@ class TestExecuteFullPipeline:
         assert result["reason"] == "baseline_failed"
         assert result["baseline_completed"] is False
 
+    def test_passes_strategy_settings_into_run_baseline(self) -> None:
+        run = self._make_run_mock()
+        repo = self._make_repo_mock()
+        strategy_settings = _make_settings(execution_mode="strict", max_strategy_attempts=1)
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection()), \
+             patch("runner.validator.executor.run_baseline", return_value=_make_baseline(is_success=False)) as mock_baseline, \
+             patch("app.runs.service._increment_failure_counter"):
+
+            session = MagicMock()
+            session.get.side_effect = lambda m, pk: run if m == Run else (
+                repo if m == Repository else strategy_settings
+            )
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            RunService().execute_full_pipeline(str(run.id))
+
+        assert mock_baseline.called
+        kwargs = mock_baseline.call_args.kwargs
+        assert kwargs["execution_mode"] == "strict"
+        assert kwargs["max_strategy_attempts"] == 1
+
     def test_baseline_failure_persists_critical_failing_step(self) -> None:
         """When baseline fails, failure_step reflects the critical failing step."""
         run = self._make_run_mock()
@@ -444,6 +469,34 @@ class TestExecuteFullPipeline:
         assert result["reason"] == "baseline_failed"
         assert result["failure_step"] == "test"
         assert captured_run_row.failure_step == "test"
+
+    def test_baseline_failure_includes_failure_reason_code(self) -> None:
+        run = self._make_run_mock()
+        repo = self._make_repo_mock()
+        failed_baseline = _make_baseline(is_success=False)
+        failed_baseline.failure_reason_code = "lockfile_drift"
+        install_step = MagicMock()
+        install_step.name = "install"
+        install_step.exit_code = 1
+        failed_baseline.steps = [install_step]
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection()), \
+             patch("runner.validator.executor.run_baseline", return_value=failed_baseline), \
+             patch("app.runs.service._increment_failure_counter"):
+
+            session = MagicMock()
+            session.get.side_effect = lambda m, pk: run if m == Run else (
+                repo if m == Repository else _make_settings()
+            )
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            result = RunService().execute_full_pipeline(str(run.id))
+
+        assert result["reason"] == "baseline_failed"
+        assert result["failure_reason_code"] == "lockfile_drift"
 
     def test_returns_no_test_cmd_when_tests_not_detected(self) -> None:
         """If no test command exists, agent cycle is skipped to prevent unvalidated proposals."""
@@ -596,18 +649,54 @@ class TestExecuteFullPipeline:
 
         assert captured_run_row.commit_message == "fix: resolve memory leak in cache layer"
 
+    def test_clone_log_redacts_installation_token(self) -> None:
+        """Clone log should never contain raw GitHub installation tokens."""
+        run = self._make_run_mock()
+        repo = self._make_repo_mock(github_full_name="acme/private-repo")
+        repo.installation_id = 999
+
+        with patch("app.runs.service.get_sync_db") as mock_db, \
+             patch("app.github.client.get_installation_token", new=AsyncMock(return_value="ghs_super_secret")), \
+             patch("runner.sandbox.checkout.clone_repo"), \
+             patch("runner.detector.orchestrator.detect", return_value=_make_detection()), \
+             patch("runner.validator.executor.run_baseline", return_value=_make_baseline(is_success=False)), \
+             patch("app.runs.service._increment_failure_counter"), \
+             patch("app.runs.service.logger.info") as mock_logger_info:
+
+            session = MagicMock()
+            session.get.side_effect = lambda m, pk: run if m == Run else (
+                repo if m == Repository else _make_settings()
+            )
+            mock_db.return_value.__enter__ = lambda s: session
+            mock_db.return_value.__exit__ = lambda s, *a: None
+
+            RunService().execute_full_pipeline(str(run.id))
+
+        clone_logs = [
+            call for call in mock_logger_info.call_args_list
+            if call.args and call.args[0] == "Run %s: cloning %s"
+        ]
+        assert clone_logs, "expected a clone log entry"
+        redacted_url = clone_logs[0].args[2]
+        assert "ghs_super_secret" not in redacted_url
+        assert redacted_url == "https://x-access-token:***@github.com/acme/private-repo.git"
+
 
 def _make_settings(
     llm_provider="anthropic",
     llm_model="claude-sonnet-4-5",
     max_candidates_per_run=20,
     max_proposals_per_run=10,
+    execution_mode="adaptive",
+    max_strategy_attempts=2,
 ):
     s = MagicMock(spec=Settings)
     s.llm_provider = llm_provider
     s.llm_model = llm_model
     s.max_candidates_per_run = max_candidates_per_run
     s.max_proposals_per_run = max_proposals_per_run
+    s.execution_mode = execution_mode
+    s.max_strategy_attempts = max_strategy_attempts
     s.paused = False
     s.consecutive_setup_failures = 0
     s.consecutive_flaky_runs = 0

@@ -39,6 +39,8 @@ class TestGetSettings:
         assert data["paused"] is False
         assert data["consecutive_setup_failures"] == 0
         assert data["consecutive_flaky_runs"] == 0
+        assert data["execution_mode"] == "adaptive"
+        assert data["max_strategy_attempts"] == 2
 
     async def test_creates_settings_row_on_first_get(
         self, seeded_client: AsyncClient, seeded_db: AsyncSession
@@ -78,6 +80,7 @@ class TestGetSettings:
             "repo_id", "compute_budget_minutes", "max_prs_per_day",
             "max_proposals_per_run", "max_candidates_per_run", "schedule", "paused",
             "consecutive_setup_failures", "consecutive_flaky_runs", "last_run_at",
+            "execution_mode", "max_strategy_attempts",
         }
         assert expected_keys.issubset(data.keys())
 
@@ -230,6 +233,30 @@ class TestUpdateSettings:
         data = res.json()
         assert data["llm_model"] == "claude-sonnet-4-5"
         assert data["llm_provider"] == "anthropic"  # unchanged
+
+    async def test_updates_execution_mode_and_attempts(self, seeded_client: AsyncClient) -> None:
+        res = await seeded_client.put(
+            f"/repos/{STUB_REPO_ID}/settings",
+            json={"execution_mode": "strict", "max_strategy_attempts": 1},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["execution_mode"] == "strict"
+        assert data["max_strategy_attempts"] == 1
+
+    async def test_rejects_invalid_execution_mode(self, seeded_client: AsyncClient) -> None:
+        res = await seeded_client.put(
+            f"/repos/{STUB_REPO_ID}/settings",
+            json={"execution_mode": "experimental"},
+        )
+        assert res.status_code == 422
+
+    async def test_rejects_invalid_max_strategy_attempts(self, seeded_client: AsyncClient) -> None:
+        res = await seeded_client.put(
+            f"/repos/{STUB_REPO_ID}/settings",
+            json={"max_strategy_attempts": 5},
+        )
+        assert res.status_code == 422
 
 
 # ---------------------------------------------------------------------------

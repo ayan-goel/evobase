@@ -18,7 +18,7 @@ Language priority (first match wins):
 import logging
 from pathlib import Path
 
-from runner.detector.ci_parser import parse_ci_workflows
+from runner.detector.ci_parser import infer_command_ecosystems, parse_ci_workflows
 from runner.detector.package_json import (
     detect_framework,
     detect_package_manager,
@@ -71,7 +71,11 @@ def _detect_js(repo_dir: Path) -> DetectionResult:
     pm_signal = detect_package_manager(repo_dir)
     ci_signals = parse_ci_workflows(repo_dir)
 
-    ci_pm_signals = ci_signals.pop("package_manager", [])
+    ci_pm_signals = [
+        signal
+        for signal in ci_signals.pop("package_manager", [])
+        if signal.command in {"npm", "pnpm", "yarn", "bun"}
+    ]
     best_pm = _pick_best([pm_signal] + ci_pm_signals)
     if best_pm:
         result.package_manager = best_pm.command
@@ -81,7 +85,11 @@ def _detect_js(repo_dir: Path) -> DetectionResult:
     pkg_signals = parse_package_json(repo_dir)
 
     for category in ("build", "test", "typecheck"):
-        best = _pick_best(pkg_signals.get(category, []) + ci_signals.get(category, []))
+        compatible_ci = _filter_compatible_ci_signals(
+            language="javascript",
+            signals=ci_signals.get(category, []),
+        )
+        best = _pick_best(pkg_signals.get(category, []) + compatible_ci)
         if best:
             pm = result.package_manager or "npm"
             resolved_cmd = best.command.replace("{pm}", pm)
@@ -116,7 +124,12 @@ def _detect_python(repo_dir: Path) -> DetectionResult:
     all_confidences: list[float] = [result.confidence] if result.confidence else []
 
     for category in ("build", "test", "typecheck"):
-        ci_best = _pick_best(ci_signals.get(category, []))
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="python",
+                signals=ci_signals.get(category, []),
+            )
+        )
         if ci_best and getattr(result, f"{category}_cmd") is None:
             setattr(result, f"{category}_cmd", ci_best.command)
             result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
@@ -140,7 +153,12 @@ def _detect_go(repo_dir: Path) -> DetectionResult:
     all_confidences: list[float] = [result.confidence] if result.confidence else []
 
     for category in ("build", "test", "typecheck"):
-        ci_best = _pick_best(ci_signals.get(category, []))
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="go",
+                signals=ci_signals.get(category, []),
+            )
+        )
         if ci_best and getattr(result, f"{category}_cmd") is None:
             setattr(result, f"{category}_cmd", ci_best.command)
             result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
@@ -164,7 +182,12 @@ def _detect_ruby(repo_dir: Path) -> DetectionResult:
     all_confidences: list[float] = [result.confidence] if result.confidence else []
 
     for category in ("build", "test", "typecheck"):
-        ci_best = _pick_best(ci_signals.get(category, []))
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="ruby",
+                signals=ci_signals.get(category, []),
+            )
+        )
         if ci_best and getattr(result, f"{category}_cmd") is None:
             setattr(result, f"{category}_cmd", ci_best.command)
             result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
@@ -188,7 +211,12 @@ def _detect_jvm(repo_dir: Path) -> DetectionResult:
     all_confidences: list[float] = [result.confidence] if result.confidence else []
 
     for category in ("build", "test", "typecheck"):
-        ci_best = _pick_best(ci_signals.get(category, []))
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="java",
+                signals=ci_signals.get(category, []),
+            )
+        )
         if ci_best and getattr(result, f"{category}_cmd") is None:
             setattr(result, f"{category}_cmd", ci_best.command)
             result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
@@ -212,7 +240,12 @@ def _detect_rust(repo_dir: Path) -> DetectionResult:
     all_confidences: list[float] = [result.confidence] if result.confidence else []
 
     for category in ("build", "test", "typecheck"):
-        ci_best = _pick_best(ci_signals.get(category, []))
+        ci_best = _pick_best(
+            _filter_compatible_ci_signals(
+                language="rust",
+                signals=ci_signals.get(category, []),
+            )
+        )
         if ci_best and getattr(result, f"{category}_cmd") is None:
             setattr(result, f"{category}_cmd", ci_best.command)
             result.evidence.append(f"{category}_cmd: {ci_best.command} ({ci_best.source})")
@@ -248,3 +281,22 @@ def _log_result(result: DetectionResult) -> None:
         result.framework,
         result.confidence,
     )
+
+
+def _filter_compatible_ci_signals(
+    language: str,
+    signals: list[CommandSignal],
+) -> list[CommandSignal]:
+    """Keep CI signals that appear compatible with the detected language."""
+    return [signal for signal in signals if _is_signal_compatible(language, signal)]
+
+
+def _is_signal_compatible(language: str, signal: CommandSignal) -> bool:
+    ecosystems = infer_command_ecosystems(signal.command)
+    if not ecosystems:
+        # Generic commands (e.g. make test) are allowed for all languages.
+        return True
+    normalized_language = language.lower()
+    if normalized_language == "java":
+        return "java" in ecosystems
+    return normalized_language in ecosystems

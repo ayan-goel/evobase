@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from runner.sandbox.checkout import SandboxError, validate_repo_url
+from runner.sandbox.checkout import SandboxError, redact_repo_url, validate_repo_url
 
 
 # ---------------------------------------------------------------------------
@@ -124,3 +124,21 @@ class TestDnsFailure:
         with patch("socket.getaddrinfo", fail_resolution):
             with pytest.raises(SandboxError, match="resolve"):
                 validate_repo_url("https://does-not-exist.invalid/repo")
+
+
+class TestRepoUrlRedaction:
+    def test_masks_password_in_tokenized_url(self) -> None:
+        url = "https://x-access-token:ghs_super_secret_token@github.com/acme/repo.git"
+        redacted = redact_repo_url(url)
+        assert "ghs_super_secret_token" not in redacted
+        assert redacted == "https://x-access-token:***@github.com/acme/repo.git"
+
+    def test_masks_username_when_no_password_present(self) -> None:
+        url = "https://ghs_super_secret_token@github.com/acme/repo.git"
+        redacted = redact_repo_url(url)
+        assert "ghs_super_secret_token" not in redacted
+        assert redacted == "https://***@github.com/acme/repo.git"
+
+    def test_url_without_credentials_is_unchanged(self) -> None:
+        url = "https://github.com/acme/repo.git"
+        assert redact_repo_url(url) == url

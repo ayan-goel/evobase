@@ -131,6 +131,8 @@ export interface RepoSettings {
   last_run_at: string | null;
   llm_provider: string;
   llm_model: string;
+  execution_mode: "strict" | "adaptive";
+  max_strategy_attempts: number;
 }
 
 export interface Installation {

@@ -68,6 +68,8 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
           max_prs_per_day: settings.max_prs_per_day,
           max_proposals_per_run: settings.max_proposals_per_run,
           max_candidates_per_run: settings.max_candidates_per_run,
+          execution_mode: settings.execution_mode,
+          max_strategy_attempts: settings.max_strategy_attempts,
           paused: settings.paused,
           llm_provider: settings.llm_provider,
           llm_model: settings.llm_model,
@@ -298,6 +300,43 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         />
         <p className="text-xs text-white/35">
           Total patch validation attempts allowed per run.
+        </p>
+      </div>
+
+      {/* Execution strategy mode */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
+          Baseline execution mode
+        </label>
+        <select
+          value={settings.execution_mode}
+          onChange={(e) => handleChange("execution_mode", e.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-white/25 focus:outline-none"
+        >
+          <option value="adaptive" className="bg-neutral-900">Adaptive (recommended)</option>
+          <option value="strict" className="bg-neutral-900">Strict</option>
+        </select>
+        <p className="text-xs text-white/35">
+          Adaptive runs strict first, then applies one bounded fallback strategy when
+          failures match known signatures.
+        </p>
+      </div>
+
+      {/* Max strategy attempts */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
+          Max baseline strategy attempts
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={3}
+          value={settings.max_strategy_attempts}
+          onChange={(e) => handleChange("max_strategy_attempts", parseInt(e.target.value, 10) || 1)}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-white/25 focus:outline-none focus:ring-0"
+        />
+        <p className="text-xs text-white/35">
+          Hard cap for strict + adaptive retries (1-3).
         </p>
       </div>
 

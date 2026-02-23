@@ -1,0 +1,5 @@
+ALTER TABLE settings
+ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'adaptive';
+
+ALTER TABLE settings
+ADD COLUMN IF NOT EXISTS max_strategy_attempts INTEGER NOT NULL DEFAULT 2;

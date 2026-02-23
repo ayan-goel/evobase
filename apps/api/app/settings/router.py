@@ -124,6 +124,10 @@ async def update_settings(
         settings.llm_provider = body.llm_provider
     if body.llm_model is not None:
         settings.llm_model = body.llm_model
+    if body.execution_mode is not None:
+        settings.execution_mode = body.execution_mode
+    if body.max_strategy_attempts is not None:
+        settings.max_strategy_attempts = body.max_strategy_attempts
 
     await db.commit()
     await db.refresh(settings)

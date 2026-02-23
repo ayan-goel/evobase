@@ -18,7 +18,7 @@ import socket
 import subprocess
 import tempfile
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from runner.sandbox.limits import apply_resource_limits
 
@@ -48,6 +48,30 @@ class SandboxError(Exception):
     """Raised when a sandbox security check fails."""
 
 
+def redact_repo_url(url: str) -> str:
+    """Return a clone URL safe to write into logs.
+
+    Masks embedded credentials (e.g. installation tokens) while preserving
+    host/path context useful for debugging.
+    """
+    parsed = urlparse(url)
+    if parsed.username is None:
+        return url
+
+    host = parsed.hostname or ""
+    if not host:
+        return url
+
+    port = f":{parsed.port}" if parsed.port else ""
+    if parsed.password is not None:
+        auth = f"{parsed.username}:***@"
+    else:
+        auth = "***@"
+
+    redacted_netloc = f"{auth}{host}{port}"
+    return urlunparse(parsed._replace(netloc=redacted_netloc))
+
+
 def validate_repo_url(url: str) -> None:
     """Validate a repository URL before cloning.
 
@@ -66,16 +90,17 @@ def validate_repo_url(url: str) -> None:
         raise SandboxError("Repository URL must not be empty")
 
     parsed = urlparse(url)
+    safe_url = redact_repo_url(url)
 
     # Only allow HTTPS
     if parsed.scheme != "https":
         raise SandboxError(
-            f"Repository URL must use HTTPS (got scheme '{parsed.scheme}'): {url}"
+            f"Repository URL must use HTTPS (got scheme '{parsed.scheme}'): {safe_url}"
         )
 
     hostname = parsed.hostname
     if not hostname:
-        raise SandboxError(f"Repository URL has no hostname: {url}")
+        raise SandboxError(f"Repository URL has no hostname: {safe_url}")
 
     # Resolve hostname to IP addresses and check each against private ranges
     try:
@@ -96,10 +121,10 @@ def validate_repo_url(url: str) -> None:
             if ip in private_net:
                 raise SandboxError(
                     f"SSRF: repository hostname '{hostname}' resolves to "
-                    f"private address {ip} (network {private_net}): {url}"
+                    f"private address {ip} (network {private_net}): {safe_url}"
                 )
 
-    logger.debug("URL validation passed: %s", url)
+    logger.debug("URL validation passed: %s", safe_url)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +153,7 @@ def clone_repo(
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = ["git", "clone", "--depth", str(depth), repo_url, str(workspace_dir)]
-    logger.info("Cloning %s into %s", repo_url, workspace_dir)
+    logger.info("Cloning %s into %s", redact_repo_url(repo_url), workspace_dir)
 
     result = subprocess.run(
         cmd,

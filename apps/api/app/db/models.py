@@ -354,5 +354,9 @@ class Settings(Base):
     # LLM model selection — user configures which model analyses this repo
     llm_provider: Mapped[str] = mapped_column(Text, nullable=False, default="anthropic")
     llm_model: Mapped[str] = mapped_column(Text, nullable=False, default="claude-sonnet-4-5")
+    # Baseline execution strategy: "strict" (single deterministic attempt)
+    # or "adaptive" (strict first, then bounded adaptive fallback attempts).
+    execution_mode: Mapped[str] = mapped_column(Text, nullable=False, default="adaptive")
+    max_strategy_attempts: Mapped[int] = mapped_column(nullable=False, default=2)
 
     repository: Mapped["Repository"] = relationship(back_populates="settings")

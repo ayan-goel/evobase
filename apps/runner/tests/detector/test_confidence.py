@@ -111,3 +111,52 @@ class TestEvidenceTracking:
         fw_evidence = [e for e in result.evidence if "framework" in e]
         assert len(fw_evidence) == 1
         assert "express" in fw_evidence[0]
+
+
+class TestCiSignalCompatibilityGating:
+    def test_python_repo_ignores_js_ci_test_command(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("pytest==8.0.0\n", encoding="utf-8")
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+""".strip(),
+            encoding="utf-8",
+        )
+
+        result = detect(tmp_path)
+        assert result.language == "python"
+        assert result.test_cmd != "npm test"
+        assert "pytest" in (result.test_cmd or "")
+
+    def test_js_repo_ignores_python_ci_package_manager(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"test": "vitest run"}}),
+            encoding="utf-8",
+        )
+        (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install -r requirements.txt
+""".strip(),
+            encoding="utf-8",
+        )
+
+        result = detect(tmp_path)
+        assert result.language == "javascript"
+        assert result.package_manager == "npm"

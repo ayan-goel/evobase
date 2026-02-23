@@ -10,6 +10,7 @@ import pytest
 
 from runner.detector.ci_parser import (
     _categorize_command,
+    infer_command_ecosystems,
     parse_ci_workflows,
 )
 
@@ -310,3 +311,17 @@ class TestCategorizeCommand:
 
     def test_compile_matches_build(self):
         assert _categorize_command("npm run compile") == "build"
+
+
+class TestInferCommandEcosystems:
+    def test_detects_python_command(self):
+        ecosystems = infer_command_ecosystems("pytest -q")
+        assert "python" in ecosystems
+
+    def test_detects_java_command(self):
+        ecosystems = infer_command_ecosystems("./gradlew test")
+        assert "java" in ecosystems
+
+    def test_returns_empty_for_generic_command(self):
+        ecosystems = infer_command_ecosystems("make test")
+        assert ecosystems == set()

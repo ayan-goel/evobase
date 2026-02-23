@@ -53,6 +53,11 @@ class BaselineResult:
     bench_result: Optional[dict] = None
     is_success: bool = False
     error: Optional[str] = None
+    # Strategy metadata for strict/adaptive execution attempts.
+    strategy_attempts: int = 1
+    strategy_mode: str = "strict"
+    failure_reason_code: Optional[str] = None
+    adaptive_transition_reason: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -60,6 +65,10 @@ class BaselineResult:
             "bench_result": self.bench_result,
             "is_success": self.is_success,
             "error": self.error,
+            "strategy_attempts": self.strategy_attempts,
+            "strategy_mode": self.strategy_mode,
+            "failure_reason_code": self.failure_reason_code,
+            "adaptive_transition_reason": self.adaptive_transition_reason,
             "total_duration_seconds": round(
                 sum(s.duration_seconds for s in self.steps), 3
             ),

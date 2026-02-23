@@ -10,12 +10,15 @@ stdout/stderr capture for artifact storage.
 
 import logging
 import os
+import json
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional
 
 from runner.detector.types import DetectionResult
+from runner.execution.strategy_engine import run_with_strategy
+from runner.execution.strategy_types import StrategySettings
 from runner.sandbox.limits import apply_resource_limits
 from runner.validator.types import BaselineResult, PipelineError, StepResult
 
@@ -57,6 +60,97 @@ def _install_step_env(package_manager: Optional[str]) -> Optional[dict]:
         env["BUNDLE_FROZEN"] = "false"
         env["BUNDLE_WITHOUT"] = ""
     return env
+
+
+def _prepare_test_step(
+    repo_dir: Path,
+    package_manager: Optional[str],
+    test_command: str,
+) -> tuple[str, Optional[dict]]:
+    """Return command/env overrides for the baseline test step.
+
+    For JS package managers we force CI mode and optionally throttle Vitest
+    worker fan-out to reduce worker-memory spikes in constrained runtimes.
+    """
+    pm = (package_manager or "").lower()
+    if pm not in JS_PACKAGE_MANAGERS:
+        return test_command, None
+
+    env = dict(os.environ)
+    env["CI"] = "true"
+
+    command = test_command
+    if _is_vitest_command(repo_dir, test_command):
+        command = _append_vitest_throttle_flags(test_command)
+
+    return command, env
+
+
+def _is_vitest_command(repo_dir: Path, test_command: str) -> bool:
+    """Detect whether a test command resolves to Vitest."""
+    lowered = test_command.lower()
+    if "vitest" in lowered:
+        return True
+    if not _is_js_test_script_command(test_command):
+        return False
+
+    script = _read_package_json_test_script(repo_dir)
+    return bool(script and "vitest" in script.lower())
+
+
+def _is_js_test_script_command(command: str) -> bool:
+    """Return True when the command is a package-manager test script invocation."""
+    normalized = " ".join(command.strip().lower().split())
+    return normalized.startswith(
+        (
+            "npm run test",
+            "pnpm run test",
+            "yarn test",
+            "yarn run test",
+            "bun test",
+            "bun run test",
+        )
+    )
+
+
+def _read_package_json_test_script(repo_dir: Path) -> Optional[str]:
+    """Read scripts.test from package.json, if present."""
+    package_json_path = repo_dir / "package.json"
+    if not package_json_path.exists():
+        return None
+    try:
+        payload = json.loads(package_json_path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    scripts = payload.get("scripts", {})
+    script = scripts.get("test")
+    return script if isinstance(script, str) else None
+
+
+def _append_vitest_throttle_flags(test_command: str) -> str:
+    """Append conservative Vitest worker flags when not already specified."""
+    lowered = test_command.lower()
+    args: list[str] = []
+
+    if "--maxworkers" not in lowered and "--runinband" not in lowered:
+        args.append("--maxWorkers=1")
+    if "--pool" not in lowered:
+        args.append("--pool=forks")
+    if not args:
+        return test_command
+
+    return _append_test_args(test_command, args)
+
+
+def _append_test_args(test_command: str, args: list[str]) -> str:
+    """Append CLI args, preserving script-runner passthrough syntax."""
+    command = test_command.strip()
+    arg_string = " ".join(args)
+    normalized = " ".join(command.lower().split())
+
+    if normalized.startswith(("npm run ", "pnpm run ", "bun run ")):
+        return f"{command} {arg_string}" if " -- " in command else f"{command} -- {arg_string}"
+    return f"{command} {arg_string}"
 
 
 def run_step(
@@ -155,6 +249,8 @@ def run_baseline(
     repo_dir: Path,
     config: DetectionResult,
     bench_cmd: Optional[str] = None,
+    execution_mode: Optional[str] = None,
+    max_strategy_attempts: Optional[int] = None,
 ) -> BaselineResult:
     """Execute the full baseline pipeline.
 
@@ -165,68 +261,26 @@ def run_baseline(
     4. test (critical) — always runs if test_cmd exists
     5. bench (optional) — only if bench_cmd is provided
 
-    Returns a BaselineResult with all step results.
-    Raises PipelineError if a critical step fails.
+    Strategy behavior:
+    - strict mode: run a single deterministic attempt
+    - adaptive mode: run strict first, then bounded fallback attempts
+      when failures match known signatures
+
+    Returns a BaselineResult with all step results and strategy metadata.
     """
-    result = BaselineResult()
     repo_dir = Path(repo_dir)
-
-    try:
-        # 1. Install (critical)
-        install_step = run_step(
-            "install",
-            config.install_cmd or "npm ci",
-            repo_dir,
-            env=_install_step_env(config.package_manager),
-        )
-        result.steps.append(install_step)
-
-        if not install_step.is_success:
-            raise PipelineError(install_step)
-
-        # 2. Build (optional)
-        if config.build_cmd:
-            build_step = run_step("build", config.build_cmd, repo_dir)
-            result.steps.append(build_step)
-
-            if not build_step.is_success:
-                logger.warning("Build failed but is non-critical; continuing")
-
-        # 3. Typecheck (optional)
-        if config.typecheck_cmd:
-            typecheck_step = run_step("typecheck", config.typecheck_cmd, repo_dir)
-            result.steps.append(typecheck_step)
-
-            if not typecheck_step.is_success:
-                logger.warning("Typecheck failed but is non-critical; continuing")
-
-        # 4. Test (critical)
-        if config.test_cmd:
-            test_step = run_step("test", config.test_cmd, repo_dir)
-            result.steps.append(test_step)
-
-            if not test_step.is_success:
-                raise PipelineError(test_step)
-
-        # 5. Bench (optional)
-        if bench_cmd:
-            bench_step = run_step("bench", bench_cmd, repo_dir)
-            result.steps.append(bench_step)
-
-            if bench_step.is_success:
-                result.bench_result = {
-                    "command": bench_cmd,
-                    "stdout": bench_step.stdout,
-                    "duration_seconds": bench_step.duration_seconds,
-                }
-            else:
-                logger.warning("Bench failed but is non-critical; continuing")
-
-        result.is_success = True
-
-    except PipelineError as exc:
-        result.is_success = False
-        result.error = str(exc)
-        logger.error("Pipeline failed: %s", exc)
-
+    strategy_settings = StrategySettings.from_values(
+        execution_mode=execution_mode,
+        max_strategy_attempts=max_strategy_attempts,
+    )
+    result = run_with_strategy(
+        repo_dir=repo_dir,
+        detection=config,
+        run_step=run_step,
+        bench_cmd=bench_cmd,
+        strategy_settings=strategy_settings,
+        timeout_seconds=DEFAULT_TIMEOUT,
+    )
+    if not result.is_success and result.error:
+        logger.error("Pipeline failed: %s", result.error)
     return result

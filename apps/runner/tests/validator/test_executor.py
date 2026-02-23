@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from runner.detector.types import DetectionResult
-from runner.validator.executor import _install_step_env, run_baseline, run_step
+from runner.validator.executor import _install_step_env, _prepare_test_step, run_baseline, run_step
 from runner.validator.types import PipelineError
 
 
@@ -109,6 +109,65 @@ class TestInstallStepEnv:
     @pytest.mark.parametrize("pm", [None, "", "pip", "poetry", "cargo"])
     def test_non_js_package_managers_have_no_env_override(self, pm):
         assert _install_step_env(pm) is None
+
+
+class TestPrepareTestStep:
+    def test_vitest_script_is_throttled_for_npm_run_test(self, tmp_path):
+        package_json = tmp_path / "package.json"
+        package_json.write_text(
+            '{"scripts":{"test":"vitest run --coverage"}}',
+            encoding="utf-8",
+        )
+
+        command, env = _prepare_test_step(
+            repo_dir=tmp_path,
+            package_manager="npm",
+            test_command="npm run test",
+        )
+
+        assert command.startswith("npm run test --")
+        assert "--maxWorkers=1" in command
+        assert "--pool=forks" in command
+        assert env is not None
+        assert env["CI"] == "true"
+
+    def test_direct_vitest_command_is_throttled(self, tmp_path):
+        command, env = _prepare_test_step(
+            repo_dir=tmp_path,
+            package_manager="pnpm",
+            test_command="vitest run",
+        )
+
+        assert command == "vitest run --maxWorkers=1 --pool=forks"
+        assert env is not None
+        assert env["CI"] == "true"
+
+    def test_non_vitest_js_test_stays_unchanged(self, tmp_path):
+        package_json = tmp_path / "package.json"
+        package_json.write_text(
+            '{"scripts":{"test":"jest"}}',
+            encoding="utf-8",
+        )
+
+        command, env = _prepare_test_step(
+            repo_dir=tmp_path,
+            package_manager="yarn",
+            test_command="yarn test",
+        )
+
+        assert command == "yarn test"
+        assert env is not None
+        assert env["CI"] == "true"
+
+    def test_non_js_test_has_no_overrides(self, tmp_path):
+        command, env = _prepare_test_step(
+            repo_dir=tmp_path,
+            package_manager="pip",
+            test_command="pytest -q",
+        )
+
+        assert command == "pytest -q"
+        assert env is None
 
 
 class TestRunBaseline:

@@ -46,6 +46,8 @@ const baseSettings: RepoSettings = {
   last_run_at: null,
   llm_provider: "anthropic",
   llm_model: "claude-sonnet-4-5",
+  execution_mode: "adaptive",
+  max_strategy_attempts: 2,
 };
 
 afterEach(() => {
@@ -78,6 +80,13 @@ describe("SettingsForm", () => {
   it("renders max candidates input", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
     expect(screen.getByDisplayValue("20")).toBeDefined();
+  });
+
+  it("renders execution strategy controls", () => {
+    render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
+    const strategySelect = screen.getByDisplayValue("Adaptive (recommended)") as HTMLSelectElement;
+    expect(strategySelect.value).toBe("adaptive");
+    expect(screen.getByDisplayValue("2")).toBeDefined();
   });
 
   it("renders save button", () => {
@@ -154,7 +163,12 @@ describe("SettingsForm", () => {
     await waitFor(() => {
       expect(mockUpdateRepoSettings).toHaveBeenCalledWith(
         "repo-1",
-        expect.objectContaining({ compute_budget_minutes: 60, max_prs_per_day: 5 })
+        expect.objectContaining({
+          compute_budget_minutes: 60,
+          max_prs_per_day: 5,
+          execution_mode: "adaptive",
+          max_strategy_attempts: 2,
+        })
       );
     });
   });

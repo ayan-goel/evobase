@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         ca-certificates \
         xz-utils \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g pnpm yarn \
     && rm -rf /var/lib/apt/lists/*
@@ -91,4 +91,4 @@ RUN useradd --create-home --shell /bin/bash appuser \
 USER appuser
 
 # --beat runs the scheduler inside the worker so no separate beat service is needed
-CMD celery -A app.engine.queue worker --beat --loglevel=info --concurrency=2
+CMD celery -A app.engine.queue worker --beat --loglevel=info --concurrency=1

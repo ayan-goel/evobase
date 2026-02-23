@@ -156,6 +156,10 @@ class RunService:
                 max_proposals = (
                     settings.max_proposals_per_run if settings else 10
                 )
+                execution_mode = settings.execution_mode if settings else "adaptive"
+                max_strategy_attempts = (
+                    settings.max_strategy_attempts if settings else 2
+                )
 
             # ----------------------------------------------------------------
             # Step 2: Resolve repo URL
@@ -179,14 +183,20 @@ class RunService:
                         run_id, exc,
                     )
 
+            from runner.sandbox.checkout import (
+                checkout_sha,
+                clone_repo,
+                get_head_sha,
+                redact_repo_url,
+            )
+
             repo_url = _build_repo_url(github_full_name, github_repo_id, token=clone_token)
-            logger.info("Run %s: cloning %s", run_id, repo_url)
+            logger.info("Run %s: cloning %s", run_id, redact_repo_url(repo_url))
 
             # ----------------------------------------------------------------
             # Step 3: Clone
             # ----------------------------------------------------------------
             repo_dir = Path(tempfile.mkdtemp(prefix="coreloop-run-"))
-            from runner.sandbox.checkout import clone_repo, checkout_sha, get_head_sha
 
             clone_repo(repo_url=repo_url, workspace_dir=repo_dir)
             if sha:
@@ -291,10 +301,20 @@ class RunService:
             # ----------------------------------------------------------------
             from runner.validator.executor import run_baseline
 
-            baseline = run_baseline(repo_dir=work_dir, config=detection)
+            baseline = run_baseline(
+                repo_dir=work_dir,
+                config=detection,
+                execution_mode=execution_mode,
+                max_strategy_attempts=max_strategy_attempts,
+            )
             logger.info(
-                "Run %s: baseline success=%s steps=%d",
-                run_id, baseline.is_success, len(baseline.steps),
+                "Run %s: baseline success=%s steps=%d attempts=%d mode=%s reason=%s",
+                run_id,
+                baseline.is_success,
+                len(baseline.steps),
+                baseline.strategy_attempts,
+                baseline.strategy_mode,
+                baseline.failure_reason_code,
             )
 
             if not baseline.is_success:
@@ -330,6 +350,7 @@ class RunService:
                     "agent_skipped": True,
                     "reason": "baseline_failed",
                     "failure_step": failed_step,
+                    "failure_reason_code": baseline.failure_reason_code,
                     "run_id": run_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
