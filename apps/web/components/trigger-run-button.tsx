@@ -52,8 +52,8 @@ export function TriggerRunButton({ repoId, onQueued, activeStatus }: TriggerRunB
       <span
         className={
           isRunning
-            ? "inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-300"
-            : "inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400"
+            ? "inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-300"
+            : "inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400"
         }
       >
         <span
@@ -73,7 +73,7 @@ export function TriggerRunButton({ repoId, onQueued, activeStatus }: TriggerRunB
       <button
         onClick={handleClick}
         disabled={state === "loading"}
-        className="rounded-full border border-white/15 bg-white/8 px-4 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/14 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        className="rounded-lg border border-white/15 bg-white/[0.08] px-4 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/[0.14] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {state === "loading" ? (
           <span className="inline-flex items-center gap-2">

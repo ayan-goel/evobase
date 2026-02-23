@@ -159,7 +159,7 @@ describe("RepoView", () => {
     expect(screen.getByText(/3\.2 min compute/)).toBeDefined();
   });
 
-  it("hides runs and shows hidden notice after clicking Clear", () => {
+  it("shows View all runs button after clicking Clear", () => {
     const oldRun = {
       ...makeRun("completed"),
       id: "run-old",
@@ -169,11 +169,10 @@ describe("RepoView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
 
-    expect(screen.getByText(/older run.*hidden/i)).toBeDefined();
     expect(screen.getByRole("button", { name: "View all runs" })).toBeDefined();
   });
 
-  it("restores hidden runs when View all is clicked", () => {
+  it("restores hidden runs when View all runs is clicked", () => {
     const oldRun = {
       ...makeRun("completed"),
       id: "run-old",
@@ -182,10 +181,10 @@ describe("RepoView", () => {
     render(<RepoView repo={makeRepo()} runs={[oldRun]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(screen.getByText(/older run.*hidden/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: "View all runs" })).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "View all" }));
-    expect(screen.queryByText(/older run.*hidden/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View all runs" }));
+    expect(screen.queryByRole("button", { name: "View all runs" })).toBeNull();
     expect(screen.getByText("abc1234")).toBeDefined();
   });
 });

@@ -119,7 +119,7 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
           <button
             type="button"
             onClick={handleClear}
-            className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-xs text-white/40 hover:border-white/20 hover:text-white/60 transition-colors"
+            className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
           >
             Clear
           </button>
@@ -128,28 +128,12 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
           <button
             type="button"
             onClick={handleViewAll}
-            className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-xs text-white/40 hover:border-white/20 hover:text-white/60 transition-colors"
+            className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
           >
             View all runs
           </button>
         )}
       </div>
-
-      {hiddenCount > 0 && (
-        <div className="mb-5 flex items-center gap-2 rounded-lg border border-white/[0.05] bg-white/[0.015] px-4 py-2.5">
-          <span className="text-xs text-white/35">
-            {hiddenCount} older run{hiddenCount !== 1 ? "s" : ""} hidden
-          </span>
-          <span className="text-white/15">·</span>
-          <button
-            type="button"
-            onClick={handleViewAll}
-            className="text-xs text-white/50 underline underline-offset-2 hover:text-white/70 transition-colors"
-          >
-            View all
-          </button>
-        </div>
-      )}
 
       {visibleRuns.length === 0 ? (
         <EmptyRuns />

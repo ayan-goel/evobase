@@ -52,7 +52,7 @@ export function RepoView({ repo, runs }: RepoPageData) {
           </div>
           <Link
             href={`/repos/${repo.id}/settings`}
-            className="rounded-full border border-white/12 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
+            className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
           >
             Settings
           </Link>
