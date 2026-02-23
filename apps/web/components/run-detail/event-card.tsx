@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactElement } from "react";
 import { useState } from "react";
 import type { RunEvent } from "@/lib/types";
 
@@ -17,9 +18,10 @@ export function EventCard({ event }: EventCardProps) {
 // ---------------------------------------------------------------------------
 
 function renderCloneStarted(event: RunEvent) {
+  const repo = event.data.repo as string | undefined;
   return (
     <TimelineRow icon="📦" phase="Clone" ts={event.ts}>
-      Cloning <Mono>{event.data.repo as string}</Mono>…
+      Cloning <Mono>{repo}</Mono>…
     </TimelineRow>
   );
 }
@@ -30,59 +32,68 @@ function renderCloneCompleted(event: RunEvent) {
   return (
     <TimelineRow icon="✓" phase="Clone" ts={event.ts} success>
       Clone complete
-      {sha && (
+      {sha ? (
         <span className="ml-2 text-white/30 font-mono text-xs">{sha}</span>
-      )}
-      {msg && (
+      ) : null}
+      {msg ? (
         <span className="ml-1.5 text-white/25 text-xs">— {truncate(msg, 60)}</span>
-      )}
+      ) : null}
     </TimelineRow>
   );
 }
 
 function renderDetectionCompleted(event: RunEvent) {
-  const { language, framework, package_manager, confidence } = event.data as Record<string, unknown>;
+  const d = event.data as Record<string, unknown>;
+  const language = d.language as string | undefined;
+  const framework = d.framework as string | undefined;
+  const packageManager = d.package_manager as string | undefined;
+  const confidence = d.confidence != null ? (d.confidence as number) : null;
   return (
     <TimelineRow icon="🔍" phase="Detection" ts={event.ts} success>
       <span>
-        Detected <Badge>{language as string}</Badge>
-        {framework && (
+        Detected <Badge>{language}</Badge>
+        {framework ? (
           <>
             {" / "}
-            <Badge>{framework as string}</Badge>
+            <Badge>{framework}</Badge>
           </>
-        )}
-        {package_manager && (
+        ) : null}
+        {packageManager ? (
           <span className="text-white/30 text-xs ml-2">
-            via {package_manager as string}
+            via {packageManager}
           </span>
-        )}
-        {confidence != null && (
+        ) : null}
+        {confidence != null ? (
           <span className="text-white/20 text-xs ml-2">
-            ({Math.round((confidence as number) * 100)}% confidence)
+            ({Math.round(confidence * 100)}% confidence)
           </span>
-        )}
+        ) : null}
       </span>
     </TimelineRow>
   );
 }
 
 function renderBaselineAttemptStarted(event: RunEvent) {
-  const { attempt, mode } = event.data as Record<string, unknown>;
+  const attempt = event.data.attempt as number | undefined;
+  const mode = event.data.mode as string | undefined;
   return (
     <TimelineRow icon="▶" phase="Baseline" ts={event.ts}>
-      Starting baseline attempt {attempt as number}{" "}
+      Starting baseline attempt {attempt}{" "}
       <Badge variant={mode === "adaptive" ? "warn" : "default"}>
-        {mode as string}
+        {mode}
       </Badge>
     </TimelineRow>
   );
 }
 
 function renderBaselineStepCompleted(event: RunEvent) {
-  const { step, exit_code, duration, success, stderr_tail, command } =
-    event.data as Record<string, unknown>;
-  const isOk = success as boolean;
+  const d = event.data as Record<string, unknown>;
+  const isOk = Boolean(d.success);
+  const step = d.step as string | undefined;
+  const exitCode = d.exit_code as number | undefined;
+  const duration = d.duration as number | undefined;
+  const stderrTail = d.stderr_tail as string | undefined;
+  const command = d.command as string | undefined;
   return (
     <ExpandableRow
       icon={isOk ? "✓" : "✗"}
@@ -92,25 +103,25 @@ function renderBaselineStepCompleted(event: RunEvent) {
       error={!isOk}
       summary={
         <>
-          <Mono>{step as string}</Mono>{" "}
+          <Mono>{step}</Mono>{" "}
           {isOk ? (
             <span className="text-emerald-400/70">OK</span>
           ) : (
-            <span className="text-red-400/70">FAILED (exit {exit_code as number})</span>
+            <span className="text-red-400/70">FAILED (exit {exitCode})</span>
           )}{" "}
           <span className="text-white/20 text-xs">
-            {duration as number}s
+            {duration}s
           </span>
         </>
       }
       detail={
         <>
-          <p className="text-white/30 text-xs font-mono mb-1">$ {command as string}</p>
-          {stderr_tail && (
+          <p className="text-white/30 text-xs font-mono mb-1">$ {command}</p>
+          {stderrTail ? (
             <pre className="text-xs text-red-300/60 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
-              {stderr_tail as string}
+              {stderrTail}
             </pre>
-          )}
+          ) : null}
         </>
       }
     />
@@ -118,8 +129,11 @@ function renderBaselineStepCompleted(event: RunEvent) {
 }
 
 function renderBaselineCompleted(event: RunEvent) {
-  const { success, attempts, mode, failure_reason } = event.data as Record<string, unknown>;
-  const isOk = success as boolean;
+  const d = event.data as Record<string, unknown>;
+  const isOk = Boolean(d.success);
+  const failureReason = d.failure_reason as string | undefined;
+  const attempts = d.attempts as number | undefined;
+  const mode = d.mode as string | undefined;
   return (
     <TimelineRow
       icon={isOk ? "✓" : "✗"}
@@ -129,36 +143,40 @@ function renderBaselineCompleted(event: RunEvent) {
       error={!isOk}
     >
       Baseline {isOk ? "passed" : "failed"}
-      {!isOk && failure_reason && (
+      {!isOk && failureReason ? (
         <span className="text-red-300/60 text-xs ml-2">
-          ({failure_reason as string})
+          ({failureReason})
         </span>
-      )}
-      {(attempts as number) > 1 && (
+      ) : null}
+      {attempts != null && attempts > 1 ? (
         <span className="text-white/20 text-xs ml-2">
-          after {attempts as number} attempts ({mode as string})
+          after {attempts} attempts ({mode})
         </span>
-      )}
+      ) : null}
     </TimelineRow>
   );
 }
 
 function renderDiscoveryStarted(event: RunEvent) {
-  const { llm_model } = event.data as Record<string, unknown>;
+  const llmModel = event.data.llm_model as string | undefined;
   return (
     <TimelineRow icon="🧠" phase="Discovery" ts={event.ts}>
       Agent analyzing codebase
-      {llm_model && (
+      {llmModel ? (
         <span className="text-white/20 text-xs ml-2">
-          using {llm_model as string}
+          using {llmModel}
         </span>
-      )}
+      ) : null}
     </TimelineRow>
   );
 }
 
 function renderOpportunityFound(event: RunEvent) {
-  const { type, location, rationale, approaches } = event.data as Record<string, unknown>;
+  const d = event.data as Record<string, unknown>;
+  const type = d.type as string | undefined;
+  const location = d.location as string | undefined;
+  const rationale = d.rationale as string | undefined;
+  const approaches = Array.isArray(d.approaches) ? (d.approaches as string[]) : [];
   return (
     <ExpandableRow
       icon="💡"
@@ -166,25 +184,25 @@ function renderOpportunityFound(event: RunEvent) {
       ts={event.ts}
       summary={
         <>
-          Found opportunity: <Badge>{type as string}</Badge>{" "}
-          <Mono>{location as string}</Mono>
+          Found opportunity: <Badge>{type}</Badge>{" "}
+          <Mono>{location}</Mono>
         </>
       }
       detail={
         <>
-          <p className="text-white/40 text-xs mb-2">{rationale as string}</p>
-          {Array.isArray(approaches) && approaches.length > 0 && (
+          <p className="text-white/40 text-xs mb-2">{rationale}</p>
+          {approaches.length > 0 ? (
             <div className="text-xs text-white/30">
               <p className="font-medium text-white/40 mb-1">
                 Approaches ({approaches.length}):
               </p>
               <ol className="list-decimal list-inside space-y-0.5">
-                {(approaches as string[]).map((a, i) => (
+                {approaches.map((a, i) => (
                   <li key={i}>{a}</li>
                 ))}
               </ol>
             </div>
-          )}
+          ) : null}
         </>
       }
     />
@@ -192,18 +210,23 @@ function renderOpportunityFound(event: RunEvent) {
 }
 
 function renderDiscoveryCompleted(event: RunEvent) {
-  const { count } = event.data as Record<string, unknown>;
+  const count = (event.data.count as number | undefined) ?? 0;
   return (
     <TimelineRow icon="✓" phase="Discovery" ts={event.ts} success>
-      Discovery complete — {count as number} opportunit{(count as number) === 1 ? "y" : "ies"} found
+      Discovery complete — {count} opportunit{count === 1 ? "y" : "ies"} found
     </TimelineRow>
   );
 }
 
 function renderValidationVerdict(event: RunEvent) {
-  const { opportunity, accepted, confidence, reason, gates_passed, gates_failed, approaches_tried } =
-    event.data as Record<string, unknown>;
-  const isOk = accepted as boolean;
+  const d = event.data as Record<string, unknown>;
+  const isOk = Boolean(d.accepted);
+  const opportunity = d.opportunity as string | undefined;
+  const confidence = d.confidence as string | undefined;
+  const reason = d.reason as string | undefined;
+  const gatesPassed = Array.isArray(d.gates_passed) ? (d.gates_passed as string[]) : [];
+  const gatesFailed = Array.isArray(d.gates_failed) ? (d.gates_failed as string[]) : [];
+  const approachesTried = (d.approaches_tried as number | undefined) ?? 0;
   return (
     <ExpandableRow
       icon={isOk ? "✓" : "✗"}
@@ -213,37 +236,37 @@ function renderValidationVerdict(event: RunEvent) {
       error={!isOk}
       summary={
         <>
-          <Mono>{opportunity as string}</Mono>{" "}
+          <Mono>{opportunity}</Mono>{" "}
           {isOk ? (
             <span className="text-emerald-400/70">accepted</span>
           ) : (
             <span className="text-red-400/70">rejected</span>
           )}
-          {confidence && (
+          {confidence ? (
             <Badge variant={confidence === "high" ? "success" : confidence === "medium" ? "warn" : "default"}>
-              {confidence as string}
+              {confidence}
             </Badge>
-          )}
-          {(approaches_tried as number) > 1 && (
+          ) : null}
+          {approachesTried > 1 ? (
             <span className="text-white/20 text-xs ml-1">
-              ({approaches_tried as number} approaches)
+              ({approachesTried} approaches)
             </span>
-          )}
+          ) : null}
         </>
       }
       detail={
         <>
-          {reason && <p className="text-white/40 text-xs mb-2">{reason as string}</p>}
-          {Array.isArray(gates_passed) && (gates_passed as string[]).length > 0 && (
+          {reason ? <p className="text-white/40 text-xs mb-2">{reason}</p> : null}
+          {gatesPassed.length > 0 ? (
             <p className="text-emerald-400/50 text-xs">
-              Passed: {(gates_passed as string[]).join(", ")}
+              Passed: {gatesPassed.join(", ")}
             </p>
-          )}
-          {Array.isArray(gates_failed) && (gates_failed as string[]).length > 0 && (
+          ) : null}
+          {gatesFailed.length > 0 ? (
             <p className="text-red-400/50 text-xs">
-              Failed: {(gates_failed as string[]).join(", ")}
+              Failed: {gatesFailed.join(", ")}
             </p>
-          )}
+          ) : null}
         </>
       }
     />
@@ -251,48 +274,51 @@ function renderValidationVerdict(event: RunEvent) {
 }
 
 function renderSelectionCompleted(event: RunEvent) {
-  const { reason } = event.data as Record<string, unknown>;
+  const reason = event.data.reason as string | undefined;
   return (
     <TimelineRow icon="🏆" phase="Selection" ts={event.ts} success>
       Best approach selected
-      {reason && (
+      {reason ? (
         <span className="text-white/30 text-xs ml-2">
-          — {reason as string}
+          — {reason}
         </span>
-      )}
+      ) : null}
     </TimelineRow>
   );
 }
 
 function renderRunCompleted(event: RunEvent) {
-  const { proposals_created, candidates_attempted, accepted } =
-    event.data as Record<string, unknown>;
+  const d = event.data as Record<string, unknown>;
+  const proposalsCreated = (d.proposals_created as number | undefined) ?? 0;
+  const candidatesAttempted = (d.candidates_attempted as number | undefined) ?? 0;
+  const accepted = (d.accepted as number | undefined) ?? 0;
   return (
     <TimelineRow icon="🎉" phase="Done" ts={event.ts} success>
-      Run complete — {proposals_created as number} proposal{(proposals_created as number) !== 1 ? "s" : ""} created
+      Run complete — {proposalsCreated} proposal{proposalsCreated !== 1 ? "s" : ""} created
       <span className="text-white/20 text-xs ml-2">
-        ({accepted as number}/{candidates_attempted as number} candidates accepted)
+        ({accepted}/{candidatesAttempted} candidates accepted)
       </span>
     </TimelineRow>
   );
 }
 
 function renderRunFailed(event: RunEvent) {
-  const { reason, error, failure_step, failure_reason_code } =
-    event.data as Record<string, unknown>;
+  const d = event.data as Record<string, unknown>;
+  const failureStep = d.failure_step as string | undefined;
+  const detail = (d.failure_reason_code ?? d.reason ?? d.error) as string | undefined;
   return (
     <TimelineRow icon="✗" phase="Error" ts={event.ts} error>
       Run failed
-      {failure_step && (
+      {failureStep ? (
         <span className="text-red-300/60 text-xs ml-2">
-          at {failure_step as string}
+          at {failureStep}
         </span>
-      )}
-      {(failure_reason_code || reason || error) && (
+      ) : null}
+      {detail ? (
         <span className="text-red-300/50 text-xs ml-1">
-          — {(failure_reason_code || reason || error) as string}
+          — {detail}
         </span>
-      )}
+      ) : null}
     </TimelineRow>
   );
 }
@@ -313,7 +339,7 @@ function renderGeneric(event: RunEvent) {
   );
 }
 
-const EVENT_RENDERERS: Record<string, (e: RunEvent) => JSX.Element> = {
+const EVENT_RENDERERS: Record<string, (e: RunEvent) => ReactElement> = {
   "clone.started": renderCloneStarted,
   "clone.completed": renderCloneCompleted,
   "detection.completed": renderDetectionCompleted,
