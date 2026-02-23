@@ -81,11 +81,19 @@ function RepoStatusBadge({
       </span>
     );
   }
-  if (status === "queued" || status === "running") {
+  if (status === "running") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse" />
-        Setting up…
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+        Running
+      </span>
+    );
+  }
+  if (status === "queued") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-white/60">
+        <span className="h-1.5 w-1.5 rounded-full bg-white/40 animate-pulse" />
+        Queued
       </span>
     );
   }

@@ -6,6 +6,7 @@ import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { CancelRunButton } from "@/components/run-detail/cancel-run-button";
 import { EventCard } from "@/components/run-detail/event-card";
 import { FileAnalysisGrid } from "@/components/run-detail/file-analysis-grid";
+import { PhaseProgress } from "@/components/run-detail/phase-progress";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import type { Run, RunEvent, RunPhase, RunStatus } from "@/lib/types";
 
@@ -13,29 +14,6 @@ interface RunDetailViewProps {
   run: Run;
   repoId: string;
 }
-
-// Ordered phases used for the sidebar checklist
-const PIPELINE_PHASES: { key: RunPhase | "done"; label: string }[] = [
-  { key: "clone", label: "Clone" },
-  { key: "baseline", label: "Baseline" },
-  { key: "discovery", label: "Discover" },
-  { key: "patching", label: "Patch" },
-  { key: "validation", label: "Validate" },
-  { key: "done", label: "Done" },
-];
-
-const PHASE_ORDER_INDEX: Record<string, number> = {
-  clone: 0,
-  detection: 0,
-  baseline: 1,
-  discovery: 2,
-  patch: 3,
-  patching: 3,
-  validation: 4,
-  selection: 4,
-  run: 5,
-  done: 5,
-};
 
 const PHASE_LABELS: Record<string, string> = {
   clone: "Clone",
@@ -90,9 +68,6 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
       : run.commit_message
     : null;
 
-  const currentPhaseIdx =
-    currentPhase != null ? (PHASE_ORDER_INDEX[currentPhase] ?? -1) : isDone ? 5 : -1;
-
   // Derive live stats from the event stream
   const stats = useMemo(() => _deriveStats(events), [events]);
 
@@ -140,50 +115,15 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
         )}
       </div>
 
-      {/* ── Two-column body ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
-        {/* ── Sidebar (sticky) ── */}
-        <aside className="lg:sticky lg:top-6 space-y-4">
-          {/* Phase checklist */}
-          <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-3">
-              Pipeline
-            </p>
-            <ol className="space-y-2">
-              {PIPELINE_PHASES.map(({ key, label }, i) => {
-                const phaseIdx = PHASE_ORDER_INDEX[key] ?? i;
-                const isDonePhase = phaseIdx < currentPhaseIdx;
-                const isCurrentPhase = phaseIdx === currentPhaseIdx;
-                const isPending = phaseIdx > currentPhaseIdx;
-                return (
-                  <li key={key} className="flex items-center gap-2.5">
-                    <PhaseIcon
-                      done={isDonePhase}
-                      active={isCurrentPhase}
-                      pending={isPending}
-                    />
-                    <span
-                      className={`text-sm ${
-                        isCurrentPhase
-                          ? "text-white/90 font-medium"
-                          : isDonePhase
-                            ? "text-white/40"
-                            : "text-white/20"
-                      }`}
-                    >
-                      {label}
-                    </span>
-                    {isCurrentPhase && isActive && (
-                      <span className="ml-auto text-[9px] text-blue-400/60 font-mono uppercase tracking-wider">
-                        active
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+      {/* ── Horizontal phase progress bar ── */}
+      <div className="mb-6">
+        <PhaseProgress currentPhase={currentPhase} isDone={!isActive} />
+      </div>
 
+      {/* ── Two-column body ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6 items-start">
+        {/* ── Sidebar (sticky) — stats + file grid only ── */}
+        <aside className="lg:sticky lg:top-6 space-y-4">
           {/* Live stats — only shown once there's something to report */}
           {(stats.totalFiles > 0 ||
             stats.candidatesAttempted > 0 ||
@@ -332,41 +272,6 @@ function PhaseGroupHeader({ phase }: { phase: string }) {
 // ---------------------------------------------------------------------------
 // Sidebar sub-components
 // ---------------------------------------------------------------------------
-
-function PhaseIcon({
-  done,
-  active,
-  pending,
-}: {
-  done: boolean;
-  active: boolean;
-  pending: boolean;
-}) {
-  if (done) {
-    return (
-      <svg
-        className="h-4 w-4 shrink-0 text-emerald-400/60"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={2.5}
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-      </svg>
-    );
-  }
-  if (active) {
-    return (
-      <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400/40" />
-        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-400" />
-      </span>
-    );
-  }
-  return (
-    <span className="h-4 w-4 shrink-0 rounded-full border border-white/[0.15] bg-transparent" />
-  );
-}
 
 function StatRow({
   label,
