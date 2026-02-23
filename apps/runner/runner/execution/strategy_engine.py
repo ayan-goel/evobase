@@ -264,18 +264,23 @@ class NodeAdapter(BaseAdapter):
             FailureReasonCode.CONCURRENCY_OOM,
             FailureReasonCode.OOM,
         }:
+            if previous_plan.metadata.get("node_oom_retry") == "1":
+                return None
             if not previous_plan.test_command:
                 return None
-            if not _is_vitest_command(context.repo_dir, previous_plan.test_command):
-                return None
-            throttled_test = _append_vitest_throttle_flags(previous_plan.test_command)
-            if throttled_test == previous_plan.test_command:
-                return None
+            test_command = previous_plan.test_command
+            if _is_vitest_command(context.repo_dir, previous_plan.test_command):
+                test_command = _append_vitest_throttle_flags(previous_plan.test_command)
+            metadata = dict(previous_plan.metadata)
+            metadata["adaptive_reason"] = failure.reason_code.value
+            metadata["node_oom_retry"] = "1"
             return replace(
                 previous_plan,
-                test_command=throttled_test,
+                shared_env=_js_oom_retry_shared_env(),
+                install_env=_js_install_env(),
+                test_command=test_command,
                 test_env=_js_test_env(),
-                metadata={"adaptive_reason": failure.reason_code.value},
+                metadata=metadata,
             )
 
         return None
@@ -629,12 +634,24 @@ def _js_install_env() -> dict:
     env = dict(os.environ)
     env["NODE_ENV"] = "development"
     env["NPM_CONFIG_PRODUCTION"] = "false"
+    # Ensure optional native binaries (e.g., SWC/esbuild) are installed.
+    env["NPM_CONFIG_OPTIONAL"] = "true"
+    env["NPM_CONFIG_OMIT"] = ""
+    env["npm_config_optional"] = "true"
+    env["npm_config_omit"] = ""
     return env
 
 
 def _js_test_env() -> dict:
     env = dict(os.environ)
     env["CI"] = "true"
+    return env
+
+
+def _js_oom_retry_shared_env() -> dict:
+    env = dict(os.environ)
+    # Adaptive OOM fallback: remove JS RLIMIT_AS cap for this retry only.
+    env["CORELOOP_RLIMIT_AS_BYTES_JS"] = "0"
     return env
 
 

@@ -149,6 +149,84 @@ def test_node_retries_when_build_fails_before_test_with_oom(tmp_path: Path) -> N
     assert result.strategy_attempts == 2
 
 
+def test_node_strict_install_env_keeps_optional_native_dependencies_enabled(tmp_path: Path) -> None:
+    detection = DetectionResult(
+        language="javascript",
+        package_manager="npm",
+        install_cmd="npm ci",
+        test_cmd="npm test",
+    )
+    calls: list[tuple[str, str, dict | None]] = []
+
+    def fake_run_step(name, command, cwd, timeout=300, env=None):
+        calls.append((name, command, env))
+        return _ok_step(name, command)
+
+    result = run_with_strategy(
+        repo_dir=tmp_path,
+        detection=detection,
+        run_step=fake_run_step,
+        strategy_settings=StrategySettings(mode=ExecutionMode.STRICT, max_attempts=2),
+    )
+
+    assert result.is_success is True
+    install_env = calls[0][2]
+    assert install_env is not None
+    assert install_env.get("NODE_ENV") == "development"
+    assert install_env.get("NPM_CONFIG_PRODUCTION") == "false"
+    assert install_env.get("NPM_CONFIG_OPTIONAL") == "true"
+    assert install_env.get("NPM_CONFIG_OMIT") == ""
+
+
+def test_node_oom_retry_disables_js_rlimit_and_throttles_vitest(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"scripts":{"test":"vitest run"}}',
+        encoding="utf-8",
+    )
+    detection = DetectionResult(
+        language="javascript",
+        package_manager="npm",
+        install_cmd="npm ci",
+        build_cmd="npm run build",
+        test_cmd="npm run test",
+    )
+    calls: list[tuple[str, str, dict | None]] = []
+
+    def fake_run_step(name, command, cwd, timeout=300, env=None):
+        calls.append((name, command, env))
+        test_calls = [call for call in calls if call[0] == "test"]
+        if name == "test" and len(test_calls) == 1:
+            return StepResult(
+                name=name,
+                command=command,
+                exit_code=1,
+                duration_seconds=0.01,
+                stderr="RangeError: WebAssembly.instantiate(): Out of memory",
+            )
+        return _ok_step(name, command)
+
+    result = run_with_strategy(
+        repo_dir=tmp_path,
+        detection=detection,
+        run_step=fake_run_step,
+        strategy_settings=StrategySettings(mode=ExecutionMode.ADAPTIVE, max_attempts=2),
+    )
+
+    build_envs = [env for name, _, env in calls if name == "build"]
+    test_calls = [(command, env) for name, command, env in calls if name == "test"]
+    assert len(build_envs) == 2
+    assert build_envs[0] is None
+    assert build_envs[1] is not None
+    assert build_envs[1].get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+    assert len(test_calls) == 2
+    assert "--maxWorkers=1" in test_calls[1][0]
+    assert "--pool=forks" in test_calls[1][0]
+    assert test_calls[1][1] is not None
+    assert test_calls[1][1].get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+    assert result.is_success is True
+    assert result.strategy_attempts == 2
+
+
 def test_jvm_wrapper_missing_retries_with_system_gradle(tmp_path: Path) -> None:
     detection = DetectionResult(
         language="java",
