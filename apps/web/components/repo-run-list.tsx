@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getProposalsByRun, getRuns } from "@/lib/api";
+import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ProposalCard } from "@/components/proposal-card";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
-import type { Proposal, Run } from "@/lib/types";
+import type { ConfidenceLevel, Proposal, Run, RunEvent } from "@/lib/types";
 
 type RunWithProposals = Run & { proposals: Proposal[] };
 
@@ -173,6 +174,193 @@ const FAILURE_MESSAGES: Record<string, { title: string; hint: string }> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Live status derivation
+// ---------------------------------------------------------------------------
+
+interface DerivedStatus {
+  phaseLabel: string;
+  detail: string;
+  opportunitiesFound: number;
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  clone: "Cloning repository",
+  detection: "Detecting framework",
+  baseline: "Running baseline",
+  discovery: "Analysing files",
+  patching: "Generating patches",
+  validation: "Validating candidates",
+  selection: "Selecting best patches",
+  run: "Finishing up",
+};
+
+function deriveStatus(events: RunEvent[]): DerivedStatus {
+  let phaseLabel = "Starting up";
+  let detail = "";
+  let opportunitiesFound = 0;
+
+  let totalFiles = 0;
+  let filesAnalysed = 0;
+  let lastAnalysingFile = "";
+
+  for (const ev of events) {
+    phaseLabel = PHASE_LABELS[ev.phase] ?? phaseLabel;
+
+    switch (ev.type) {
+      case "clone.started":
+        detail = "Cloning repository…";
+        break;
+      case "clone.completed": {
+        const sha = (ev.data.sha as string) ?? "";
+        detail = sha ? `Cloned at ${sha}` : "Clone complete";
+        break;
+      }
+      case "detection.completed":
+        detail = (ev.data.framework as string)
+          ? `Detected ${ev.data.framework}`
+          : "Detection complete";
+        break;
+      case "baseline.attempt.started":
+        detail = "Running pipeline…";
+        break;
+      case "baseline.step.completed": {
+        const step = (ev.data.step_name as string) ?? "";
+        const ok = ev.data.is_success as boolean;
+        if (step) detail = ok ? `${step} passed` : `${step} failed`;
+        break;
+      }
+      case "baseline.completed":
+        detail = "Baseline complete";
+        break;
+      case "discovery.files.selected":
+        totalFiles = (ev.data.count as number) ?? 0;
+        detail = `Selected ${totalFiles} file${totalFiles !== 1 ? "s" : ""} to analyse`;
+        break;
+      case "discovery.file.analysing":
+        lastAnalysingFile = _truncatePath(ev.data.file as string);
+        detail = totalFiles
+          ? `Analysing file ${(ev.data.file_index as number) + 1} of ${totalFiles} — ${lastAnalysingFile}`
+          : `Analysing ${lastAnalysingFile}`;
+        break;
+      case "discovery.file.analysed": {
+        filesAnalysed += 1;
+        const found = (ev.data.opportunities_found as number) ?? 0;
+        opportunitiesFound += found;
+        detail = totalFiles
+          ? `Analysed ${filesAnalysed} of ${totalFiles} files — ${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"} found`
+          : `${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"} found`;
+        break;
+      }
+      case "discovery.completed":
+        detail = `Discovery complete — ${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"}`;
+        break;
+      case "patch.approach.started": {
+        const opp = (ev.data.opportunity_index as number) ?? 0;
+        const approach = (ev.data.approach_index as number) ?? 0;
+        detail = `Opportunity ${opp + 1}, approach ${approach + 1}`;
+        break;
+      }
+      case "patch.approach.completed":
+        detail = "Patch generated";
+        break;
+      case "validation.candidate.started": {
+        const idx = (ev.data.candidate_index as number) ?? 0;
+        detail = `Validating candidate ${idx + 1}`;
+        break;
+      }
+      case "validation.verdict": {
+        const accepted = ev.data.is_accepted as boolean;
+        detail = accepted ? "Candidate accepted" : "Candidate rejected";
+        break;
+      }
+      case "selection.completed":
+        detail = "Selection complete";
+        break;
+    }
+  }
+
+  return { phaseLabel, detail, opportunitiesFound };
+}
+
+function _truncatePath(path: string): string {
+  if (!path) return "";
+  const parts = path.split("/");
+  if (parts.length <= 3) return path;
+  return "…/" + parts.slice(-2).join("/");
+}
+
+// ---------------------------------------------------------------------------
+// LiveRunSummary — compact live status for active run cards
+// ---------------------------------------------------------------------------
+
+function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
+  const { events } = useRunEvents(runId, true);
+
+  const status = useMemo(() => deriveStatus(events), [events]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+        </span>
+        <span className="text-xs font-medium text-blue-300">{status.phaseLabel}</span>
+        {status.opportunitiesFound > 0 && (
+          <>
+            <span className="text-white/15">·</span>
+            <span className="text-xs text-emerald-400/70">
+              {status.opportunitiesFound} opportunit{status.opportunitiesFound !== 1 ? "ies" : "y"}
+            </span>
+          </>
+        )}
+      </div>
+      {status.detail && (
+        <p className="text-xs text-white/35 pl-4">{status.detail}</p>
+      )}
+      <Link
+        href={`/repos/${repoId}/runs/${runId}`}
+        className="inline-block text-xs text-blue-400/60 hover:text-blue-400/80 transition-colors pl-4"
+      >
+        View live details →
+      </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Terminal run summary helpers
+// ---------------------------------------------------------------------------
+
+function _confidenceBreakdown(proposals: Proposal[]): string {
+  if (proposals.length === 0) return "No opportunities";
+  const counts: Record<string, number> = {};
+  for (const p of proposals) {
+    const key = p.confidence ?? "unknown";
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  const parts: string[] = [];
+  for (const level of ["high", "medium", "low"] as ConfidenceLevel[]) {
+    if (counts[level]) parts.push(`${counts[level]} ${level}`);
+  }
+  if (counts["unknown"]) parts.push(`${counts["unknown"]} unrated`);
+  const label = `${proposals.length} proposal${proposals.length !== 1 ? "s" : ""}`;
+  return parts.length > 0 ? `${label} — ${parts.join(", ")}` : label;
+}
+
+function _prStatusSummary(proposals: Proposal[]): string | null {
+  if (proposals.length === 0) return null;
+  const withPr = proposals.filter((p) => p.pr_url).length;
+  if (withPr === 0) return null;
+  if (withPr === proposals.length) return "All PRs created";
+  return `${withPr} of ${proposals.length} PRs created`;
+}
+
+// ---------------------------------------------------------------------------
+// RunCard
+// ---------------------------------------------------------------------------
+
 function RunCard({
   run,
   proposals,
@@ -216,19 +404,21 @@ function RunCard({
 
       {/* Meta row — only for terminal runs */}
       {isTerminal && (
-        <div className="mt-2 flex items-center gap-2 text-xs text-white/30">
+        <div className="mt-2 flex items-center gap-2 flex-wrap text-xs text-white/30">
           {run.status === "completed" ? (
-            <span>
-              {proposals.length > 0
-                ? `${proposals.length} proposal${proposals.length !== 1 ? "s" : ""} found`
-                : "No opportunities"}
-            </span>
+            <span>{_confidenceBreakdown(proposals)}</span>
           ) : run.failure_step ? (
             <span className="text-amber-400/60">
               {FAILURE_MESSAGES[run.failure_step]?.title ?? "Setup failed"}
             </span>
           ) : (
             <span className="text-red-400/50">Run failed</span>
+          )}
+          {_prStatusSummary(proposals) && (
+            <>
+              <span className="text-white/15">·</span>
+              <span className="text-emerald-400/50">{_prStatusSummary(proposals)}</span>
+            </>
           )}
           {run.compute_minutes != null && (
             <>
@@ -244,12 +434,7 @@ function RunCard({
         {proposals.length === 0 ? (
           <>
             {isActive ? (
-              <Link
-                href={`/repos/${repoId}/runs/${run.id}`}
-                className="text-sm text-blue-400/60 hover:text-blue-400/80 transition-colors"
-              >
-                View live progress →
-              </Link>
+              <LiveRunSummary runId={run.id} repoId={repoId} />
             ) : run.failure_step ? (
               <BaselineFailureMessage failureStep={run.failure_step} repoId={repoId} />
             ) : run.status === "failed" && setupFailing ? (

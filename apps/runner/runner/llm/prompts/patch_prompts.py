@@ -1,11 +1,13 @@
 """Patch generation prompt.
 
-Given an `AgentOpportunity` and the relevant file content, this prompt
-asks the LLM to produce a unified diff that implements the fix.
+Given an `AgentOpportunity` and the relevant file content, this prompt asks the
+LLM to produce a list of search/replace edits rather than a raw unified diff.
 
-The prompt embeds hard constraint reminders directly so the model has
-no excuse for violating them. The diff format is specified precisely
-to match what the system `patch -p1` utility expects.
+The LLM only needs to quote the text it wants to change (which it already has
+in its context window) and write the replacement — it never has to count line
+numbers or reproduce `@@ -L,N +L,N @@` hunk headers. The unified diff is then
+generated programmatically by `patchgen.py` using `difflib`, which guarantees a
+syntactically correct diff that `patch -p1` can always apply.
 """
 
 
@@ -30,7 +32,7 @@ def patch_generation_prompt(
     Returns:
         A user-role message string ready to send to the LLM.
     """
-    return f"""Generate a unified diff to fix the following issue.
+    return f"""Fix the following issue by providing search/replace edits.
 
 File to change : {file_path}
 Issue type     : {opportunity_type}
@@ -44,35 +46,41 @@ Current file content:
 ---
 
 HARD CONSTRAINTS — you MUST respect all of these:
-  1. The diff must be directly applicable with `patch -p1 -f`.
-  2. Change at most 200 lines total (additions + removals).
-  3. Touch at most 5 files (prefer touching only 1 file).
-  4. Do NOT modify any test file (*test*, *spec*, *.test.*, *.spec.*).
-  5. Do NOT modify config files (*.config.*, *.json, *.yaml, *.toml, *.env).
-  6. Do NOT modify package.json or any lock file.
-  7. Preserve all existing imports unless explicitly removing unused ones.
+  1. Change at most 200 lines total (additions + removals).
+  2. Touch at most 5 files (prefer touching only 1 file).
+  3. Do NOT modify any test file (*test*, *spec*, *.test.*, *.spec.*).
+  4. Do NOT modify config files (*.config.*, *.json, *.yaml, *.toml, *.env).
+  5. Do NOT modify package.json or any lock file.
+  6. Preserve all existing imports unless explicitly removing unused ones.
 
-Unified diff format requirements:
-  - Use `--- a/<file>` and `+++ b/<file>` headers.
-  - Include `@@ -L,N +L,N @@` hunk headers with correct line numbers.
-  - Each changed line must be prefixed with `-` (removed) or `+` (added).
-  - Context lines have no prefix.
-  - End the diff with a newline.
+Search/replace format:
+  - Each edit has a "search" block (exact text from the file) and a "replace" block
+    (what to put instead).
+  - The "search" block MUST appear verbatim in the file — copy it character-for-character,
+    including all whitespace and indentation.
+  - Include at least 5 lines of surrounding context in "search" to make it unique.
+  - If the same block appears more than once, include more context until it is unique.
+  - You may provide multiple edits for the same file (they are applied top-to-bottom).
+  - An empty "replace" deletes the matched block.
 
 Respond with ONLY this JSON structure:
 {{
   "reasoning": "<your detailed step-by-step thinking: what the code does now, why it's suboptimal, what the fix does, and why it's safe>",
-  "diff": "<the complete unified diff string>",
+  "edits": [
+    {{
+      "file": "{file_path}",
+      "search": "<exact text from the file to replace>",
+      "replace": "<new code>"
+    }}
+  ],
   "explanation": "<concise one-paragraph explanation of the change for the PR description>",
-  "touched_files": ["<list of files the diff modifies>"],
   "estimated_lines_changed": <integer>
 }}
 
-If you cannot produce a safe, correct diff, respond with:
+If you cannot produce a safe, correct edit, respond with:
 {{
-  "reasoning": "<why you cannot produce the diff>",
-  "diff": null,
+  "reasoning": "<why you cannot produce the edit>",
+  "edits": [],
   "explanation": null,
-  "touched_files": [],
   "estimated_lines_changed": 0
 }}"""

@@ -190,6 +190,40 @@ class TestDiscoveryPrompts:
         assert "reasoning" in prompt
 
 
+class TestDiscoveryPromptsSeenContext:
+    """Tests for the seen-context parameters on discovery prompts."""
+
+    def test_file_selection_with_previously_found(self) -> None:
+        seen_text = "- [performance] src/a.ts\n- [tech_debt] src/b.ts"
+        prompt = file_selection_prompt("tree", previously_found=seen_text)
+        assert "ALREADY been identified" in prompt
+        assert "[performance] src/a.ts" in prompt
+        assert "[tech_debt] src/b.ts" in prompt
+
+    def test_file_selection_without_previously_found(self) -> None:
+        prompt = file_selection_prompt("tree", previously_found="")
+        assert "ALREADY been identified" not in prompt
+
+    def test_analysis_with_already_found_in_file(self) -> None:
+        seen_text = "- performance\n- tech_debt"
+        prompt = analysis_prompt("src/foo.ts", "code", already_found_in_file=seen_text)
+        assert "ALREADY been identified" in prompt
+        assert "- performance" in prompt
+        assert "- tech_debt" in prompt
+
+    def test_analysis_without_already_found_in_file(self) -> None:
+        prompt = analysis_prompt("src/foo.ts", "code", already_found_in_file="")
+        assert "ALREADY been identified" not in prompt
+
+    def test_file_selection_seen_context_mentions_new_findings(self) -> None:
+        prompt = file_selection_prompt("tree", previously_found="- [perf] a.ts")
+        assert "NEW" in prompt or "different" in prompt.lower()
+
+    def test_analysis_seen_context_mentions_different_patterns(self) -> None:
+        prompt = analysis_prompt("f.ts", "code", already_found_in_file="- perf")
+        assert "different" in prompt.lower()
+
+
 class TestPatchPrompts:
     def _make_prompt(self) -> str:
         return patch_generation_prompt(
@@ -233,17 +267,19 @@ class TestPatchPrompts:
         prompt = self._make_prompt()
         assert "test" in prompt.lower()
 
-    def test_diff_format_specified(self) -> None:
+    def test_requests_search_replace_format(self) -> None:
         prompt = self._make_prompt()
-        assert "patch -p1" in prompt or "unified diff" in prompt.lower()
+        assert '"search"' in prompt
+        assert '"replace"' in prompt
+        assert '"edits"' in prompt
 
     def test_requests_reasoning_field(self) -> None:
         prompt = self._make_prompt()
         assert '"reasoning"' in prompt
 
-    def test_requests_diff_field(self) -> None:
+    def test_does_not_request_unified_diff(self) -> None:
         prompt = self._make_prompt()
-        assert '"diff"' in prompt
+        assert "patch -p1" not in prompt
 
     def test_requests_explanation_field(self) -> None:
         prompt = self._make_prompt()

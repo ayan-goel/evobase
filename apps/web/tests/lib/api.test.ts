@@ -33,10 +33,16 @@ describe("apiFetch (client)", () => {
     let capturedHeaders: HeadersInit | undefined;
     globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
       capturedHeaders = init?.headers;
-      return Promise.resolve({
+      const body = { repos: [], count: 0 };
+      const response = {
         ok: true,
-        json: () => Promise.resolve({ repos: [], count: 0 }),
-      });
+        status: 200,
+        headers: { get: (_key: string) => null },
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+        clone() { return { ...this }; },
+      };
+      return Promise.resolve(response);
     }) as unknown as typeof fetch;
 
     const { getRepos } = await import("@/lib/api");
@@ -85,10 +91,16 @@ describe("apiFetch (client)", () => {
     let capturedHeaders: Record<string, string> | undefined;
     globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
       capturedHeaders = init?.headers as Record<string, string>;
-      return Promise.resolve({
+      const body = { repos: [], count: 0 };
+      const response = {
         ok: true,
-        json: () => Promise.resolve({ repos: [], count: 0 }),
-      });
+        status: 200,
+        headers: { get: (_key: string) => null },
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+        clone() { return { ...this }; },
+      };
+      return Promise.resolve(response);
     }) as unknown as typeof fetch;
 
     const { getRepos } = await import("@/lib/api");

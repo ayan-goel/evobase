@@ -12,14 +12,33 @@ parsed without ambiguity.
 # Stage 1: file selection
 # ---------------------------------------------------------------------------
 
-def file_selection_prompt(repo_map: str) -> str:
+def file_selection_prompt(repo_map: str, previously_found: str = "") -> str:
     """Prompt asking the LLM to select the most valuable files to analyse.
 
     The repo map is a compact directory listing with file sizes. The model
     picks 5–10 files that are most likely to contain optimisation opportunities
     based on naming patterns, location in the source tree, and file size
     (larger files tend to have more surface area).
+
+    Args:
+        repo_map: Compact directory tree with file line counts.
+        previously_found: Pre-formatted string of (type, file) pairs already
+            identified in prior runs. When non-empty, appended to the prompt
+            so the model prioritises files with untapped potential.
     """
+    seen_block = ""
+    if previously_found:
+        seen_block = f"""
+
+The following issues have ALREADY been identified in previous runs.
+Do NOT re-select files solely for these known issues — focus on files
+that are likely to yield NEW, different findings:
+
+{previously_found}
+
+You may still select a file that appears above if you believe it has
+other, different issues worth investigating."""
+
     return f"""Below is a directory tree of the repository with file line counts.
 
 {repo_map}
@@ -34,6 +53,7 @@ Selection criteria:
     modules, data-transformation functions.
   - Skip test files, config files, generated files, and lock files.
   - Skip files in: node_modules/, dist/, build/, .next/, coverage/.
+{seen_block}
 
 Respond with ONLY this JSON structure (no markdown, no commentary outside JSON):
 {{
@@ -46,12 +66,34 @@ Respond with ONLY this JSON structure (no markdown, no commentary outside JSON):
 # Stage 2: per-file opportunity analysis
 # ---------------------------------------------------------------------------
 
-def analysis_prompt(file_path: str, content: str) -> str:
+def analysis_prompt(
+    file_path: str,
+    content: str,
+    already_found_in_file: str = "",
+) -> str:
     """Prompt asking the LLM to analyse a single file for opportunities.
 
     The model returns a structured list of opportunities, each with enough
     detail to drive patch generation without re-reading the file.
+
+    Args:
+        file_path: Repo-relative path to the file being analysed.
+        content: Full file content (possibly truncated for large files).
+        already_found_in_file: Pre-formatted string of issues previously
+            found in this specific file. When non-empty, appended to the
+            prompt so the model avoids re-reporting them.
     """
+    seen_block = ""
+    if already_found_in_file:
+        seen_block = f"""
+
+IMPORTANT — The following issues in this file have ALREADY been identified
+in previous runs. Do NOT report them again. Instead, look for different
+patterns and deeper issues:
+
+{already_found_in_file}
+"""
+
     return f"""Analyse the following file and identify ALL concrete optimisation
 opportunities. Focus only on issues that can be fixed with a targeted, small diff.
 
@@ -59,7 +101,7 @@ File: {file_path}
 ---
 {content}
 ---
-
+{seen_block}
 For each opportunity found, provide:
   - `type`: category — one of:
       "performance", "memory", "tech_debt", "error_handling",

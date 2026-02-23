@@ -1,7 +1,16 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RepoView } from "@/app/repos/[repoId]/page";
 import type { Proposal, Repository, Run } from "@/lib/types";
+
+vi.mock("@/lib/hooks/use-run-events", () => ({
+  useRunEvents: () => ({
+    events: [],
+    currentPhase: null,
+    isConnected: false,
+    isDone: false,
+  }),
+}));
 
 function makeRepo(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -107,9 +116,10 @@ describe("RepoView", () => {
     expect(screen.getByText("abc1234")).toBeDefined();
   });
 
-  it("shows live progress link for running run with no proposals", () => {
+  it("shows live status summary for running run with no proposals", () => {
     render(<RepoView repo={makeRepo()} runs={[makeRun("running", [])]} />);
-    expect(screen.getByText(/View live progress/)).toBeDefined();
+    expect(screen.getByText(/Starting up/)).toBeDefined();
+    expect(screen.getByText(/View live details/)).toBeDefined();
   });
 
   it("renders proposal cards within the run", () => {
@@ -138,14 +148,14 @@ describe("RepoView", () => {
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   });
 
-  it("shows meta row with proposal count for completed runs", () => {
+  it("shows meta row with proposal count and confidence for completed runs", () => {
     render(
       <RepoView
         repo={makeRepo()}
         runs={[makeRun("completed", [makeProposal()])]}
       />,
     );
-    expect(screen.getByText(/1 proposal found/)).toBeDefined();
+    expect(screen.getByText(/1 proposal — 1 high/)).toBeDefined();
   });
 
   it("shows 'No opportunities' in meta row for completed run with no proposals", () => {

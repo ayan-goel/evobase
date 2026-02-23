@@ -35,9 +35,6 @@ logger = logging.getLogger(__name__)
 # Hard cap on files analysed per run to bound API cost
 MAX_FILES_TO_ANALYSE = 10
 
-# Hard cap on opportunities to return (stops the patch queue exploding)
-MAX_OPPORTUNITIES = 30
-
 # Maximum file size to send to the LLM (32KB) — larger files are truncated
 MAX_FILE_CHARS = 32_000
 
@@ -81,8 +78,10 @@ async def discover_opportunities(
     repo_dir = Path(repo_dir)
     system_prompt = build_system_prompt(detection)
 
-    # Stage 1: file selection
-    selected_files = await _select_files(repo_dir, system_prompt, provider, config)
+    # Stage 1: file selection (seen_signatures inform the LLM to explore new files)
+    selected_files = await _select_files(
+        repo_dir, system_prompt, provider, config, seen_signatures=seen_signatures,
+    )
     if not selected_files:
         logger.warning("LLM returned no files to analyse; skipping discovery")
         return []
@@ -108,7 +107,10 @@ async def discover_opportunities(
             "file_index": file_index,
             "total_files": len(capped_files),
         })
-        opps = await _analyse_file(rel_path, file_path, system_prompt, provider, config)
+        opps = await _analyse_file(
+            rel_path, file_path, system_prompt, provider, config,
+            seen_signatures=seen_signatures,
+        )
         _emit("discovery.file.analysed", {
             "file": rel_path,
             "file_index": file_index,
@@ -136,15 +138,14 @@ async def discover_opportunities(
                 "Deduplication: skipped %d already-seen opportunity(s)", filtered
             )
 
-    # Sort by risk score (safest first) then cap
+    # Sort by risk score (safest first)
     deduped.sort(key=lambda o: o.risk_score)
-    result = deduped[:MAX_OPPORTUNITIES]
 
     logger.info(
         "Discovery complete: %d opportunities found across %d files",
-        len(result), len(selected_files),
+        len(deduped), len(selected_files),
     )
-    return result
+    return deduped
 
 
 def _serialise_file_opportunities_for_event(
@@ -172,15 +173,42 @@ def _is_new(opp: AgentOpportunity, seen: frozenset[tuple[str, str]]) -> bool:
     return (opp.type, file_path) not in seen
 
 
+def _format_seen_for_file_selection(
+    seen_signatures: frozenset[tuple[str, str]],
+) -> str:
+    """Format the full set of seen signatures as a bulleted list for the
+    file-selection prompt so the LLM can deprioritise already-explored files."""
+    if not seen_signatures:
+        return ""
+    lines = sorted(f"- [{sig_type}] {sig_file}" for sig_type, sig_file in seen_signatures)
+    return "\n".join(lines)
+
+
+def _format_seen_for_file(
+    file_path: str,
+    seen_signatures: frozenset[tuple[str, str]],
+) -> str:
+    """Format seen signatures for a specific file as a bulleted list for the
+    per-file analysis prompt."""
+    relevant = sorted(
+        f"- {sig_type}"
+        for sig_type, sig_file in seen_signatures
+        if sig_file == file_path
+    )
+    return "\n".join(relevant) if relevant else ""
+
+
 async def _select_files(
     repo_dir: Path,
     system_prompt: str,
     provider: LLMProvider,
     config: LLMConfig,
+    seen_signatures: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[str]:
     """Stage 1: ask the LLM to pick which files to analyse."""
     repo_map = build_repo_map(repo_dir)
-    prompt = file_selection_prompt(repo_map)
+    previously_found = _format_seen_for_file_selection(seen_signatures)
+    prompt = file_selection_prompt(repo_map, previously_found=previously_found)
 
     messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -209,6 +237,7 @@ async def _analyse_file(
     system_prompt: str,
     provider: LLMProvider,
     config: LLMConfig,
+    seen_signatures: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[AgentOpportunity]:
     """Stage 2: analyse a single file for opportunities."""
     try:
@@ -217,11 +246,11 @@ async def _analyse_file(
         logger.warning("Cannot read %s: %s", file_path, exc)
         return []
 
-    # Truncate very large files with a clear marker
     if len(content) > MAX_FILE_CHARS:
         content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 32KB] ..."
 
-    prompt = analysis_prompt(rel_path, content)
+    already_found = _format_seen_for_file(rel_path, seen_signatures)
+    prompt = analysis_prompt(rel_path, content, already_found_in_file=already_found)
     messages = [
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content=prompt),

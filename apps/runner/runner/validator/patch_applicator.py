@@ -77,12 +77,15 @@ def _run_patch(
 ) -> subprocess.CompletedProcess:
     """Run the patch command with appropriate flags.
 
-    -p1   : strip the 'a/' / 'b/' prefix from diff paths
-    -f    : force mode (no interactive prompts)
-    -s    : silent (suppress "patching file" messages)
-    -R    : reverse (applied only when reverting)
+    -p1       : strip the 'a/' / 'b/' prefix from diff paths
+    -f        : force mode (no interactive prompts)
+    -s        : silent (suppress "patching file" messages)
+    --fuzz=3  : allow up to 3 context lines of mismatch when locating hunks;
+                LLM-generated diffs sometimes have slightly off context even
+                when the file content was provided verbatim in the prompt.
+    -R        : reverse (applied only when reverting)
     """
-    cmd = ["patch", "-p1", "-f", "-s"]
+    cmd = ["patch", "-p1", "-f", "-s", "--fuzz=3"]
     if reverse:
         cmd.append("-R")
 

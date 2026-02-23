@@ -11,7 +11,8 @@ import pytest
 
 from runner.agent.discovery import (
     MAX_FILES_TO_ANALYSE,
-    MAX_OPPORTUNITIES,
+    _format_seen_for_file,
+    _format_seen_for_file_selection,
     _is_new,
     _parse_file_list,
     _parse_opportunities,
@@ -389,6 +390,146 @@ class TestIsNew:
         seen = frozenset({("performance", "src/a.ts")})
         opp = self._make_opp("performance", " src/a.ts :10")
         assert _is_new(opp, seen) is False
+
+
+class TestFormatSeenForFileSelection:
+    """Unit tests for _format_seen_for_file_selection()."""
+
+    def test_empty_signatures_returns_empty_string(self):
+        assert _format_seen_for_file_selection(frozenset()) == ""
+
+    def test_formats_single_entry(self):
+        seen = frozenset({("performance", "src/a.ts")})
+        result = _format_seen_for_file_selection(seen)
+        assert "- [performance] src/a.ts" in result
+
+    def test_formats_multiple_entries_sorted(self):
+        seen = frozenset({
+            ("tech_debt", "src/b.ts"),
+            ("performance", "src/a.ts"),
+        })
+        result = _format_seen_for_file_selection(seen)
+        lines = result.strip().splitlines()
+        assert len(lines) == 2
+        assert lines[0] < lines[1]
+
+    def test_all_entries_are_bullet_prefixed(self):
+        seen = frozenset({("perf", "a.ts"), ("debt", "b.ts")})
+        result = _format_seen_for_file_selection(seen)
+        for line in result.strip().splitlines():
+            assert line.startswith("- ")
+
+
+class TestFormatSeenForFile:
+    """Unit tests for _format_seen_for_file()."""
+
+    def test_empty_signatures_returns_empty(self):
+        assert _format_seen_for_file("src/a.ts", frozenset()) == ""
+
+    def test_filters_to_matching_file(self):
+        seen = frozenset({
+            ("performance", "src/a.ts"),
+            ("tech_debt", "src/b.ts"),
+        })
+        result = _format_seen_for_file("src/a.ts", seen)
+        assert "performance" in result
+        assert "tech_debt" not in result
+
+    def test_no_match_returns_empty(self):
+        seen = frozenset({("performance", "src/b.ts")})
+        assert _format_seen_for_file("src/a.ts", seen) == ""
+
+    def test_multiple_types_for_same_file(self):
+        seen = frozenset({
+            ("performance", "src/a.ts"),
+            ("tech_debt", "src/a.ts"),
+        })
+        result = _format_seen_for_file("src/a.ts", seen)
+        lines = result.strip().splitlines()
+        assert len(lines) == 2
+
+
+class TestSeenAwarePromptThreading:
+    """Integration tests verifying that seen_signatures are forwarded to LLM prompts."""
+
+    async def test_seen_signatures_appear_in_file_selection_prompt(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        seen = frozenset({("performance", "src/old.ts")})
+        captured_prompts: list[str] = []
+
+        async def fake_complete(messages, config):
+            captured_prompts.append(messages[-1].content)
+            if len(captured_prompts) == 1:
+                return _make_response({"files": ["utils.ts"]})
+            return _make_response({"opportunities": []})
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=fake_complete)
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            seen_signatures=seen,
+        )
+
+        file_selection_prompt_text = captured_prompts[0]
+        assert "[performance] src/old.ts" in file_selection_prompt_text
+        assert "ALREADY been identified" in file_selection_prompt_text
+
+    async def test_seen_signatures_appear_in_analysis_prompt(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        seen = frozenset({("tech_debt", "utils.ts")})
+        captured_prompts: list[str] = []
+
+        async def fake_complete(messages, config):
+            captured_prompts.append(messages[-1].content)
+            if len(captured_prompts) == 1:
+                return _make_response({"files": ["utils.ts"]})
+            return _make_response({"opportunities": []})
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=fake_complete)
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            seen_signatures=seen,
+        )
+
+        analysis_prompt_text = captured_prompts[1]
+        assert "tech_debt" in analysis_prompt_text
+        assert "ALREADY been identified" in analysis_prompt_text
+
+    async def test_empty_seen_produces_no_seen_block(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        captured_prompts: list[str] = []
+
+        async def fake_complete(messages, config):
+            captured_prompts.append(messages[-1].content)
+            if len(captured_prompts) == 1:
+                return _make_response({"files": ["utils.ts"]})
+            return _make_response({"opportunities": []})
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=fake_complete)
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            seen_signatures=frozenset(),
+        )
+
+        for prompt_text in captured_prompts:
+            assert "ALREADY been identified" not in prompt_text
 
 
 class TestDiscoverOpportunitiesCallback:

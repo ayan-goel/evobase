@@ -8,6 +8,15 @@ vi.mock("@/lib/api", () => ({
   getProposalsByRun: vi.fn(),
 }));
 
+vi.mock("@/lib/hooks/use-run-events", () => ({
+  useRunEvents: () => ({
+    events: [],
+    currentPhase: null,
+    isConnected: false,
+    isDone: false,
+  }),
+}));
+
 // Silence OnboardingBanner and ProposalCard to keep tests focused
 vi.mock("@/components/onboarding-banner", () => ({
   OnboardingBanner: () => null,

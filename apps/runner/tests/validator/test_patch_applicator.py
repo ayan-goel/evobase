@@ -111,6 +111,43 @@ class TestRevertDiff:
                 revert_diff(tmp_path, diff)
 
 
+class TestFuzzFactor:
+    """Verify the fuzz flag is included so LLM-generated diffs with slightly
+    off context lines are still accepted by patch."""
+
+    def test_apply_includes_fuzz_flag(self, tmp_path):
+        diff = _make_diff("old\n", "new\n")
+        captured: list[list[str]] = []
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch(
+            "runner.validator.patch_applicator.subprocess.run",
+            side_effect=lambda cmd, **_: captured.append(cmd) or mock_result,
+        ):
+            apply_diff(tmp_path, diff)
+
+        assert captured, "subprocess.run was not called"
+        assert "--fuzz=3" in captured[0], f"--fuzz=3 missing from cmd: {captured[0]}"
+
+    def test_revert_includes_fuzz_flag(self, tmp_path):
+        diff = _make_diff("old\n", "new\n")
+        captured: list[list[str]] = []
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch(
+            "runner.validator.patch_applicator.subprocess.run",
+            side_effect=lambda cmd, **_: captured.append(cmd) or mock_result,
+        ):
+            revert_diff(tmp_path, diff)
+
+        assert captured, "subprocess.run was not called"
+        assert "--fuzz=3" in captured[0], f"--fuzz=3 missing from cmd: {captured[0]}"
+
+
 class TestCheckPatchAvailable:
     def test_returns_true_when_available(self):
         mock_result = MagicMock()
