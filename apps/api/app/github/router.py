@@ -21,6 +21,8 @@ from app.db.models import GitHubInstallation, Organization, Proposal, Repository
 from app.db.session import get_db
 from app.github.schemas import (
     CreatePrResponse,
+    CreateRunPrRequest,
+    CreateRunPrResponse,
     GitHubRepoItem,
     InstallationListResponse,
     InstallationReposResponse,
@@ -29,7 +31,7 @@ from app.github.schemas import (
     LinkInstallationResponse,
     WebhookResponse,
 )
-from app.github.service import create_pr_for_proposal
+from app.github.service import create_pr_for_proposal, create_pr_for_run
 from app.github.webhooks import parse_installation_event, verify_webhook_signature
 from app.runs.service import create_and_enqueue_run
 
@@ -343,3 +345,72 @@ async def create_pr(
     await db.commit()
 
     return CreatePrResponse(proposal_id=proposal.id, pr_url=pr_url)
+
+
+@router.post(
+    "/repos/{repo_id}/runs/{run_id}/create-pr",
+    response_model=CreateRunPrResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_run_pr(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID,
+    body: CreateRunPrRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> CreateRunPrResponse:
+    """Create a single GitHub PR containing all selected proposals for a run."""
+    result = await db.execute(
+        select(Repository)
+        .join(Organization)
+        .where(Repository.id == repo_id, Organization.owner_id == user_id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+
+    result = await db.execute(
+        select(Run).where(Run.id == run_id, Run.repo_id == repo_id)
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    if run.pr_url:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="PR already created for this run",
+        )
+
+    if not body.proposal_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one proposal must be selected",
+        )
+
+    result = await db.execute(
+        select(Proposal).where(
+            Proposal.id.in_(body.proposal_ids),
+            Proposal.run_id == run_id,
+        )
+    )
+    proposals = list(result.scalars().all())
+
+    if not proposals:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No matching proposals found for this run",
+        )
+
+    try:
+        pr_url = await create_pr_for_run(repo, run, proposals)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    run.pr_url = pr_url
+    await db.commit()
+
+    return CreateRunPrResponse(run_id=run.id, pr_url=pr_url)

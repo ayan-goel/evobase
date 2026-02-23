@@ -173,6 +173,8 @@ class Run(Base):
     failure_step: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # commit_message: subject line of the commit at head_sha, for the UI
     commit_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # pr_url: GitHub PR URL once a run-level PR has been created
+    pr_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )

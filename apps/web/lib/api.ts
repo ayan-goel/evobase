@@ -146,6 +146,19 @@ export async function createPR(
   });
 }
 
+/** Create a single GitHub PR for a run, combining the selected proposal diffs. */
+export async function createRunPR(
+  repoId: string,
+  runId: string,
+  proposalIds: string[],
+): Promise<{ pr_url: string }> {
+  return apiFetch(`/github/repos/${repoId}/runs/${runId}/create-pr`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ proposal_ids: proposalIds }),
+  });
+}
+
 /** Get settings for a repository. */
 export async function getRepoSettings(repoId: string): Promise<RepoSettings> {
   return apiFetch<RepoSettings>(`/repos/${repoId}/settings`);

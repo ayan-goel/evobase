@@ -31,6 +31,8 @@ export interface Run {
   failure_step: string | null;
   /** Subject line of the HEAD commit, shown next to the SHA in the run header */
   commit_message: string | null;
+  /** GitHub PR URL once a run-level PR has been created */
+  pr_url?: string | null;
   created_at: string;
 }
 

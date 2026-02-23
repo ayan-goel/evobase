@@ -574,6 +574,10 @@ class RunService:
                     run.status,
                 )
                 return
+            now = datetime.now(timezone.utc)
+            created = run.created_at.replace(tzinfo=timezone.utc) if run.created_at.tzinfo is None else run.created_at
+            elapsed_seconds = (now - created).total_seconds()
+            run.compute_minutes = round(elapsed_seconds / 60, 2)
             run.status = "completed"
             session.commit()
         logger.info("Run %s: running -> completed", run_id)

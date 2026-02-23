@@ -43,7 +43,7 @@ export function useRunEvents(
   }, [runId]);
 
   const connect = useCallback(async () => {
-    if (!isActive || isDone) return;
+    if (isDone) return;
 
     const supabase = createClient();
     const {
@@ -84,14 +84,15 @@ export function useRunEvents(
     es.onerror = () => {
       setIsConnected(false);
       es.close();
-      if (!isDone) {
+      // Only auto-reconnect for active runs; completed runs read from Redis once.
+      if (isActive && !isDone) {
         setTimeout(() => connect(), 3000);
       }
     };
   }, [runId, isActive, isDone]);
 
   useEffect(() => {
-    if (isActive && !isDone) {
+    if (!isDone) {
       connect();
     }
 
@@ -99,7 +100,7 @@ export function useRunEvents(
       eventSourceRef.current?.close();
       setIsConnected(false);
     };
-  }, [connect, isActive, isDone]);
+  }, [connect, isDone]);
 
   const currentPhase = events.length > 0
     ? events[events.length - 1].phase as RunPhase

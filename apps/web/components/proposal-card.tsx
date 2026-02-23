@@ -1,34 +1,35 @@
-import Link from "next/link";
+"use client";
+
 import { cn } from "@/lib/utils";
-import { ConfidenceBadge } from "@/components/confidence-badge";
 import type { Proposal } from "@/lib/types";
 
 interface ProposalCardProps {
   proposal: Proposal;
+  onSelect?: () => void;
   className?: string;
 }
 
-/** Displays a compact proposal summary with confidence, metrics delta, and link. */
-export function ProposalCard({ proposal, className }: ProposalCardProps) {
+/** Compact proposal card — click fires onSelect to open the detail drawer. */
+export function ProposalCard({ proposal, onSelect, className }: ProposalCardProps) {
   const testDelta = _testDurationDelta(proposal);
   const benchDelta = _benchDurationDelta(proposal);
 
   return (
-    <Link
-      href={`/proposals/${proposal.id}`}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect?.(); }}
       className={cn(
-        "group block rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 sm:p-5",
-        "hover:bg-white/[0.05] hover:border-white/[0.10] transition-all",
+        "group cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 sm:p-5",
+        "hover:bg-white/[0.05] hover:border-white/[0.10] transition-all select-none",
         className,
       )}
     >
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-white leading-snug line-clamp-2">
-          {proposal.summary ?? "Optimization proposal"}
-        </p>
-        <ConfidenceBadge confidence={proposal.confidence} className="shrink-0" />
-      </div>
+      {/* Summary */}
+      <p className="text-sm font-medium text-white leading-snug line-clamp-2">
+        {proposal.summary ?? "Optimization proposal"}
+      </p>
 
       {/* Metrics delta row */}
       {(testDelta !== null || benchDelta !== null) && (
@@ -44,16 +45,9 @@ export function ProposalCard({ proposal, className }: ProposalCardProps) {
 
       {/* Footer row */}
       <div className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {proposal.risk_score !== null && (
-            <span className="text-xs text-white/40">
-              Risk {Math.round(proposal.risk_score * 100)}%
-            </span>
-          )}
-          <span className="text-xs text-white/40">
-            {_formatRelative(proposal.created_at)}
-          </span>
-        </div>
+        <span suppressHydrationWarning className="text-xs text-white/40">
+          {_formatRelative(proposal.created_at)}
+        </span>
 
         {proposal.pr_url ? (
           <span className="text-xs text-emerald-400 font-medium">PR created</span>
@@ -63,11 +57,10 @@ export function ProposalCard({ proposal, className }: ProposalCardProps) {
           </span>
         )}
       </div>
-    </Link>
+    </div>
   );
 }
 
-/** Shows a before→after metric delta with green/red colouring. */
 function MetricDelta({
   label,
   delta,
@@ -77,7 +70,6 @@ function MetricDelta({
   delta: number;
   unit: string;
 }) {
-  // delta is negative = improvement (faster), positive = regression
   const improved = delta < 0;
   const sign = improved ? "−" : "+";
   const abs = Math.abs(delta).toFixed(2);

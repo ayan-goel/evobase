@@ -34,6 +34,7 @@ class RunResponse(BaseModel):
     trace_id: Optional[str] = None
     failure_step: Optional[str] = None
     commit_message: Optional[str] = None
+    pr_url: Optional[str] = None
     created_at: datetime
 
 

@@ -21,6 +21,19 @@ class CreatePrResponse(BaseModel):
     pr_url: str
 
 
+class CreateRunPrRequest(BaseModel):
+    """Request body for run-level PR creation."""
+
+    proposal_ids: list[uuid.UUID]
+
+
+class CreateRunPrResponse(BaseModel):
+    """Response after successfully creating a run-level PR."""
+
+    run_id: uuid.UUID
+    pr_url: str
+
+
 class InstallationResponse(BaseModel):
     id: str
     installation_id: int

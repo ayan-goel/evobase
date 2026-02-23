@@ -6,6 +6,8 @@ import { getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ProposalCard } from "@/components/proposal-card";
+import { ProposalDrawer } from "@/components/proposal-drawer";
+import { RunPRDialog } from "@/components/run-pr-dialog";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
 import type { ConfidenceLevel, Proposal, Run, RunEvent } from "@/lib/types";
@@ -19,7 +21,7 @@ interface RepoRunListProps {
 }
 
 const POLL_INTERVAL_MS = 5000;
-const HIDE_BEFORE_KEY = (repoId: string) => `hideBefore:${repoId}`;
+const CLEARED_IDS_KEY = (repoId: string) => `clearedRunIds:${repoId}`;
 
 function hasActiveRun(runs: RunWithProposals[]): boolean {
   return runs.some((r) => r.status === "queued" || r.status === "running");
@@ -43,13 +45,17 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
 
 export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
-  const [hideBefore, setHideBefore] = useState<number | null>(null);
+  const [clearedIds, setClearedIds] = useState<Set<string>>(new Set());
   const activeRunStatus = getActiveRunStatus(runs);
 
-  // Load persisted hideBefore on mount (client-only)
+  // Load persisted cleared IDs on mount (client-only)
   useEffect(() => {
-    const stored = localStorage.getItem(HIDE_BEFORE_KEY(repoId));
-    if (stored) setHideBefore(Number(stored));
+    try {
+      const stored = localStorage.getItem(CLEARED_IDS_KEY(repoId));
+      if (stored) setClearedIds(new Set(JSON.parse(stored) as string[]));
+    } catch {
+      // ignore malformed localStorage
+    }
   }, [repoId]);
 
   useEffect(() => {
@@ -84,25 +90,18 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
   }
 
   function handleClear() {
-    const ts = Date.now();
-    localStorage.setItem(HIDE_BEFORE_KEY(repoId), String(ts));
-    setHideBefore(ts);
+    const newCleared = new Set([...clearedIds, ...runs.map((r) => r.id)]);
+    localStorage.setItem(CLEARED_IDS_KEY(repoId), JSON.stringify([...newCleared]));
+    setClearedIds(newCleared);
   }
 
   function handleViewAll() {
-    localStorage.removeItem(HIDE_BEFORE_KEY(repoId));
-    setHideBefore(null);
+    localStorage.removeItem(CLEARED_IDS_KEY(repoId));
+    setClearedIds(new Set());
   }
 
-  // Always show active (queued/running) runs regardless of hideBefore
-  const visibleRuns = hideBefore
-    ? runs.filter(
-        (r) =>
-          r.status === "queued" ||
-          r.status === "running" ||
-          new Date(r.created_at).getTime() >= hideBefore,
-      )
-    : runs;
+  // Hide only runs that were explicitly cleared; active runs always visible
+  const visibleRuns = runs.filter((r) => !clearedIds.has(r.id));
 
   const hiddenCount = runs.length - visibleRuns.length;
 
@@ -372,6 +371,10 @@ function RunCard({
   repoId: string;
   setupFailing: boolean;
 }) {
+  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  const [prDialogOpen, setPrDialogOpen] = useState(false);
+  const [runPrUrl, setRunPrUrl] = useState<string | null>(run.pr_url ?? null);
+
   const sha = run.sha ? run.sha.slice(0, 7) : "no sha";
   const msg = run.commit_message
     ? run.commit_message.length > 72
@@ -382,84 +385,131 @@ function RunCard({
   const isActive = run.status === "running" || run.status === "queued";
   const isTerminal = run.status === "completed" || run.status === "failed";
 
-  return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition-colors hover:border-white/[0.12]">
-      {/* Header row */}
-      <Link
-        href={`/repos/${repoId}/runs/${run.id}`}
-        className="flex items-center gap-3 flex-wrap group cursor-pointer"
-      >
-        <RunStatusBadge status={run.status} />
-        <span className="text-xs text-white/40 font-mono group-hover:text-white/60 transition-colors">
-          {sha}
-          {msg && (
-            <span className="text-white/30 font-sans ml-1.5 group-hover:text-white/50">— {msg}</span>
-          )}
-        </span>
-        <span className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
-        <span className="text-[10px] text-white/20 group-hover:text-white/40 transition-colors ml-auto">
-          View details →
-        </span>
-      </Link>
+  const showPrButton = isTerminal && run.status === "completed" && proposals.length > 0;
 
-      {/* Meta row — only for terminal runs */}
-      {isTerminal && (
-        <div className="mt-2 flex items-center gap-2 flex-wrap text-xs text-white/30">
-          {run.status === "completed" ? (
-            <span>{_confidenceBreakdown(proposals)}</span>
-          ) : run.failure_step ? (
-            <span className="text-amber-400/60">
-              {FAILURE_MESSAGES[run.failure_step]?.title ?? "Setup failed"}
-            </span>
-          ) : (
-            <span className="text-red-400/50">Run failed</span>
-          )}
-          {_prStatusSummary(proposals) && (
-            <>
-              <span className="text-white/15">·</span>
-              <span className="text-emerald-400/50">{_prStatusSummary(proposals)}</span>
-            </>
-          )}
-          {run.compute_minutes != null && (
-            <>
-              <span className="text-white/15">·</span>
-              <span>~{run.compute_minutes.toFixed(1)} min compute</span>
-            </>
-          )}
-        </div>
+  return (
+    <>
+      <ProposalDrawer
+        proposal={selectedProposal}
+        onClose={() => setSelectedProposal(null)}
+      />
+      {showPrButton && (
+        <RunPRDialog
+          isOpen={prDialogOpen}
+          onClose={() => setPrDialogOpen(false)}
+          repoId={repoId}
+          runId={run.id}
+          proposals={proposals}
+          onPRCreated={setRunPrUrl}
+        />
       )}
 
-      {/* Body */}
-      <div className="mt-3">
-        {proposals.length === 0 ? (
-          <>
-            {isActive ? (
-              <LiveRunSummary runId={run.id} repoId={repoId} />
-            ) : run.failure_step ? (
-              <BaselineFailureMessage failureStep={run.failure_step} repoId={repoId} />
-            ) : run.status === "failed" && setupFailing ? (
-              <p className="text-sm text-amber-400/70">
-                Setup failed — install step could not run.{" "}
-                <a
-                  href={`/repos/${repoId}/settings`}
-                  className="underline underline-offset-2 hover:text-amber-400 transition-colors"
-                >
-                  Set a project directory in Settings →
-                </a>
-              </p>
+      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition-colors hover:border-white/[0.12]">
+        {/* Header row */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            href={`/repos/${repoId}/runs/${run.id}`}
+            className="flex items-center gap-3 flex-wrap group cursor-pointer flex-1 min-w-0"
+          >
+            <RunStatusBadge status={run.status} />
+            <span className="text-xs text-white/40 font-mono group-hover:text-white/60 transition-colors">
+              {sha}
+              {msg && (
+                <span className="text-white/30 font-sans ml-1.5 group-hover:text-white/50">— {msg}</span>
+              )}
+            </span>
+            <span className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
+            <span className="text-[10px] text-white/20 group-hover:text-white/40 transition-colors">
+              View details →
+            </span>
+          </Link>
+
+          {/* PR button — shown for completed runs with proposals */}
+          {showPrButton && (
+            runPrUrl ? (
+              <a
+                href={runPrUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+              >
+                View PR →
+              </a>
             ) : (
-              <p className="text-sm text-white/30">No opportunities found this run.</p>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setPrDialogOpen(true); }}
+                className="shrink-0 rounded-lg border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-medium text-white/60 hover:bg-white/[0.09] hover:text-white/80 transition-colors"
+              >
+                Open PR
+              </button>
+            )
+          )}
+        </div>
+
+        {/* Meta row — only for terminal runs */}
+        {isTerminal && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap text-xs text-white/30">
+            {run.status === "completed" ? (
+              <span>{_confidenceBreakdown(proposals)}</span>
+            ) : run.failure_step ? (
+              <span className="text-amber-400/60">
+                {FAILURE_MESSAGES[run.failure_step]?.title ?? "Setup failed"}
+              </span>
+            ) : (
+              <span className="text-red-400/50">Run failed</span>
             )}
-          </>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {proposals.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} />
-            ))}
+            {_prStatusSummary(proposals) && (
+              <>
+                <span className="text-white/15">·</span>
+                <span className="text-emerald-400/50">{_prStatusSummary(proposals)}</span>
+              </>
+            )}
+            {run.compute_minutes != null && run.compute_minutes > 0 && (
+              <>
+                <span className="text-white/15">·</span>
+                <span>~{run.compute_minutes.toFixed(1)} min compute</span>
+              </>
+            )}
           </div>
         )}
+
+        {/* Body */}
+        <div className="mt-3">
+          {proposals.length === 0 ? (
+            <>
+              {isActive ? (
+                <LiveRunSummary runId={run.id} repoId={repoId} />
+              ) : run.failure_step ? (
+                <BaselineFailureMessage failureStep={run.failure_step} repoId={repoId} />
+              ) : run.status === "failed" && setupFailing ? (
+                <p className="text-sm text-amber-400/70">
+                  Setup failed — install step could not run.{" "}
+                  <a
+                    href={`/repos/${repoId}/settings`}
+                    className="underline underline-offset-2 hover:text-amber-400 transition-colors"
+                  >
+                    Set a project directory in Settings →
+                  </a>
+                </p>
+              ) : (
+                <p className="text-sm text-white/30">No opportunities found this run.</p>
+              )}
+            </>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {proposals.map((proposal) => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  onSelect={() => setSelectedProposal(proposal)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

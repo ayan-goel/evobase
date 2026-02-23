@@ -223,7 +223,7 @@ function MetricsCard({ metrics }: { metrics: Metrics }) {
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <p className="text-xs font-medium text-white/40 mb-3">Metrics after patch</p>
       <div className="space-y-1.5">
-        {metrics.steps.map((step) => (
+        {(metrics.steps ?? []).map((step) => (
           <div key={step.name} className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2 text-white/60 font-mono">
               <span className={step.is_success ? "text-emerald-400" : "text-red-400"}>
