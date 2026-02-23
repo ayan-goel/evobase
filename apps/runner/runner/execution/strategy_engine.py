@@ -132,7 +132,7 @@ def _execute_attempt(
                 plan.build_command,
                 repo_dir,
                 timeout=timeout_seconds,
-                env=shared_env,
+                env=_merge_step_env(shared_env, plan.build_env),
             )
             result.steps.append(build_step)
             if not build_step.is_success:
@@ -234,6 +234,7 @@ class NodeAdapter(BaseAdapter):
         return replace(
             plan,
             install_env=_js_install_env(),
+            build_env=_js_build_env(),
             test_env=_js_test_env(),
         )
 
@@ -278,6 +279,7 @@ class NodeAdapter(BaseAdapter):
                 previous_plan,
                 shared_env=_js_oom_retry_shared_env(),
                 install_env=_js_install_env(),
+                build_env=_js_build_env(),
                 test_command=test_command,
                 test_env=_js_test_env(),
                 metadata=metadata,
@@ -630,6 +632,25 @@ def _fallback_install_command(detection: DetectionResult) -> str:
     return "npm ci"
 
 
+def _js_node_options() -> str:
+    """V8 heap cap for Node.js processes.
+
+    We do NOT use RLIMIT_AS to limit JS memory because WebAssembly (Turbopack,
+    SWC, Vitest) requires large contiguous virtual address space blocks (4 GB
+    per Wasm linear memory instance). Capping virtual address space causes
+    spurious Wasm OOM errors even on machines with plenty of physical RAM.
+    Instead we cap the V8 heap directly via --max-old-space-size, which lets
+    Wasm virtual mappings succeed while still bounding actual heap growth.
+    8 GB is generous enough for large Next.js builds but tight enough to
+    prevent a single runaway process from consuming all physical RAM.
+    """
+    existing = os.environ.get("NODE_OPTIONS", "")
+    if "--max-old-space-size" in existing:
+        return existing
+    cap = "8192"
+    return f"{existing} --max-old-space-size={cap}".strip()
+
+
 def _js_install_env() -> dict:
     env = dict(os.environ)
     env["NODE_ENV"] = "development"
@@ -639,19 +660,29 @@ def _js_install_env() -> dict:
     env["NPM_CONFIG_OMIT"] = ""
     env["npm_config_optional"] = "true"
     env["npm_config_omit"] = ""
+    env["NODE_OPTIONS"] = _js_node_options()
+    return env
+
+
+def _js_build_env() -> dict:
+    """Env for npm run build — caps V8 heap, lets Wasm map freely."""
+    env = dict(os.environ)
+    env["NODE_OPTIONS"] = _js_node_options()
     return env
 
 
 def _js_test_env() -> dict:
     env = dict(os.environ)
     env["CI"] = "true"
+    env["NODE_OPTIONS"] = _js_node_options()
     return env
 
 
 def _js_oom_retry_shared_env() -> dict:
+    # RLIMIT_AS is already disabled for JS by default (see limits.py).
+    # This env is still used to carry any future shared retry state.
     env = dict(os.environ)
-    # Adaptive OOM fallback: remove JS RLIMIT_AS cap for this retry only.
-    env["CORELOOP_RLIMIT_AS_BYTES_JS"] = "0"
+    env["NODE_OPTIONS"] = _js_node_options()
     return env
 
 

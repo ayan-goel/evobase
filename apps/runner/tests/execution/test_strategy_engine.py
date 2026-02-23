@@ -215,14 +215,17 @@ def test_node_oom_retry_disables_js_rlimit_and_throttles_vitest(tmp_path: Path) 
     build_envs = [env for name, _, env in calls if name == "build"]
     test_calls = [(command, env) for name, command, env in calls if name == "test"]
     assert len(build_envs) == 2
-    assert build_envs[0] is None
+    # Both build attempts now receive NODE_OPTIONS (RLIMIT_AS is no longer used
+    # for the JS profile; V8 heap is bounded via --max-old-space-size instead).
+    assert build_envs[0] is not None
+    assert "--max-old-space-size" in build_envs[0].get("NODE_OPTIONS", "")
     assert build_envs[1] is not None
-    assert build_envs[1].get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+    assert "--max-old-space-size" in build_envs[1].get("NODE_OPTIONS", "")
     assert len(test_calls) == 2
     assert "--maxWorkers=1" in test_calls[1][0]
     assert "--pool=forks" in test_calls[1][0]
     assert test_calls[1][1] is not None
-    assert test_calls[1][1].get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+    assert "--max-old-space-size" in test_calls[1][1].get("NODE_OPTIONS", "")
     assert result.is_success is True
     assert result.strategy_attempts == 2
 

@@ -77,6 +77,7 @@ class ExecutionAttemptPlan:
     bench_command: Optional[str]
     shared_env: Optional[dict] = None
     install_env: Optional[dict] = None
+    build_env: Optional[dict] = None
     test_env: Optional[dict] = None
     metadata: dict[str, str] = field(default_factory=dict)
 

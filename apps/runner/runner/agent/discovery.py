@@ -20,7 +20,7 @@ Design decisions:
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from runner.agent.repo_map import build_repo_map
 from runner.agent.types import AgentOpportunity
@@ -42,12 +42,16 @@ MAX_OPPORTUNITIES = 30
 MAX_FILE_CHARS = 32_000
 
 
+EventCallback = Callable[[str, str, dict], None]
+
+
 async def discover_opportunities(
     repo_dir: Path,
     detection: DetectionResult,
     provider: LLMProvider,
     config: LLMConfig,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
+    on_event: Optional[EventCallback] = None,
 ) -> list[AgentOpportunity]:
     """Run the two-stage discovery pipeline and return all opportunities.
 
@@ -60,11 +64,20 @@ async def discover_opportunities(
             this repository across all previous runs. Opportunities whose
             (type, file_path) match an entry are filtered out before returning
             so the same suggestion is never re-proposed.
+        on_event: Optional callback invoked as on_event(event_type, phase, data)
+            for each significant discovery step. Used for real-time streaming.
 
     Returns:
         List of `AgentOpportunity` objects sorted by risk score ascending
         (safest first). Includes the thinking trace for each opportunity.
     """
+    def _emit(event_type: str, data: dict) -> None:
+        if on_event:
+            try:
+                on_event(event_type, "discovery", data)
+            except Exception:
+                pass
+
     repo_dir = Path(repo_dir)
     system_prompt = build_system_prompt(detection)
 
@@ -75,17 +88,33 @@ async def discover_opportunities(
         return []
 
     logger.info("Discovery: selected %d files for analysis", len(selected_files))
+    _emit("discovery.files.selected", {
+        "count": len(selected_files),
+        "files": selected_files,
+    })
 
     # Stage 2: per-file analysis
     all_opportunities: list[AgentOpportunity] = []
+    capped_files = selected_files[:MAX_FILES_TO_ANALYSE]
 
-    for rel_path in selected_files[:MAX_FILES_TO_ANALYSE]:
+    for file_index, rel_path in enumerate(capped_files):
         file_path = repo_dir / rel_path
         if not file_path.is_file():
             logger.warning("Selected file not found: %s", rel_path)
             continue
 
+        _emit("discovery.file.analysing", {
+            "file": rel_path,
+            "file_index": file_index,
+            "total_files": len(capped_files),
+        })
         opps = await _analyse_file(rel_path, file_path, system_prompt, provider, config)
+        _emit("discovery.file.analysed", {
+            "file": rel_path,
+            "file_index": file_index,
+            "total_files": len(capped_files),
+            "opportunities_found": len(opps),
+        })
         all_opportunities.extend(opps)
 
     # Deduplicate by location (same location from multiple passes = keep first)

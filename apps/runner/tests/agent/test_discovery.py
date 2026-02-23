@@ -391,6 +391,156 @@ class TestIsNew:
         assert _is_new(opp, seen) is False
 
 
+class TestDiscoverOpportunitiesCallback:
+    """Tests for the on_event callback in discover_opportunities()."""
+
+    async def test_fires_files_selected_event(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["utils.ts"]}),
+            _make_response({"opportunities": [{
+                "type": "performance", "location": "utils.ts:1",
+                "rationale": "slow", "approach": "fix",
+                "risk_level": "low", "affected_lines": 1,
+            }]}),
+        ])
+
+        emitted: list[tuple[str, str, dict]] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+        )
+
+        types = [e[0] for e in emitted]
+        assert "discovery.files.selected" in types
+
+        selected_event = next(e for e in emitted if e[0] == "discovery.files.selected")
+        assert selected_event[2]["count"] == 1
+        assert "utils.ts" in selected_event[2]["files"]
+
+    async def test_fires_file_analysing_and_analysed_events(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["utils.ts"]}),
+            _make_response({"opportunities": [{
+                "type": "performance", "location": "utils.ts:1",
+                "rationale": "slow", "approach": "fix",
+                "risk_level": "low", "affected_lines": 1,
+            }]}),
+        ])
+
+        emitted: list[tuple[str, str, dict]] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+        )
+
+        types = [e[0] for e in emitted]
+        assert "discovery.file.analysing" in types
+        assert "discovery.file.analysed" in types
+
+        analysing = next(e for e in emitted if e[0] == "discovery.file.analysing")
+        assert analysing[2]["file"] == "utils.ts"
+        assert analysing[2]["total_files"] == 1
+
+        analysed = next(e for e in emitted if e[0] == "discovery.file.analysed")
+        assert analysed[2]["file"] == "utils.ts"
+        assert analysed[2]["opportunities_found"] == 1
+
+    async def test_callback_event_order(self, tmp_path: Path) -> None:
+        """files.selected → file.analysing → file.analysed (per file)."""
+        (tmp_path / "a.ts").write_text("code")
+        (tmp_path / "b.ts").write_text("code")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["a.ts", "b.ts"]}),
+            _make_response({"opportunities": [{
+                "type": "performance", "location": "a.ts:1",
+                "rationale": "slow", "approach": "fix",
+                "risk_level": "low", "affected_lines": 1,
+            }]}),
+            _make_response({"opportunities": []}),
+        ])
+
+        emitted: list[str] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            on_event=lambda et, ph, data: emitted.append(et),
+        )
+
+        assert emitted[0] == "discovery.files.selected"
+        assert emitted[1] == "discovery.file.analysing"
+        assert emitted[2] == "discovery.file.analysed"
+        assert emitted[3] == "discovery.file.analysing"
+        assert emitted[4] == "discovery.file.analysed"
+
+    async def test_callback_is_optional(self, tmp_path: Path) -> None:
+        """Omitting on_event should not raise any errors."""
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["utils.ts"]}),
+            _make_response({"opportunities": [{
+                "type": "performance", "location": "utils.ts:1",
+                "rationale": "r", "approach": "a",
+                "risk_level": "low", "affected_lines": 1,
+            }]}),
+        ])
+
+        result = await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            # no on_event
+        )
+        assert len(result) == 1
+
+    async def test_callback_exception_does_not_abort_discovery(self, tmp_path: Path) -> None:
+        """A crashing on_event callback must not propagate to the caller."""
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["utils.ts"]}),
+            _make_response({"opportunities": [{
+                "type": "performance", "location": "utils.ts:1",
+                "rationale": "r", "approach": "a",
+                "risk_level": "low", "affected_lines": 1,
+            }]}),
+        ])
+
+        def bad_callback(et: str, ph: str, data: dict) -> None:
+            raise RuntimeError("callback exploded")
+
+        result = await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            on_event=bad_callback,
+        )
+        assert len(result) == 1
+
+
 class TestDiscoverOpportunitiesDeduplication:
     """Integration tests for seen_signatures filtering in discover_opportunities()."""
 

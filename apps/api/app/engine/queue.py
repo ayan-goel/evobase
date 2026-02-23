@@ -24,17 +24,21 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Limit task execution time to prevent runaway processes.
-    # Individual tasks can override with their own soft/hard limits.
-    task_soft_time_limit=600,
-    task_time_limit=660,
+    # Global fallback time limits — the execute_run task sets its own (higher)
+    # limits via @celery_app.task(..., soft_time_limit=..., time_limit=...).
+    # These cover any short-lived Beat/scheduling tasks.
+    task_soft_time_limit=120,
+    task_time_limit=180,
     # Acknowledge tasks after they complete, not when received.
     # Prevents task loss if the worker crashes mid-execution.
     task_acks_late=True,
     worker_prefetch_multiplier=1,
-    # Re-deliver unacked tasks after 5 minutes (default is 1 hour).
-    # Keeps recovery fast after worker crashes or deployments.
-    broker_transport_options={"visibility_timeout": 300},
+    # visibility_timeout MUST exceed the longest task's time_limit.
+    # An agentic run can take up to ~1 hour (baseline + 10×LLM analysis +
+    # patch generation + validation). Set to 2 hours to be safe.
+    # If this is shorter than time_limit, Redis re-delivers the task while
+    # it is still running, causing spurious duplicate executions.
+    broker_transport_options={"visibility_timeout": 7200},
 )
 
 # Auto-discover tasks in engine and scheduling modules

@@ -28,8 +28,13 @@ logger = logging.getLogger(__name__)
 @celery_app.task(
     name="coreloop.execute_run",
     bind=True,
-    max_retries=1,
-    default_retry_delay=30,
+    max_retries=0,
+    # An agentic run involves: baseline (up to 2 attempts) + 10 LLM file
+    # analysis calls + up to 5×3 patch generation calls + up to 5 validation
+    # runs. Each LLM call can take 1–2 minutes. Allow up to 90 minutes.
+    # The global task_soft_time_limit in queue.py is only for short Beat tasks.
+    soft_time_limit=5400,   # 90 min — graceful shutdown via SoftTimeLimitExceeded
+    time_limit=5520,        # 92 min — hard kill if soft handler hangs
 )
 def execute_run(self, run_id: str, trace_id: str = "") -> dict:
     """Execute a full optimization run with LLM agent pipeline.

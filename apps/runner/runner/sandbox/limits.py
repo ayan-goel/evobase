@@ -13,26 +13,28 @@ Platform notes:
     is a no-op on Windows so tests and development on Windows are unaffected.
 
 Memory policy:
-  - Default profile: 4 GB virtual-address-space cap (`RLIMIT_AS`).
-  - JS profile: 12 GB virtual-address-space cap by default.
-    Node + Wasm-heavy workloads (Next.js builds / Vitest) can exceed 4 GB of
-    *virtual* mappings even when physical memory is available.
-  - JVM profile: 12 GB virtual-address-space cap by default.
-    Gradle/Maven builds can start multiple JVMs and require larger virtual
-    address mappings than the default profile.
-  - Native profile: 16 GB virtual-address-space cap by default.
-    Rust and C/C++ linker-heavy builds can use large address-space mappings
-    during compile/link phases.
+  RLIMIT_AS (virtual address space) is a poor fit for Node.js/Wasm workloads.
+  WebAssembly requires a 4 GB *contiguous* virtual address block per Wasm
+  linear memory instance. Turbopack (used by Next.js builds) and Vitest spin
+  up multiple Wasm workers, so even a 12 GB RLIMIT_AS can be exceeded on a
+  machine with plenty of physical RAM. For JS we therefore disable RLIMIT_AS
+  and rely on NODE_OPTIONS=--max-old-space-size (injected by the strategy
+  engine) to bound V8 heap instead.
+
+  - JS profile:      RLIMIT_AS disabled by default; heap bounded via NODE_OPTIONS.
+  - Default profile: 4 GB virtual-address-space cap (RLIMIT_AS).
+  - JVM profile:     12 GB virtual-address-space cap by default.
+  - Native profile:  16 GB virtual-address-space cap by default.
 
 Environment overrides:
   - CORELOOP_RESOURCE_PROFILE: "default" | "js" | "jvm" | "native"
   - CORELOOP_RLIMIT_AS_BYTES: integer bytes for default profile
-  - CORELOOP_RLIMIT_AS_BYTES_JS: integer bytes for js profile
+  - CORELOOP_RLIMIT_AS_BYTES_JS: integer bytes for js profile (0 = disabled)
   - CORELOOP_RLIMIT_AS_BYTES_JVM: integer bytes for jvm profile
   - CORELOOP_RLIMIT_AS_BYTES_NATIVE: integer bytes for native profile
   - CORELOOP_RLIMIT_CPU_SECONDS: integer seconds for CPU limit
 
-If either memory env value is set to 0 or negative, RLIMIT_AS is skipped for
+If a memory env value is set to 0 or negative, RLIMIT_AS is skipped for
 that profile. This is useful on high-memory dedicated workers.
 """
 
@@ -42,7 +44,12 @@ from typing import Optional
 
 # Default memory caps
 _DEFAULT_MEM_LIMIT_BYTES = 4 * 1024 * 1024 * 1024   # 4 GB
-_DEFAULT_JS_MEM_LIMIT_BYTES = 12 * 1024 * 1024 * 1024  # 12 GB
+# JS profile: RLIMIT_AS disabled by default (0 = skip) because WebAssembly
+# (Turbopack, SWC, Vitest) maps large contiguous virtual address blocks that
+# are easily mis-reported as OOM even when physical RAM is available.
+# Heap is bounded via NODE_OPTIONS=--max-old-space-size injected by the
+# strategy engine instead.
+_DEFAULT_JS_MEM_LIMIT_BYTES = 0
 _DEFAULT_JVM_MEM_LIMIT_BYTES = 12 * 1024 * 1024 * 1024  # 12 GB
 _DEFAULT_NATIVE_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
 _DEFAULT_CPU_LIMIT_SECONDS = 300

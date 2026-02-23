@@ -21,7 +21,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from runner.agent.discovery import discover_opportunities
 from runner.agent.patchgen import generate_agent_patch
@@ -64,6 +64,9 @@ class AgentCycleResult:
         return len(self.candidate_results)
 
 
+EventCallback = Callable[[str, str, dict], None]
+
+
 async def run_agent_cycle(
     repo_dir: Path,
     detection: DetectionResult,
@@ -71,6 +74,7 @@ async def run_agent_cycle(
     baseline: BaselineResult,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
+    on_event: Optional[EventCallback] = None,
 ) -> AgentCycleResult:
     """Run the full LLM agent cycle: discover → patch variants → validate → select.
 
@@ -82,10 +86,19 @@ async def run_agent_cycle(
         max_candidates: Budget cap on validation attempts (per opportunity).
         seen_signatures: Set of (type, file_path) pairs already seen for this
             repo; opportunities matching a signature are skipped before patching.
+        on_event: Optional callback invoked as on_event(event_type, phase, data)
+            for real-time progress streaming.
 
     Returns:
         `AgentCycleResult` with all attempts, reasoning traces, and verdicts.
     """
+    def _emit(event_type: str, phase: str, data: dict) -> None:
+        if on_event:
+            try:
+                on_event(event_type, phase, data)
+            except Exception:
+                pass
+
     repo_dir = Path(repo_dir)
 
     validate_model(llm_config.provider, llm_config.model)
@@ -105,6 +118,7 @@ async def run_agent_cycle(
         provider=provider,
         config=llm_config,
         seen_signatures=seen_signatures,
+        on_event=on_event,
     )
     agent_run.opportunities = opportunities
 
@@ -117,7 +131,7 @@ async def run_agent_cycle(
     # Step 2 + 3: Multi-approach patch generation + validation (budget-gated)
     candidates_attempted = 0
 
-    for opp in opportunities:
+    for opp_index, opp in enumerate(opportunities):
         if candidates_attempted >= max_candidates:
             logger.info(
                 "Candidate budget exhausted (%d / %d); stopping",
@@ -137,6 +151,14 @@ async def run_agent_cycle(
                 "Generating patch variant %d/%d for %s (approach: %s…)",
                 idx + 1, len(approaches), opp.location, approach_desc[:60],
             )
+            _emit("patch.approach.started", "patch", {
+                "opportunity_index": opp_index,
+                "location": opp.location,
+                "type": opp.type,
+                "approach_index": idx,
+                "approach_desc": approach_desc[:120],
+                "total_approaches": len(approaches),
+            })
 
             patch = await generate_agent_patch(
                 opportunity=opp,
@@ -151,8 +173,22 @@ async def run_agent_cycle(
                     "Patch generation returned None for variant %d at %s",
                     idx, opp.location,
                 )
+                _emit("patch.approach.completed", "patch", {
+                    "opportunity_index": opp_index,
+                    "approach_index": idx,
+                    "success": False,
+                    "lines_changed": None,
+                    "touched_files": [],
+                })
                 candidate_result = _make_error_candidate("Patch generation returned None")
             else:
+                _emit("patch.approach.completed", "patch", {
+                    "opportunity_index": opp_index,
+                    "approach_index": idx,
+                    "success": True,
+                    "lines_changed": patch.estimated_lines_changed,
+                    "touched_files": patch.touched_files,
+                })
                 proxy_patch = PatchResult(
                     diff=patch.diff,
                     explanation=patch.explanation,
@@ -160,6 +196,11 @@ async def run_agent_cycle(
                     template_name="llm_agent",
                     lines_changed=patch.estimated_lines_changed,
                 )
+                _emit("validation.candidate.started", "validation", {
+                    "candidate_index": candidates_attempted,
+                    "location": opp.location,
+                    "approach_index": idx,
+                })
                 try:
                     candidate_result = run_candidate_validation(
                         repo_dir=repo_dir,
@@ -204,6 +245,23 @@ async def run_agent_cycle(
             variants[winner_idx].selection_reason = selection_reason
             winner_candidate = variants[winner_idx].candidate_result
             winning_patch = variants[winner_idx].patch
+
+        # Emit verdict and selection events immediately after this candidate is resolved
+        _emit("validation.verdict", "validation", {
+            "index": candidates_attempted,
+            "opportunity": opp.location,
+            "accepted": winner_candidate.is_accepted,
+            "confidence": winner_candidate.final_verdict.confidence if winner_candidate.final_verdict else None,
+            "reason": winner_candidate.final_verdict.reason if winner_candidate.final_verdict else None,
+            "gates_passed": winner_candidate.final_verdict.gates_passed if winner_candidate.final_verdict else [],
+            "gates_failed": winner_candidate.final_verdict.gates_failed if winner_candidate.final_verdict else [],
+            "approaches_tried": len(variants),
+        })
+        if winner_candidate.is_accepted and selection_reason:
+            _emit("selection.completed", "selection", {
+                "index": candidates_attempted,
+                "reason": selection_reason,
+            })
 
         agent_run.patches.append(winning_patch)
         agent_run.errors.append(None if winning_patch else "No valid patch")

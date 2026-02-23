@@ -33,8 +33,15 @@ class TestApplyResourceLimits:
             (4 * 1024 * 1024 * 1024, mock_resource.RLIM_INFINITY),
         )
 
-    def test_sets_js_memory_limit_when_profile_is_js(self) -> None:
-        """JS profile uses a higher RLIMIT_AS default (12 GB)."""
+    def test_js_profile_skips_rlimit_as(self) -> None:
+        """JS profile disables RLIMIT_AS to avoid blocking Wasm virtual mappings.
+
+        WebAssembly (Turbopack/SWC/Vitest) requires large contiguous virtual
+        address space blocks that trip a per-process RLIMIT_AS cap even on
+        machines with plenty of physical RAM. The JS profile therefore leaves
+        virtual address space unlimited and bounds memory via NODE_OPTIONS
+        instead.
+        """
         mock_resource = MagicMock()
         mock_resource.RLIMIT_AS = 5
         mock_resource.RLIMIT_CPU = 0
@@ -45,10 +52,11 @@ class TestApplyResourceLimits:
                 with patch.dict("os.environ", {"CORELOOP_RESOURCE_PROFILE": "js"}, clear=False):
                     apply_resource_limits()
 
-        mock_resource.setrlimit.assert_any_call(
-            mock_resource.RLIMIT_AS,
-            (12 * 1024 * 1024 * 1024, mock_resource.RLIM_INFINITY),
-        )
+        # RLIMIT_AS must NOT be set for the JS profile.
+        for call_args in mock_resource.setrlimit.call_args_list:
+            assert call_args[0][0] != mock_resource.RLIMIT_AS, (
+                "RLIMIT_AS should not be set for the JS resource profile"
+            )
 
     def test_sets_jvm_memory_limit_when_profile_is_jvm(self) -> None:
         """JVM profile uses a higher RLIMIT_AS default (12 GB)."""

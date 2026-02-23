@@ -504,6 +504,7 @@ class RunService:
                     baseline=baseline,
                     max_candidates=max_candidates,
                     seen_signatures=seen_signatures,
+                    on_event=emit,
                 )
             )
 
@@ -512,50 +513,9 @@ class RunService:
                 run_id, cycle_result.total_attempted, cycle_result.accepted_count,
             )
 
-            # Emit per-opportunity events for the live timeline
-            for i, opp in enumerate(cycle_result.opportunity_for_candidate):
-                emit("discovery.opportunity.found", "discovery", {
-                    "index": i,
-                    "type": opp.type,
-                    "location": opp.location,
-                    "rationale": opp.rationale,
-                    "risk_level": getattr(opp, "risk_level", None),
-                    "approaches": getattr(opp, "approaches", []),
-                })
-
             emit("discovery.completed", "discovery", {
                 "count": len(cycle_result.opportunity_for_candidate),
             })
-
-            for i, candidate in enumerate(cycle_result.candidate_results):
-                opp = cycle_result.opportunity_for_candidate[i] if i < len(cycle_result.opportunity_for_candidate) else None
-                variants = (
-                    cycle_result.patch_variants_for_candidate[i]
-                    if i < len(getattr(cycle_result, "patch_variants_for_candidate", []))
-                    else []
-                )
-
-                emit("validation.verdict", "validation", {
-                    "index": i,
-                    "opportunity": opp.location if opp else "unknown",
-                    "accepted": candidate.is_accepted,
-                    "confidence": candidate.final_verdict.confidence if candidate.final_verdict else None,
-                    "reason": candidate.final_verdict.reason if candidate.final_verdict else None,
-                    "gates_passed": candidate.final_verdict.gates_passed if candidate.final_verdict else [],
-                    "gates_failed": candidate.final_verdict.gates_failed if candidate.final_verdict else [],
-                    "approaches_tried": len(variants),
-                })
-
-                selection_reason = (
-                    cycle_result.selection_reasons[i]
-                    if i < len(getattr(cycle_result, "selection_reasons", []))
-                    else None
-                )
-                if candidate.is_accepted and selection_reason:
-                    emit("selection.completed", "selection", {
-                        "index": i,
-                        "reason": selection_reason,
-                    })
 
             # ----------------------------------------------------------------
             # Step 9: Write proposals + opportunities + attempts to DB

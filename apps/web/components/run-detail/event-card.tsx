@@ -171,6 +171,166 @@ function renderDiscoveryStarted(event: RunEvent) {
   );
 }
 
+function renderFilesSelected(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const count = (d.count as number | undefined) ?? 0;
+  const files = Array.isArray(d.files) ? (d.files as string[]) : [];
+  return (
+    <ExpandableRow
+      icon="📂"
+      phase="Discovery"
+      ts={event.ts}
+      summary={
+        <>
+          Selected{" "}
+          <Badge>{count} file{count !== 1 ? "s" : ""}</Badge>{" "}
+          <span className="text-white/30 text-xs">for analysis</span>
+        </>
+      }
+      detail={
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {files.map((f) => (
+            <Mono key={f}>{shortenPath(f)}</Mono>
+          ))}
+        </div>
+      }
+    />
+  );
+}
+
+function renderFileAnalysing(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const file = d.file as string | undefined;
+  const fileIndex = (d.file_index as number | undefined) ?? 0;
+  const totalFiles = (d.total_files as number | undefined) ?? 0;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2 text-sm opacity-60">
+      <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400/50" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-400" />
+      </span>
+      <span className="min-w-0 flex-1 text-white/40 text-xs">
+        Analysing <Mono>{file ? shortenPath(file) : "…"}</Mono>
+      </span>
+      <span className="shrink-0 text-[10px] text-white/20 font-mono tabular-nums">
+        {fileIndex + 1}/{totalFiles}
+      </span>
+    </div>
+  );
+}
+
+function renderFileAnalysed(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const file = d.file as string | undefined;
+  const count = (d.opportunities_found as number | undefined) ?? 0;
+  const fileIndex = (d.file_index as number | undefined) ?? 0;
+  const totalFiles = (d.total_files as number | undefined) ?? 0;
+  const hasOpps = count > 0;
+  return (
+    <TimelineRow icon="✓" phase="Discovery" ts={event.ts} success={hasOpps}>
+      <Mono>{file ? shortenPath(file) : "…"}</Mono>
+      <span className="text-white/30 text-xs">—</span>
+      {hasOpps ? (
+        <span className="text-emerald-400/70 text-xs">
+          {count} opportunit{count !== 1 ? "ies" : "y"} found
+        </span>
+      ) : (
+        <span className="text-white/25 text-xs">nothing to improve</span>
+      )}
+      <span className="text-white/15 text-[10px] ml-auto tabular-nums font-mono">
+        {fileIndex + 1}/{totalFiles}
+      </span>
+    </TimelineRow>
+  );
+}
+
+function renderPatchApproachStarted(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const location = d.location as string | undefined;
+  const approachIndex = (d.approach_index as number | undefined) ?? 0;
+  const totalApproaches = (d.total_approaches as number | undefined) ?? 1;
+  const approachDesc = d.approach_desc as string | undefined;
+  const oppType = d.type as string | undefined;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2.5 text-sm opacity-70">
+      <span className="shrink-0 text-base">⚙</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap text-xs text-white/40">
+          Generating approach{" "}
+          <span className="font-mono text-white/60">
+            {approachIndex + 1}/{totalApproaches}
+          </span>
+          {oppType ? <Badge variant="default">{oppType}</Badge> : null}
+          <Mono>{location ? shortenPath(location) : "…"}</Mono>
+        </div>
+        {approachDesc ? (
+          <p className="mt-0.5 text-[11px] text-white/25 truncate">
+            {approachDesc}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function renderPatchApproachCompleted(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const success = Boolean(d.success);
+  const linesChanged = d.lines_changed as number | null | undefined;
+  const touchedFiles = Array.isArray(d.touched_files)
+    ? (d.touched_files as string[])
+    : [];
+  const approachIndex = (d.approach_index as number | undefined) ?? 0;
+  return (
+    <TimelineRow
+      icon={success ? "⊕" : "⊗"}
+      phase="Patching"
+      ts={event.ts}
+      success={success}
+      error={!success}
+    >
+      {success ? (
+        <>
+          <span className="text-emerald-400/70">Patch ready</span>
+          {linesChanged != null ? (
+            <span className="text-white/30 text-xs">+{linesChanged} lines</span>
+          ) : null}
+          {touchedFiles.length > 0 ? (
+            <span className="text-white/20 text-xs">
+              {touchedFiles.length} file{touchedFiles.length !== 1 ? "s" : ""}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <span className="text-red-400/70">
+          Approach {approachIndex + 1} failed
+        </span>
+      )}
+    </TimelineRow>
+  );
+}
+
+function renderValidationCandidateStarted(event: RunEvent) {
+  const d = event.data as Record<string, unknown>;
+  const candidateIndex = (d.candidate_index as number | undefined) ?? 0;
+  const location = d.location as string | undefined;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2 text-sm opacity-60">
+      <span className="shrink-0 text-sm">🧪</span>
+      <span className="text-white/40 text-xs">
+        Validating candidate{" "}
+        <span className="font-mono text-white/60">{candidateIndex + 1}</span>
+        {location ? (
+          <>
+            {" "}—{" "}
+            <Mono>{shortenPath(location)}</Mono>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 function renderOpportunityFound(event: RunEvent) {
   const d = event.data as Record<string, unknown>;
   const type = d.type as string | undefined;
@@ -347,8 +507,14 @@ const EVENT_RENDERERS: Record<string, (e: RunEvent) => ReactElement> = {
   "baseline.step.completed": renderBaselineStepCompleted,
   "baseline.completed": renderBaselineCompleted,
   "discovery.started": renderDiscoveryStarted,
+  "discovery.files.selected": renderFilesSelected,
+  "discovery.file.analysing": renderFileAnalysing,
+  "discovery.file.analysed": renderFileAnalysed,
   "discovery.opportunity.found": renderOpportunityFound,
   "discovery.completed": renderDiscoveryCompleted,
+  "patch.approach.started": renderPatchApproachStarted,
+  "patch.approach.completed": renderPatchApproachCompleted,
+  "validation.candidate.started": renderValidationCandidateStarted,
   "validation.verdict": renderValidationVerdict,
   "selection.completed": renderSelectionCompleted,
   "run.completed": renderRunCompleted,
@@ -485,4 +651,10 @@ function Mono({ children }: { children: React.ReactNode }) {
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+function shortenPath(path: string): string {
+  const parts = path.split("/");
+  if (parts.length <= 2) return path;
+  return `…/${parts.slice(-2).join("/")}`;
 }
