@@ -237,6 +237,7 @@ describe("SettingsForm", () => {
     default_branch: "main",
     installation_id: null,
     package_manager: "npm",
+    framework: null,
     install_cmd: "npm ci",
     build_cmd: "npm run build",
     test_cmd: "npm test",

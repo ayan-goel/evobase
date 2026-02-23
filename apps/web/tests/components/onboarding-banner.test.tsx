@@ -10,6 +10,8 @@ function makeRun(status: Run["status"], id = "run-1"): Run {
     sha: "abc1234",
     status,
     compute_minutes: null,
+    failure_step: null,
+    commit_message: null,
     created_at: new Date().toISOString(),
   };
 }

@@ -7,6 +7,7 @@ function makeRepo(overrides: Partial<Repository> = {}): Repository {
   return {
     id: "repo-1",
     github_repo_id: 123,
+    github_full_name: null,
     default_branch: "main",
     package_manager: "npm",
     framework: null,

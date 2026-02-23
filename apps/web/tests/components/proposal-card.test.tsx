@@ -7,6 +7,7 @@ function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
   return {
     id: "proposal-1",
     run_id: "run-1",
+    repo_id: "repo-1",
     diff: "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n",
     summary: "Replaced indexOf with includes",
     metrics_before: null,
@@ -15,7 +16,13 @@ function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
     confidence: "high",
     created_at: new Date().toISOString(),
     pr_url: null,
+    framework: null,
+    patch_variants: [],
+    selection_reason: null,
+    approaches_tried: null,
     artifacts: [],
+    discovery_trace: null,
+    patch_trace: null,
     ...overrides,
   };
 }

@@ -32,6 +32,8 @@ function makeRun(
     sha: "abc1234",
     status,
     compute_minutes: null,
+    failure_step: null,
+    commit_message: null,
     created_at: new Date().toISOString(),
     proposals,
   };
@@ -50,7 +52,13 @@ function makeProposal(): Proposal {
     confidence: "high",
     created_at: new Date().toISOString(),
     pr_url: null,
+    framework: null,
+    patch_variants: [],
+    selection_reason: null,
+    approaches_tried: null,
     artifacts: [],
+    discovery_trace: null,
+    patch_trace: null,
   };
 }
 

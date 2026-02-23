@@ -228,7 +228,8 @@ export type RunEventType =
   | "selection.completed"
   | "run.completed"
   | "run.failed"
-  | "run.cancelled";
+  | "run.cancelled"
+  | "heartbeat";
 
 export interface RunEvent {
   id: string;

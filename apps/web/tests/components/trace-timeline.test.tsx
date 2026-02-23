@@ -12,6 +12,7 @@ function makeAttempt(overrides: Partial<TraceAttempt> = {}): TraceAttempt {
     steps: [
       { name: "test", exit_code: 0, duration_seconds: 1.5, is_success: true },
     ],
+    llm_reasoning: null,
     verdict: {
       is_accepted: true,
       confidence: "high",
