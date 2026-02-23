@@ -73,7 +73,7 @@ export function TriggerRunButton({ repoId, onQueued, activeStatus }: TriggerRunB
       <button
         onClick={handleClick}
         disabled={state === "loading"}
-        className="rounded-lg border border-white/15 bg-white/[0.08] px-4 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/[0.14] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {state === "loading" ? (
           <span className="inline-flex items-center gap-2">

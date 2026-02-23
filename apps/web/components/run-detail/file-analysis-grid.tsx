@@ -50,14 +50,14 @@ export function FileAnalysisGrid({ events }: FileAnalysisGridProps) {
       {fileStatuses.map(({ file, state, opportunitiesFound }) => (
         <div
           key={file}
-          title={file}
-          className="flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
+          className="group relative flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
         >
+          {/* Full-path tooltip shown on hover */}
+          <div className="pointer-events-none absolute bottom-full left-0 z-10 mb-1.5 hidden max-w-[calc(100%+2rem)] rounded-md border border-white/[0.1] bg-[#1a1a1a] px-2.5 py-1.5 group-hover:block">
+            <span className="font-mono text-[11px] text-white/80 break-all">{file}</span>
+          </div>
           <StatusIcon state={state} />
-          <span
-            title={file}
-            className="min-w-0 flex-1 truncate font-mono text-xs text-white/75"
-          >
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/75">
             {shortenPath(file)}
           </span>
           {state === "done" && (
