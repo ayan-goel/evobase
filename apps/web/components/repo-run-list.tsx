@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getProposalsByRun, getRuns } from "@/lib/api";
 import { OnboardingBanner } from "@/components/onboarding-banner";
@@ -141,29 +142,42 @@ function RunSection({
       : run.commit_message
     : null;
 
+  const isActive = run.status === "running" || run.status === "queued";
+
   return (
     <section>
-      <div className="mb-3 flex items-center gap-3 flex-wrap">
+      <Link
+        href={`/repos/${repoId}/runs/${run.id}`}
+        className="mb-3 flex items-center gap-3 flex-wrap group cursor-pointer"
+      >
         <RunStatusBadge status={run.status} />
-        <span className="text-xs text-white/40 font-mono">
+        <span className="text-xs text-white/40 font-mono group-hover:text-white/60 transition-colors">
           {sha}
           {msg && (
-            <span className="text-white/30 font-sans ml-1.5">— {msg}</span>
+            <span className="text-white/30 font-sans ml-1.5 group-hover:text-white/50">— {msg}</span>
           )}
         </span>
         <span className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
-      </div>
+        <span className="text-[10px] text-white/20 group-hover:text-white/40 transition-colors ml-auto">
+          View details →
+        </span>
+      </Link>
 
       {proposals.length === 0 ? (
         <div className="pl-1">
-          {run.status === "running" || run.status === "queued" ? (
-            <p className="text-sm text-white/30">Run in progress…</p>
+          {isActive ? (
+            <Link
+              href={`/repos/${repoId}/runs/${run.id}`}
+              className="text-sm text-blue-400/60 hover:text-blue-400/80 transition-colors"
+            >
+              View live progress →
+            </Link>
           ) : run.failure_step ? (
             <BaselineFailureMessage
               failureStep={run.failure_step}
               repoId={repoId}
             />
-          ) : setupFailing ? (
+          ) : run.status === "failed" && setupFailing ? (
             <p className="text-sm text-amber-400/70">
               Setup failed — install step could not run.{" "}
               <a

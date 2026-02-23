@@ -15,6 +15,7 @@ import type {
   Repository,
   RepoSettings,
   Run,
+  RunCancelResult,
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -253,4 +254,19 @@ export async function updateRepoSettings(
     method: "PUT",
     body: JSON.stringify(updates),
   });
+}
+
+/** Fetch a single run by ID. */
+export async function getRun(runId: string): Promise<Run> {
+  return apiFetch<Run>(`/runs/${runId}`);
+}
+
+/** Cancel a queued or running run. */
+export async function cancelRun(runId: string): Promise<RunCancelResult> {
+  return apiFetch<RunCancelResult>(`/runs/${runId}/cancel`, { method: "POST" });
+}
+
+/** Get the SSE events URL for a run (used by EventSource). */
+export function getRunEventsUrl(runId: string): string {
+  return `${API_BASE}/runs/${runId}/events`;
 }

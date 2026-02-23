@@ -50,6 +50,13 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
         run_id, trace_id or "(none)",
     )
 
+    # Store the Celery task ID so the cancel endpoint can revoke it
+    try:
+        from app.runs.events import store_task_id
+        store_task_id(run_id, self.request.id)
+    except Exception:
+        logger.debug("Could not store task ID for run %s", run_id, exc_info=True)
+
     run_service = RunService()
 
     try:
@@ -72,6 +79,12 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
             "Run failed: %s — %s: %s", run_id, type(exc).__name__, str(exc),
             exc_info=True,
         )
+
+        try:
+            from app.runs.events import publish_event
+            publish_event(run_id, "run.failed", "run", {"error": str(exc)[:500]})
+        except Exception:
+            pass
 
         try:
             run_service.transition_to_failed(run_id, str(exc))

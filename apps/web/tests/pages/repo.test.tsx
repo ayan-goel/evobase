@@ -95,9 +95,9 @@ describe("RepoView", () => {
     expect(screen.getByText("abc1234")).toBeDefined();
   });
 
-  it("shows in-progress message for running run with no proposals", () => {
+  it("shows live progress link for running run with no proposals", () => {
     render(<RepoView repo={makeRepo()} runs={[makeRun("running", [])]} />);
-    expect(screen.getByText(/Run in progress/)).toBeDefined();
+    expect(screen.getByText(/View live progress/)).toBeDefined();
   });
 
   it("renders proposal cards within the run", () => {

@@ -107,6 +107,23 @@ class RunService:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
+    @staticmethod
+    def _emit(run_id: str, event_type: str, phase: str, data: Optional[dict] = None) -> None:
+        """Best-effort event emission — never raises."""
+        try:
+            from app.runs.events import publish_event
+            publish_event(run_id, event_type, phase, data)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _check_cancelled(run_id: str) -> bool:
+        try:
+            from app.runs.events import is_cancelled
+            return is_cancelled(run_id)
+        except Exception:
+            return False
+
     def execute_full_pipeline(self, run_id: str) -> dict:
         """Execute the full LLM agent optimization pipeline.
 
@@ -124,6 +141,7 @@ class RunService:
         the async agent layer via asyncio.run().
         """
         repo_dir: Optional[Path] = None
+        emit = lambda etype, phase, data=None: self._emit(run_id, etype, phase, data)
 
         try:
             # ----------------------------------------------------------------
@@ -195,6 +213,7 @@ class RunService:
 
             repo_url = _build_repo_url(github_full_name, github_repo_id, token=clone_token)
             logger.info("Run %s: cloning %s", run_id, redact_repo_url(repo_url))
+            emit("clone.started", "clone", {"repo": github_full_name})
 
             # ----------------------------------------------------------------
             # Step 3: Clone
@@ -233,8 +252,17 @@ class RunService:
                         run_row.commit_message = commit_message
                         session.commit()
                 logger.info("Run %s: HEAD sha=%s msg=%r", run_id, head_sha[:7], commit_message)
+                emit("clone.completed", "clone", {
+                    "sha": head_sha[:7],
+                    "commit_message": commit_message,
+                })
             except Exception as exc:
                 logger.warning("Run %s: could not capture HEAD SHA: %s", run_id, exc)
+                emit("clone.completed", "clone")
+
+            if self._check_cancelled(run_id):
+                emit("run.cancelled", "run", {"reason": "User cancelled"})
+                return _cancelled_result(run_id)
 
             # ----------------------------------------------------------------
             # Step 3b: Resolve working directory (monorepo support)
@@ -265,8 +293,6 @@ class RunService:
 
             detection = detect(work_dir)
 
-            # Merge in any commands stored on the repository row
-            # (these may have been set by a previous run or manually)
             if install_cmd and not detection.install_cmd:
                 detection.install_cmd = install_cmd
             if build_cmd and not detection.build_cmd:
@@ -284,6 +310,20 @@ class RunService:
                 detection.install_cmd,
                 detection.test_cmd,
             )
+            emit("detection.completed", "detection", {
+                "language": detection.language,
+                "framework": detection.framework,
+                "package_manager": detection.package_manager,
+                "confidence": detection.confidence,
+                "install_cmd": detection.install_cmd,
+                "build_cmd": detection.build_cmd,
+                "test_cmd": detection.test_cmd,
+                "typecheck_cmd": detection.typecheck_cmd,
+            })
+
+            if self._check_cancelled(run_id):
+                emit("run.cancelled", "run", {"reason": "User cancelled"})
+                return _cancelled_result(run_id)
 
             # ----------------------------------------------------------------
             # Step 5: Persist detected commands back to the Repository row
@@ -304,12 +344,30 @@ class RunService:
             # ----------------------------------------------------------------
             from runner.validator.executor import run_baseline
 
+            emit("baseline.attempt.started", "baseline", {
+                "attempt": 1,
+                "mode": execution_mode,
+                "install_cmd": detection.install_cmd,
+                "test_cmd": detection.test_cmd,
+            })
+
             baseline = run_baseline(
                 repo_dir=work_dir,
                 config=detection,
                 execution_mode=execution_mode,
                 max_strategy_attempts=max_strategy_attempts,
             )
+
+            for step in baseline.steps:
+                emit("baseline.step.completed", "baseline", {
+                    "step": step.name,
+                    "exit_code": step.exit_code,
+                    "duration": round(step.duration_seconds, 1),
+                    "success": step.is_success,
+                    "stderr_tail": (step.stderr or "")[-500:] if not step.is_success else None,
+                    "command": step.command,
+                })
+
             logger.info(
                 "Run %s: baseline success=%s steps=%d attempts=%d mode=%s reason=%s",
                 run_id,
@@ -319,6 +377,14 @@ class RunService:
                 baseline.strategy_mode,
                 baseline.failure_reason_code,
             )
+
+            emit("baseline.completed", "baseline", {
+                "success": baseline.is_success,
+                "attempts": baseline.strategy_attempts,
+                "mode": baseline.strategy_mode,
+                "failure_reason": baseline.failure_reason_code,
+                "step_count": len(baseline.steps),
+            })
 
             if not baseline.is_success:
                 logger.warning(
@@ -348,6 +414,11 @@ class RunService:
                     logger.warning("Run %s: could not persist failure_step: %s", run_id, exc)
 
                 _increment_failure_counter(run_id, repo_id, "setup")
+                emit("run.failed", "run", {
+                    "reason": "baseline_failed",
+                    "failure_step": failed_step,
+                    "failure_reason_code": baseline.failure_reason_code,
+                })
                 return {
                     "baseline_completed": False,
                     "agent_skipped": True,
@@ -357,6 +428,10 @@ class RunService:
                     "run_id": run_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
+
+            if self._check_cancelled(run_id):
+                emit("run.cancelled", "run", {"reason": "User cancelled"})
+                return _cancelled_result(run_id)
 
             # ----------------------------------------------------------------
             # Step 7: Upload baseline artifacts
@@ -411,6 +486,16 @@ class RunService:
 
             seen_signatures = _build_seen_signatures(uuid.UUID(repo_id))
 
+            emit("discovery.started", "discovery", {
+                "llm_provider": llm_provider,
+                "llm_model": llm_model,
+                "max_candidates": max_candidates,
+            })
+
+            if self._check_cancelled(run_id):
+                emit("run.cancelled", "run", {"reason": "User cancelled"})
+                return _cancelled_result(run_id)
+
             cycle_result = asyncio.run(
                 run_agent_cycle(
                     repo_dir=work_dir,
@@ -426,6 +511,51 @@ class RunService:
                 "Run %s: agent cycle done — %d attempted, %d accepted",
                 run_id, cycle_result.total_attempted, cycle_result.accepted_count,
             )
+
+            # Emit per-opportunity events for the live timeline
+            for i, opp in enumerate(cycle_result.opportunity_for_candidate):
+                emit("discovery.opportunity.found", "discovery", {
+                    "index": i,
+                    "type": opp.type,
+                    "location": opp.location,
+                    "rationale": opp.rationale,
+                    "risk_level": getattr(opp, "risk_level", None),
+                    "approaches": getattr(opp, "approaches", []),
+                })
+
+            emit("discovery.completed", "discovery", {
+                "count": len(cycle_result.opportunity_for_candidate),
+            })
+
+            for i, candidate in enumerate(cycle_result.candidate_results):
+                opp = cycle_result.opportunity_for_candidate[i] if i < len(cycle_result.opportunity_for_candidate) else None
+                variants = (
+                    cycle_result.patch_variants_for_candidate[i]
+                    if i < len(getattr(cycle_result, "patch_variants_for_candidate", []))
+                    else []
+                )
+
+                emit("validation.verdict", "validation", {
+                    "index": i,
+                    "opportunity": opp.location if opp else "unknown",
+                    "accepted": candidate.is_accepted,
+                    "confidence": candidate.final_verdict.confidence if candidate.final_verdict else None,
+                    "reason": candidate.final_verdict.reason if candidate.final_verdict else None,
+                    "gates_passed": candidate.final_verdict.gates_passed if candidate.final_verdict else [],
+                    "gates_failed": candidate.final_verdict.gates_failed if candidate.final_verdict else [],
+                    "approaches_tried": len(variants),
+                })
+
+                selection_reason = (
+                    cycle_result.selection_reasons[i]
+                    if i < len(getattr(cycle_result, "selection_reasons", []))
+                    else None
+                )
+                if candidate.is_accepted and selection_reason:
+                    emit("selection.completed", "selection", {
+                        "index": i,
+                        "reason": selection_reason,
+                    })
 
             # ----------------------------------------------------------------
             # Step 9: Write proposals + opportunities + attempts to DB
@@ -443,6 +573,12 @@ class RunService:
             # Step 10: Update settings counters
             # ----------------------------------------------------------------
             _update_settings_after_success(repo_id)
+
+            emit("run.completed", "run", {
+                "proposals_created": proposals_written,
+                "candidates_attempted": cycle_result.total_attempted,
+                "accepted": cycle_result.accepted_count,
+            })
 
             return {
                 "baseline_completed": True,
@@ -845,6 +981,17 @@ def _no_repo_result(run_id: str) -> dict:
         "baseline_completed": False,
         "agent_skipped": True,
         "reason": "no_github_repo_id",
+        "run_id": run_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _cancelled_result(run_id: str) -> dict:
+    """Return a structured result for cancelled runs."""
+    return {
+        "baseline_completed": False,
+        "agent_skipped": True,
+        "reason": "cancelled",
         "run_id": run_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

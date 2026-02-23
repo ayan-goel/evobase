@@ -194,3 +194,52 @@ export interface TraceAttempt {
     gates_failed: string[];
   } | null;
 }
+
+// ---------------------------------------------------------------------------
+// Run event streaming types
+// ---------------------------------------------------------------------------
+
+export type RunPhase =
+  | "clone"
+  | "detection"
+  | "baseline"
+  | "discovery"
+  | "patching"
+  | "validation"
+  | "selection"
+  | "run";
+
+export type RunEventType =
+  | "clone.started"
+  | "clone.completed"
+  | "detection.completed"
+  | "baseline.attempt.started"
+  | "baseline.step.completed"
+  | "baseline.completed"
+  | "discovery.started"
+  | "discovery.opportunity.found"
+  | "discovery.completed"
+  | "patch.started"
+  | "patch.completed"
+  | "patch.failed"
+  | "validation.started"
+  | "validation.step.completed"
+  | "validation.verdict"
+  | "selection.completed"
+  | "run.completed"
+  | "run.failed"
+  | "run.cancelled";
+
+export interface RunEvent {
+  id: string;
+  type: RunEventType;
+  phase: RunPhase;
+  ts: string;
+  data: Record<string, unknown>;
+}
+
+export interface RunCancelResult {
+  run_id: string;
+  status: string;
+  cancelled: boolean;
+}

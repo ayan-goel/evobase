@@ -144,7 +144,14 @@ async def _select_files(
         logger.error("File selection LLM call failed: %s", exc)
         return []
 
-    return _parse_file_list(response.content)
+    logger.info(
+        "File selection LLM response length=%d, first 300 chars: %r",
+        len(response.content or ""),
+        (response.content or "")[:300],
+    )
+    result = _parse_file_list(response.content)
+    logger.info("Parsed %d files from selection response", len(result))
+    return result
 
 
 async def _analyse_file(
@@ -177,15 +184,33 @@ async def _analyse_file(
         logger.error("Analysis LLM call failed for %s: %s", rel_path, exc)
         return []
 
-    return _parse_opportunities(response.content, response.thinking_trace)
+    opps = _parse_opportunities(response.content, response.thinking_trace)
+    logger.info(
+        "Analysis of %s: found %d opportunities (response length=%d)",
+        rel_path, len(opps), len(response.content or ""),
+    )
+    return opps
+
+
+def _strip_markdown_fences(raw: str) -> str:
+    """Strip markdown code fences (```json ... ```) from LLM output."""
+    text = raw.strip()
+    if text.startswith("```"):
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1:]
+        if text.endswith("```"):
+            text = text[:-3]
+    return text.strip()
 
 
 def _parse_file_list(raw: str) -> list[str]:
     """Parse the file selection JSON response into a list of paths."""
     if not raw:
         return []
+    cleaned = _strip_markdown_fences(raw)
     try:
-        data = json.loads(raw)
+        data = json.loads(cleaned)
         files = data.get("files", [])
         if isinstance(files, list):
             return [str(f) for f in files if f]
@@ -201,8 +226,9 @@ def _parse_opportunities(
     """Parse the analysis JSON response into AgentOpportunity objects."""
     if not raw:
         return []
+    cleaned = _strip_markdown_fences(raw)
     try:
-        data = json.loads(raw)
+        data = json.loads(cleaned)
         raw_opps = data.get("opportunities", [])
         if not isinstance(raw_opps, list):
             return []

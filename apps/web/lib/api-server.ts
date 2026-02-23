@@ -83,6 +83,10 @@ export async function getArtifactSignedUrl(
   return apiFetch(`/artifacts/${artifactId}/signed-url`);
 }
 
+export async function getRun(runId: string): Promise<Run> {
+  return apiFetch<Run>(`/runs/${runId}`);
+}
+
 export async function getRepoSettings(repoId: string): Promise<RepoSettings> {
   return apiFetch<RepoSettings>(`/repos/${repoId}/settings`);
 }

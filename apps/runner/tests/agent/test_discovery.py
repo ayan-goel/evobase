@@ -15,6 +15,7 @@ from runner.agent.discovery import (
     _is_new,
     _parse_file_list,
     _parse_opportunities,
+    _strip_markdown_fences,
     discover_opportunities,
 )
 from runner.agent.types import AgentOpportunity
@@ -45,6 +46,33 @@ def _make_response(content: dict) -> LLMResponse:
     )
 
 
+class TestStripMarkdownFences:
+    def test_strips_json_fence(self) -> None:
+        raw = '```json\n{"files": ["a.ts"]}\n```'
+        assert _strip_markdown_fences(raw) == '{"files": ["a.ts"]}'
+
+    def test_strips_plain_fence(self) -> None:
+        raw = '```\n{"files": ["a.ts"]}\n```'
+        assert _strip_markdown_fences(raw) == '{"files": ["a.ts"]}'
+
+    def test_passes_through_plain_json(self) -> None:
+        raw = '{"files": ["a.ts"]}'
+        assert _strip_markdown_fences(raw) == '{"files": ["a.ts"]}'
+
+    def test_handles_trailing_whitespace(self) -> None:
+        raw = '  ```json\n{"files": ["a.ts"]}\n```  '
+        assert _strip_markdown_fences(raw) == '{"files": ["a.ts"]}'
+
+    def test_handles_empty_string(self) -> None:
+        assert _strip_markdown_fences("") == ""
+
+    def test_real_world_truncated_response(self) -> None:
+        raw = '```json\n{\n  "reasoning": "Analyzing the repo",\n  "files": ["src/app.ts", "src/utils.ts"]\n}\n```'
+        result = _strip_markdown_fences(raw)
+        parsed = json.loads(result)
+        assert parsed["files"] == ["src/app.ts", "src/utils.ts"]
+
+
 class TestParseFileList:
     def test_parses_valid_json(self) -> None:
         raw = json.dumps({"reasoning": "...", "files": ["src/a.ts", "src/b.ts"]})
@@ -69,6 +97,11 @@ class TestParseFileList:
         raw = json.dumps({"files": ["src/a.ts", "", None, "src/b.ts"]})
         result = _parse_file_list(raw)
         assert "" not in result
+
+    def test_parses_markdown_fenced_json(self) -> None:
+        raw = '```json\n{"reasoning": "...", "files": ["src/a.ts", "src/b.ts"]}\n```'
+        result = _parse_file_list(raw)
+        assert result == ["src/a.ts", "src/b.ts"]
 
 
 class TestParseOpportunities:
@@ -121,6 +154,21 @@ class TestParseOpportunities:
         raw = json.dumps({"reasoning": "nothing", "opportunities": []})
         result = _parse_opportunities(raw, None)
         assert result == []
+
+    def test_parses_markdown_fenced_json(self) -> None:
+        raw = '```json\n' + json.dumps({
+            "opportunities": [{
+                "type": "performance",
+                "location": "src/a.ts:1",
+                "rationale": "slow",
+                "approach": "fix",
+                "risk_level": "low",
+                "affected_lines": 1,
+            }]
+        }) + '\n```'
+        result = _parse_opportunities(raw, None)
+        assert len(result) == 1
+        assert result[0].type == "performance"
 
     def test_parses_new_approaches_list(self) -> None:
         raw = json.dumps({
