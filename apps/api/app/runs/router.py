@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import decode_token, get_current_user
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.middleware import get_request_id
@@ -35,6 +35,24 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(tags=["runs"])
+
+
+async def _get_run_for_user(
+    run_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> Run:
+    """Fetch a run by ID, enforcing owner-level access. Raises 404 if not found."""
+    result = await db.execute(
+        select(Run)
+        .join(Repository)
+        .join(Organization)
+        .where(Run.id == run_id, Organization.owner_id == user_id)
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    return run
 
 
 @router.post(
@@ -114,18 +132,7 @@ async def get_run(
     user_id: uuid.UUID = Depends(get_current_user),
 ) -> RunResponse:
     """Fetch a single run by ID."""
-    result = await db.execute(
-        select(Run)
-        .join(Repository)
-        .join(Organization)
-        .where(Run.id == run_id, Organization.owner_id == user_id)
-    )
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found",
-        )
+    run = await _get_run_for_user(run_id, user_id, db)
     return RunResponse.model_validate(run)
 
 
@@ -144,32 +151,18 @@ async def stream_run_events(
 
     Auth: Accepts token as query param (EventSource can't set headers).
     """
-    from app.auth.dependencies import _decode_jwt
-    from app.core.config import get_settings as _get_settings
-
     auth_token = token or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not auth_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
 
     try:
-        payload = await _decode_jwt(auth_token, _get_settings())
+        payload = await decode_token(auth_token, get_settings())
         sub = payload.get("sub", "")
         user_id = uuid.UUID(sub)
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    result = await db.execute(
-        select(Run)
-        .join(Repository)
-        .join(Organization)
-        .where(Run.id == run_id, Organization.owner_id == user_id)
-    )
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found",
-        )
+    await _get_run_for_user(run_id, user_id, db)
 
     last_event_id = request.headers.get("Last-Event-ID", "0")
 
@@ -233,18 +226,7 @@ async def cancel_run(
     Sets a cancellation flag in Redis, revokes the Celery task (if running),
     and transitions the run to 'failed' status.
     """
-    result = await db.execute(
-        select(Run)
-        .join(Repository)
-        .join(Organization)
-        .where(Run.id == run_id, Organization.owner_id == user_id)
-    )
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found",
-        )
+    run = await _get_run_for_user(run_id, user_id, db)
 
     if run.status not in ("queued", "running"):
         return RunCancelResponse(

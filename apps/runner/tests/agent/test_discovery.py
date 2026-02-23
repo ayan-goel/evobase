@@ -458,6 +458,40 @@ class TestDiscoverOpportunitiesCallback:
         analysed = next(e for e in emitted if e[0] == "discovery.file.analysed")
         assert analysed[2]["file"] == "utils.ts"
         assert analysed[2]["opportunities_found"] == 1
+        assert analysed[2]["opportunities_found"] == len(analysed[2]["opportunities"])
+        payload_opp = analysed[2]["opportunities"][0]
+        assert payload_opp["file"] == "utils.ts"
+        assert payload_opp["location"] == "utils.ts:1"
+        assert payload_opp["type"] == "performance"
+        assert payload_opp["rationale"] == "slow"
+        assert payload_opp["risk_level"] == "low"
+        assert payload_opp["affected_lines"] == 1
+        assert payload_opp["approaches"] == ["fix"]
+        assert "thinking_trace" not in payload_opp
+
+    async def test_file_analysed_event_includes_empty_opportunity_list(self, tmp_path: Path) -> None:
+        (tmp_path / "utils.ts").write_text("const x = 1;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["utils.ts"]}),
+            _make_response({"opportunities": []}),
+        ])
+
+        emitted: list[tuple[str, str, dict]] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+        )
+
+        analysed = next(e for e in emitted if e[0] == "discovery.file.analysed")
+        assert analysed[2]["file"] == "utils.ts"
+        assert analysed[2]["opportunities_found"] == 0
+        assert analysed[2]["opportunities"] == []
 
     async def test_callback_event_order(self, tmp_path: Path) -> None:
         """files.selected → file.analysing → file.analysed (per file)."""

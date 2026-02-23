@@ -2,10 +2,59 @@
 
 import type { ReactElement } from "react";
 import { useState } from "react";
-import type { RunEvent } from "@/lib/types";
+import { DiffViewer } from "@/components/diff-viewer";
+import { PatchReasoningPanel } from "@/components/patch-reasoning-panel";
+import {
+  ValidationAttemptsPanel,
+  type ValidationAttemptSummary,
+  type ValidationBenchmarkSummary,
+} from "@/components/run-detail/validation-attempts-panel";
+import type { RunEvent, ThinkingTrace } from "@/lib/types";
 
 interface EventCardProps {
   event: RunEvent;
+}
+
+interface DiscoveryFileOpportunity {
+  file: string;
+  location: string;
+  type: string;
+  rationale: string;
+  riskLevel: string;
+  affectedLines: number;
+  approaches: string[];
+}
+
+interface PatchApproachStartedDetail {
+  approachDescFull: string | null;
+  rationale: string | null;
+  riskLevel: string | null;
+  affectedLines: number | null;
+}
+
+interface PatchGenTryDetail {
+  attemptNumber: number;
+  success: boolean;
+  failureStage: string | null;
+  failureReason: string | null;
+  diff: string | null;
+  explanation: string | null;
+  touchedFiles: string[];
+  estimatedLinesChanged: number;
+  patchTrace: ThinkingTrace | null;
+}
+
+interface PatchApproachCompletedDetail {
+  location: string | null;
+  type: string | null;
+  totalApproaches: number | null;
+  approachDescFull: string | null;
+  explanation: string | null;
+  diff: string | null;
+  patchTrace: ThinkingTrace | null;
+  failureStage: string | null;
+  failureReason: string | null;
+  patchgenTries: PatchGenTryDetail[];
 }
 
 export function EventCard({ event }: EventCardProps) {
@@ -199,12 +248,11 @@ function renderFileAnalysing(event: RunEvent) {
   const totalFiles = (d.total_files as number | undefined) ?? 0;
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2 text-sm opacity-60">
-      <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400/50" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-400" />
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+        <span className="inline-flex h-2 w-2 rounded-full bg-blue-400/70" />
       </span>
       <span className="min-w-0 flex-1 text-white/40 text-xs">
-        Analysing <Mono>{file ? shortenPath(file) : "…"}</Mono>
+        Started analysing <Mono>{file ? shortenPath(file) : "…"}</Mono>
       </span>
       <span className="shrink-0 text-[10px] text-white/20 font-mono tabular-nums">
         {fileIndex + 1}/{totalFiles}
@@ -220,9 +268,12 @@ function renderFileAnalysed(event: RunEvent) {
   const fileIndex = (d.file_index as number | undefined) ?? 0;
   const totalFiles = (d.total_files as number | undefined) ?? 0;
   const hasOpps = count > 0;
-  return (
-    <TimelineRow icon="✓" phase="Discovery" ts={event.ts} success={hasOpps}>
-      <Mono>{file ? shortenPath(file) : "…"}</Mono>
+  const opportunities = parseDiscoveryFileOpportunities(d.opportunities);
+  const summary = (
+    <>
+      <span title={file}>
+        <Mono>{file ? shortenPath(file) : "…"}</Mono>
+      </span>
       <span className="text-white/30 text-xs">—</span>
       {hasOpps ? (
         <span className="text-emerald-400/70 text-xs">
@@ -234,6 +285,66 @@ function renderFileAnalysed(event: RunEvent) {
       <span className="text-white/15 text-[10px] ml-auto tabular-nums font-mono">
         {fileIndex + 1}/{totalFiles}
       </span>
+    </>
+  );
+
+  if (hasOpps && opportunities.length > 0) {
+    return (
+      <ExpandableRow
+        icon="✓"
+        phase="Discovery"
+        ts={event.ts}
+        success
+        summary={summary}
+        detail={
+          <div className="space-y-2">
+            {opportunities.map((opp, idx) => (
+              <div
+                key={`${opp.location}-${idx}`}
+                className="rounded-md border border-white/[0.05] bg-white/[0.02] px-3 py-2"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge>{opp.type}</Badge>
+                  <Badge variant={riskBadgeVariant(opp.riskLevel)}>
+                    risk: {opp.riskLevel}
+                  </Badge>
+                  <span title={opp.location || opp.file}>
+                    <Mono>{opp.location || opp.file}</Mono>
+                  </span>
+                  {opp.affectedLines > 0 ? (
+                    <span className="text-white/20 text-xs">
+                      {opp.affectedLines} line{opp.affectedLines !== 1 ? "s" : ""}
+                    </span>
+                  ) : null}
+                </div>
+                {opp.rationale ? (
+                  <p className="mt-1.5 text-xs text-white/40">
+                    {opp.rationale}
+                  </p>
+                ) : null}
+                {opp.approaches.length > 0 ? (
+                  <div className="mt-2 text-xs text-white/30">
+                    <p className="font-medium text-white/40 mb-1">
+                      Approaches ({opp.approaches.length}):
+                    </p>
+                    <ol className="list-decimal list-inside space-y-0.5">
+                      {opp.approaches.map((approach, approachIdx) => (
+                        <li key={approachIdx}>{approach}</li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <TimelineRow icon="✓" phase="Discovery" ts={event.ts} success={hasOpps}>
+      {summary}
     </TimelineRow>
   );
 }
@@ -245,6 +356,74 @@ function renderPatchApproachStarted(event: RunEvent) {
   const totalApproaches = (d.total_approaches as number | undefined) ?? 1;
   const approachDesc = d.approach_desc as string | undefined;
   const oppType = d.type as string | undefined;
+  const detail = parsePatchApproachStartedDetail(d);
+  const summary = (
+    <>
+      <span className="text-white/40 text-xs">Generating approach</span>
+      <span className="font-mono text-white/60 text-xs">
+        {approachIndex + 1}/{totalApproaches}
+      </span>
+      {oppType ? <Badge variant="default">{oppType}</Badge> : null}
+      <span title={location}>
+        <Mono>{location ? shortenPath(location) : "…"}</Mono>
+      </span>
+      {approachDesc ? (
+        <span className="text-[11px] text-white/25 truncate max-w-[28rem]">
+          {approachDesc}
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (detail) {
+    return (
+      <ExpandableRow
+        icon="⚙"
+        phase="Patching"
+        ts={event.ts}
+        summary={summary}
+        detail={
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {oppType ? <Badge>{oppType}</Badge> : null}
+              {detail.riskLevel ? (
+                <Badge variant={riskBadgeVariant(detail.riskLevel)}>
+                  risk: {detail.riskLevel}
+                </Badge>
+              ) : null}
+              {detail.affectedLines != null && detail.affectedLines > 0 ? (
+                <span className="text-xs text-white/30">
+                  {detail.affectedLines} affected line{detail.affectedLines !== 1 ? "s" : ""}
+                </span>
+              ) : null}
+            </div>
+            {location ? (
+              <p className="text-xs text-white/35">
+                Location:{" "}
+                <span title={location}>
+                  <Mono>{location}</Mono>
+                </span>
+              </p>
+            ) : null}
+            {detail.rationale ? (
+              <p className="text-xs text-white/40">{detail.rationale}</p>
+            ) : null}
+            {detail.approachDescFull ? (
+              <div>
+                <p className="text-xs font-medium text-white/40 mb-1">
+                  Full approach
+                </p>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  {detail.approachDescFull}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        }
+      />
+    );
+  }
+
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-transparent px-4 py-2.5 text-sm opacity-70">
       <span className="shrink-0 text-base">⚙</span>
@@ -275,6 +454,125 @@ function renderPatchApproachCompleted(event: RunEvent) {
     ? (d.touched_files as string[])
     : [];
   const approachIndex = (d.approach_index as number | undefined) ?? 0;
+  const detail = parsePatchApproachCompletedDetail(d);
+  const summary = success ? (
+    <>
+      <span className="text-emerald-400/70">Patch ready</span>
+      {linesChanged != null ? (
+        <span className="text-white/30 text-xs">+{linesChanged} lines</span>
+      ) : null}
+      {touchedFiles.length > 0 ? (
+        <span className="text-white/20 text-xs">
+          {touchedFiles.length} file{touchedFiles.length !== 1 ? "s" : ""}
+        </span>
+      ) : null}
+    </>
+  ) : (
+    <span className="text-red-400/70">
+      Approach {approachIndex + 1} failed
+    </span>
+  );
+
+  if (detail) {
+    return (
+      <ExpandableRow
+        icon={success ? "⊕" : "⊗"}
+        phase="Patching"
+        ts={event.ts}
+        success={success}
+        error={!success}
+        summary={summary}
+        detail={
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {detail.type ? <Badge>{detail.type}</Badge> : null}
+              {detail.location ? (
+                <span title={detail.location}>
+                  <Mono>{detail.location}</Mono>
+                </span>
+              ) : null}
+              {detail.totalApproaches != null ? (
+                <span className="text-xs text-white/25">
+                  {detail.totalApproaches} approach{detail.totalApproaches !== 1 ? "es" : ""} total
+                </span>
+              ) : null}
+            </div>
+
+            {detail.approachDescFull ? (
+              <p className="text-xs text-white/50 leading-relaxed">
+                {detail.approachDescFull}
+              </p>
+            ) : null}
+
+            {!success && (detail.failureStage || detail.failureReason) ? (
+              <div className="rounded-md border border-red-500/15 bg-red-500/[0.04] px-3 py-2">
+                {detail.failureStage ? (
+                  <p className="text-xs text-red-300/80">
+                    Failure stage: {detail.failureStage}
+                  </p>
+                ) : null}
+                {detail.failureReason ? (
+                  <p className="text-xs text-red-300/65 mt-0.5">
+                    {detail.failureReason}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {detail.explanation ? (
+              <div>
+                <p className="text-xs font-medium text-white/40 mb-1">
+                  Patch explanation
+                </p>
+                <p className="text-xs text-white/55 leading-relaxed">
+                  {detail.explanation}
+                </p>
+              </div>
+            ) : null}
+
+            {touchedFiles.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium text-white/40 mb-1">
+                  Touched files
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {touchedFiles.map((f) => (
+                    <span key={f} title={f}>
+                      <Mono>{shortenPath(f)}</Mono>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {detail.patchgenTries.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-white/40">
+                  Patch generation tries ({detail.patchgenTries.length})
+                </p>
+                {detail.patchgenTries.map((patchTry) => (
+                  <PatchGenTryCard key={patchTry.attemptNumber} patchTry={patchTry} />
+                ))}
+              </div>
+            ) : null}
+
+            {detail.patchTrace ? (
+              <MiniCollapsible label="Patch generation reasoning">
+                <PatchReasoningPanel trace={detail.patchTrace} />
+              </MiniCollapsible>
+            ) : null}
+
+            {detail.diff ? (
+              <MiniCollapsible label="View diff">
+                <DiffViewer diff={detail.diff} />
+              </MiniCollapsible>
+            ) : null}
+          </div>
+        }
+      />
+    );
+  }
+
   return (
     <TimelineRow
       icon={success ? "⊕" : "⊗"}
@@ -283,23 +581,7 @@ function renderPatchApproachCompleted(event: RunEvent) {
       success={success}
       error={!success}
     >
-      {success ? (
-        <>
-          <span className="text-emerald-400/70">Patch ready</span>
-          {linesChanged != null ? (
-            <span className="text-white/30 text-xs">+{linesChanged} lines</span>
-          ) : null}
-          {touchedFiles.length > 0 ? (
-            <span className="text-white/20 text-xs">
-              {touchedFiles.length} file{touchedFiles.length !== 1 ? "s" : ""}
-            </span>
-          ) : null}
-        </>
-      ) : (
-        <span className="text-red-400/70">
-          Approach {approachIndex + 1} failed
-        </span>
-      )}
+      {summary}
     </TimelineRow>
   );
 }
@@ -381,6 +663,8 @@ function renderValidationVerdict(event: RunEvent) {
   const gatesPassed = Array.isArray(d.gates_passed) ? (d.gates_passed as string[]) : [];
   const gatesFailed = Array.isArray(d.gates_failed) ? (d.gates_failed as string[]) : [];
   const approachesTried = (d.approaches_tried as number | undefined) ?? 0;
+  const attempts = parseValidationAttempts(d.attempts);
+  const benchmarkComparison = parseValidationBenchmarkComparison(d.benchmark_comparison);
   return (
     <ExpandableRow
       icon={isOk ? "✓" : "✗"}
@@ -420,6 +704,27 @@ function renderValidationVerdict(event: RunEvent) {
             <p className="text-red-400/50 text-xs">
               Failed: {gatesFailed.join(", ")}
             </p>
+          ) : null}
+          {benchmarkComparison ? (
+            <div className="mt-2 rounded-md border border-white/[0.05] bg-white/[0.02] px-3 py-2 text-xs">
+              <p className="text-white/40 font-medium mb-1">Benchmark comparison</p>
+              <p className="text-white/55">
+                {benchmarkComparison.improvement_pct >= 0 ? "+" : ""}
+                {benchmarkComparison.improvement_pct.toFixed(1)}% vs baseline
+                {" · "}
+                baseline {benchmarkComparison.baseline_duration_seconds.toFixed(3)}s
+                {" · "}
+                candidate {benchmarkComparison.candidate_duration_seconds.toFixed(3)}s
+              </p>
+            </div>
+          ) : null}
+          {attempts.length > 0 ? (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-white/40 mb-2">
+                Validation attempts ({attempts.length})
+              </p>
+              <ValidationAttemptsPanel attempts={attempts} />
+            </div>
           ) : null}
         </>
       }
@@ -641,6 +946,333 @@ function Badge({
 
 function Mono({ children }: { children: React.ReactNode }) {
   return <code className="text-xs font-mono text-white/50">{children}</code>;
+}
+
+function MiniCollapsible({
+  label,
+  children,
+  defaultOpen = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-md border border-white/[0.05]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-white/45 hover:text-white/65"
+        aria-expanded={open}
+      >
+        <span>{label}</span>
+        <span className="text-white/25">{open ? "▾" : "▸"}</span>
+      </button>
+      {open ? (
+        <div className="border-t border-white/[0.04] p-3">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PatchGenTryCard({ patchTry }: { patchTry: PatchGenTryDetail }) {
+  return (
+    <div className="rounded-md border border-white/[0.05] bg-black/10 px-3 py-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-white/70">Try {patchTry.attemptNumber}</span>
+        <span
+          className={`text-[10px] rounded px-1.5 py-0.5 ${
+            patchTry.success
+              ? "bg-emerald-500/10 text-emerald-300"
+              : "bg-red-500/10 text-red-300"
+          }`}
+        >
+          {patchTry.success ? "success" : "failed"}
+        </span>
+        {patchTry.estimatedLinesChanged > 0 ? (
+          <span className="text-[10px] text-white/25">
+            ~{patchTry.estimatedLinesChanged} lines
+          </span>
+        ) : null}
+      </div>
+      {patchTry.failureStage ? (
+        <p className="mt-1 text-[11px] text-red-300/70">
+          {patchTry.failureStage}
+          {patchTry.failureReason ? `: ${patchTry.failureReason}` : ""}
+        </p>
+      ) : null}
+      {patchTry.explanation ? (
+        <p className="mt-1 text-[11px] text-white/40">{patchTry.explanation}</p>
+      ) : null}
+      {patchTry.touchedFiles.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {patchTry.touchedFiles.map((f) => (
+            <span key={f} title={f}>
+              <Mono>{shortenPath(f)}</Mono>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {patchTry.patchTrace ? (
+        <div className="mt-2">
+          <MiniCollapsible label="Try reasoning">
+            <PatchReasoningPanel trace={patchTry.patchTrace} />
+          </MiniCollapsible>
+        </div>
+      ) : null}
+      {patchTry.diff ? (
+        <div className="mt-2">
+          <MiniCollapsible label="Try diff">
+            <DiffViewer diff={patchTry.diff} />
+          </MiniCollapsible>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function parseDiscoveryFileOpportunities(value: unknown): DiscoveryFileOpportunity[] {
+  if (!Array.isArray(value)) return [];
+
+  const result: DiscoveryFileOpportunity[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const d = item as Record<string, unknown>;
+    const approaches = Array.isArray(d.approaches)
+      ? d.approaches.filter((a): a is string => typeof a === "string" && a.length > 0)
+      : [];
+    const affectedLinesRaw = d.affected_lines;
+    const affectedLines =
+      typeof affectedLinesRaw === "number" && Number.isFinite(affectedLinesRaw)
+        ? affectedLinesRaw
+        : 0;
+    result.push({
+      file: typeof d.file === "string" ? d.file : "",
+      location: typeof d.location === "string" ? d.location : "",
+      type: typeof d.type === "string" && d.type ? d.type : "opportunity",
+      rationale: typeof d.rationale === "string" ? d.rationale : "",
+      riskLevel:
+        typeof d.risk_level === "string" && d.risk_level
+          ? d.risk_level
+          : "unknown",
+      affectedLines,
+      approaches,
+    });
+  }
+
+  return result;
+}
+
+function riskBadgeVariant(riskLevel: string): "default" | "success" | "warn" {
+  if (riskLevel === "low") return "success";
+  if (riskLevel === "medium") return "warn";
+  return "default";
+}
+
+function parsePatchApproachStartedDetail(
+  data: Record<string, unknown>,
+): PatchApproachStartedDetail | null {
+  const hasEnriched =
+    "approach_desc_full" in data ||
+    "rationale" in data ||
+    "risk_level" in data ||
+    "affected_lines" in data;
+  if (!hasEnriched) return null;
+
+  const affectedLinesRaw = data.affected_lines;
+  const affectedLines =
+    typeof affectedLinesRaw === "number" && Number.isFinite(affectedLinesRaw)
+      ? affectedLinesRaw
+      : null;
+
+  return {
+    approachDescFull:
+      typeof data.approach_desc_full === "string" ? data.approach_desc_full : null,
+    rationale: typeof data.rationale === "string" ? data.rationale : null,
+    riskLevel: typeof data.risk_level === "string" ? data.risk_level : null,
+    affectedLines,
+  };
+}
+
+function parsePatchApproachCompletedDetail(
+  data: Record<string, unknown>,
+): PatchApproachCompletedDetail | null {
+  const hasEnriched =
+    "approach_desc_full" in data ||
+    "patchgen_tries" in data ||
+    "patch_trace" in data ||
+    "diff" in data ||
+    "failure_stage" in data ||
+    "failure_reason" in data;
+  if (!hasEnriched) return null;
+
+  const totalApproachesRaw = data.total_approaches;
+  const totalApproaches =
+    typeof totalApproachesRaw === "number" && Number.isFinite(totalApproachesRaw)
+      ? totalApproachesRaw
+      : null;
+
+  return {
+    location: typeof data.location === "string" ? data.location : null,
+    type: typeof data.type === "string" ? data.type : null,
+    totalApproaches,
+    approachDescFull:
+      typeof data.approach_desc_full === "string" ? data.approach_desc_full : null,
+    explanation: typeof data.explanation === "string" ? data.explanation : null,
+    diff: typeof data.diff === "string" ? data.diff : null,
+    patchTrace: parseThinkingTrace(data.patch_trace),
+    failureStage:
+      typeof data.failure_stage === "string" ? data.failure_stage : null,
+    failureReason:
+      typeof data.failure_reason === "string" ? data.failure_reason : null,
+    patchgenTries: parsePatchGenTries(data.patchgen_tries),
+  };
+}
+
+function parsePatchGenTries(value: unknown): PatchGenTryDetail[] {
+  if (!Array.isArray(value)) return [];
+  const result: PatchGenTryDetail[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const d = item as Record<string, unknown>;
+    const attemptNumber =
+      typeof d.attempt_number === "number" && Number.isFinite(d.attempt_number)
+        ? d.attempt_number
+        : 0;
+    const estimated =
+      typeof d.estimated_lines_changed === "number" &&
+      Number.isFinite(d.estimated_lines_changed)
+        ? d.estimated_lines_changed
+        : 0;
+    result.push({
+      attemptNumber,
+      success: Boolean(d.success),
+      failureStage: typeof d.failure_stage === "string" ? d.failure_stage : null,
+      failureReason: typeof d.failure_reason === "string" ? d.failure_reason : null,
+      diff: typeof d.diff === "string" ? d.diff : null,
+      explanation: typeof d.explanation === "string" ? d.explanation : null,
+      touchedFiles: Array.isArray(d.touched_files)
+        ? d.touched_files.filter((f): f is string => typeof f === "string")
+        : [],
+      estimatedLinesChanged: estimated,
+      patchTrace: parseThinkingTrace(d.patch_trace),
+    });
+  }
+  return result;
+}
+
+function parseValidationAttempts(value: unknown): ValidationAttemptSummary[] {
+  if (!Array.isArray(value)) return [];
+  const result: ValidationAttemptSummary[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const d = item as Record<string, unknown>;
+    const steps = Array.isArray(d.steps) ? d.steps : [];
+    const parsedSteps = steps
+      .filter((s): s is Record<string, unknown> => Boolean(s) && typeof s === "object")
+      .map((step) => ({
+        name: typeof step.name === "string" ? step.name : "",
+        command: typeof step.command === "string" ? step.command : "",
+        exit_code:
+          typeof step.exit_code === "number" && Number.isFinite(step.exit_code)
+            ? step.exit_code
+            : 0,
+        duration_seconds:
+          typeof step.duration_seconds === "number" && Number.isFinite(step.duration_seconds)
+            ? step.duration_seconds
+            : 0,
+        stdout_lines:
+          typeof step.stdout_lines === "number" && Number.isFinite(step.stdout_lines)
+            ? step.stdout_lines
+            : 0,
+        stderr_lines:
+          typeof step.stderr_lines === "number" && Number.isFinite(step.stderr_lines)
+            ? step.stderr_lines
+            : 0,
+        is_success: Boolean(step.is_success),
+      }));
+    result.push({
+      attempt_number:
+        typeof d.attempt_number === "number" && Number.isFinite(d.attempt_number)
+          ? d.attempt_number
+          : 0,
+      patch_applied: Boolean(d.patch_applied),
+      error: typeof d.error === "string" ? d.error : null,
+      timestamp: typeof d.timestamp === "string" ? d.timestamp : "",
+      steps: parsedSteps,
+      verdict: parseValidationAttemptVerdict(d.verdict),
+    });
+  }
+  return result;
+}
+
+function parseValidationAttemptVerdict(
+  value: unknown,
+): ValidationAttemptSummary["verdict"] {
+  if (!value || typeof value !== "object") return null;
+  const d = value as Record<string, unknown>;
+  return {
+    is_accepted: Boolean(d.is_accepted),
+    confidence: typeof d.confidence === "string" ? d.confidence : "low",
+    reason: typeof d.reason === "string" ? d.reason : "",
+    gates_passed: Array.isArray(d.gates_passed)
+      ? d.gates_passed.filter((g): g is string => typeof g === "string")
+      : [],
+    gates_failed: Array.isArray(d.gates_failed)
+      ? d.gates_failed.filter((g): g is string => typeof g === "string")
+      : [],
+    benchmark_comparison: parseValidationBenchmarkComparison(d.benchmark_comparison),
+  };
+}
+
+function parseValidationBenchmarkComparison(
+  value: unknown,
+): ValidationBenchmarkSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const d = value as Record<string, unknown>;
+  const required = [
+    "improvement_pct",
+    "baseline_duration_seconds",
+    "candidate_duration_seconds",
+  ] as const;
+  if (!required.every((k) => typeof d[k] === "number" && Number.isFinite(d[k] as number))) {
+    return null;
+  }
+  return {
+    improvement_pct: d.improvement_pct as number,
+    passes_threshold: Boolean(d.passes_threshold),
+    is_significant: Boolean(d.is_significant),
+    baseline_duration_seconds: d.baseline_duration_seconds as number,
+    candidate_duration_seconds: d.candidate_duration_seconds as number,
+  };
+}
+
+function parseThinkingTrace(value: unknown): ThinkingTrace | null {
+  if (!value || typeof value !== "object") return null;
+  const d = value as Record<string, unknown>;
+  if (
+    typeof d.model !== "string" ||
+    typeof d.provider !== "string" ||
+    typeof d.reasoning !== "string" ||
+    typeof d.prompt_tokens !== "number" ||
+    typeof d.completion_tokens !== "number" ||
+    typeof d.tokens_used !== "number" ||
+    typeof d.timestamp !== "string"
+  ) {
+    return null;
+  }
+  return {
+    model: d.model,
+    provider: d.provider,
+    reasoning: d.reasoning,
+    prompt_tokens: d.prompt_tokens,
+    completion_tokens: d.completion_tokens,
+    tokens_used: d.tokens_used,
+    timestamp: d.timestamp,
+  };
 }
 
 function truncate(text: string, max: number): string {

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.engine.queue import celery_app
+from app.runs.events import publish_event, store_task_id
 from app.runs.service import RunService
 
 logger = logging.getLogger(__name__)
@@ -55,9 +56,7 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
         run_id, trace_id or "(none)",
     )
 
-    # Store the Celery task ID so the cancel endpoint can revoke it
     try:
-        from app.runs.events import store_task_id
         store_task_id(run_id, self.request.id)
     except Exception:
         logger.debug("Could not store task ID for run %s", run_id, exc_info=True)
@@ -86,7 +85,6 @@ def execute_run(self, run_id: str, trace_id: str = "") -> dict:
         )
 
         try:
-            from app.runs.events import publish_event
             publish_event(run_id, "run.failed", "run", {"error": str(exc)[:500]})
         except Exception:
             pass

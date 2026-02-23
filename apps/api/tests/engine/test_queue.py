@@ -37,7 +37,9 @@ class TestCeleryAppConfig:
         assert celery_app.conf.worker_prefetch_multiplier == 1
 
     def test_soft_time_limit(self):
-        assert celery_app.conf.task_soft_time_limit == 600
+        # Global default is intentionally short (Beat/lightweight tasks).
+        # Long-running tasks like execute_run override this per-task.
+        assert celery_app.conf.task_soft_time_limit == 120
 
     def test_hard_time_limit(self):
-        assert celery_app.conf.task_time_limit == 660
+        assert celery_app.conf.task_time_limit == 180

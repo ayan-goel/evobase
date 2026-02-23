@@ -46,22 +46,26 @@ export function FileAnalysisGrid({ events }: FileAnalysisGridProps) {
   if (fileStatuses.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2">
       {fileStatuses.map(({ file, state, opportunitiesFound }) => (
         <div
           key={file}
-          className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2"
+          title={file}
+          className="flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
         >
           <StatusIcon state={state} />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground/80">
+          <span
+            title={file}
+            className="min-w-0 flex-1 truncate font-mono text-xs text-white/75"
+          >
             {shortenPath(file)}
           </span>
           {state === "done" && (
             <span
-              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+              className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                 opportunitiesFound > 0
                   ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-muted/60 text-muted-foreground"
+                  : "bg-white/[0.05] text-white/45"
               }`}
             >
               {opportunitiesFound > 0
@@ -70,7 +74,7 @@ export function FileAnalysisGrid({ events }: FileAnalysisGridProps) {
             </span>
           )}
           {state === "analysing" && (
-            <span className="shrink-0 text-[10px] text-muted-foreground italic">
+            <span className="shrink-0 text-[10px] text-white/35 italic">
               analysing…
             </span>
           )}
@@ -103,7 +107,7 @@ function StatusIcon({ state }: { state: FileStatus["state"] }) {
     );
   }
   return (
-    <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-border/60 bg-muted/40" />
+    <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/[0.14] bg-white/[0.02]" />
   );
 }
 

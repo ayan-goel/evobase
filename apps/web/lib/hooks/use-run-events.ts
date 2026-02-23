@@ -32,6 +32,15 @@ export function useRunEvents(
   const [isDone, setIsDone] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<string>("0");
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setEvents([]);
+    setIsConnected(false);
+    setIsDone(false);
+    lastEventIdRef.current = "0";
+    seenEventIdsRef.current = new Set();
+  }, [runId]);
 
   const connect = useCallback(async () => {
     if (!isActive || isDone) return;
@@ -54,6 +63,12 @@ export function useRunEvents(
       try {
         const event: RunEvent = JSON.parse(e.data);
         if (e.lastEventId) lastEventIdRef.current = e.lastEventId;
+        if (event.id && seenEventIdsRef.current.has(event.id)) {
+          return;
+        }
+        if (event.id) {
+          seenEventIdsRef.current.add(event.id);
+        }
         setEvents((prev) => [...prev, event]);
       } catch {
         // Ignore parse errors

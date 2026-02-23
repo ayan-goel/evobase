@@ -12,7 +12,6 @@ Task ID key:  run_task:{run_id}
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
@@ -71,13 +70,12 @@ def publish_event(
         "data": json.dumps(data or {}),
     }
     try:
-        entry_id = r.xadd(
-            _stream_key(run_id),
-            payload,
-            maxlen=_STREAM_MAX_LEN,
-        )
-        r.expire(_stream_key(run_id), 86400)
-        return entry_id
+        key = _stream_key(run_id)
+        pipe = r.pipeline()
+        pipe.xadd(key, payload, maxlen=_STREAM_MAX_LEN)
+        pipe.expire(key, 86400)
+        results = pipe.execute()
+        return results[0]
     except Exception:
         logger.debug("Failed to publish event %s for run %s", event_type, run_id, exc_info=True)
         return ""

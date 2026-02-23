@@ -114,6 +114,7 @@ async def discover_opportunities(
             "file_index": file_index,
             "total_files": len(capped_files),
             "opportunities_found": len(opps),
+            "opportunities": _serialise_file_opportunities_for_event(rel_path, opps),
         })
         all_opportunities.extend(opps)
 
@@ -144,6 +145,25 @@ async def discover_opportunities(
         len(result), len(selected_files),
     )
     return result
+
+
+def _serialise_file_opportunities_for_event(
+    rel_path: str,
+    opps: list[AgentOpportunity],
+) -> list[dict]:
+    """Serialise discovery-stage opportunities for a file into a compact event payload."""
+    return [
+        {
+            "file": rel_path,
+            "location": opp.location,
+            "type": opp.type,
+            "rationale": opp.rationale,
+            "risk_level": opp.risk_level,
+            "affected_lines": opp.affected_lines,
+            "approaches": [str(a) for a in opp.approaches if a],
+        }
+        for opp in opps
+    ]
 
 
 def _is_new(opp: AgentOpportunity, seen: frozenset[tuple[str, str]]) -> bool:

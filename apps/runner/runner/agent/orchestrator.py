@@ -24,7 +24,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from runner.agent.discovery import discover_opportunities
-from runner.agent.patchgen import generate_agent_patch
+from runner.agent.patchgen import (
+    PatchGenTryRecord,
+    PatchGenerationOutcome,
+    generate_agent_patch_with_diagnostics,
+)
 from runner.agent.types import AgentOpportunity, AgentPatch, AgentRun, PatchVariantResult
 from runner.detector.types import DetectionResult
 from runner.llm.factory import get_provider, validate_model
@@ -157,16 +161,21 @@ async def run_agent_cycle(
                 "type": opp.type,
                 "approach_index": idx,
                 "approach_desc": approach_desc[:120],
+                "approach_desc_full": approach_desc,
+                "rationale": opp.rationale,
+                "risk_level": opp.risk_level,
+                "affected_lines": opp.affected_lines,
                 "total_approaches": len(approaches),
             })
 
-            patch = await generate_agent_patch(
+            patch_outcome = await generate_agent_patch_with_diagnostics(
                 opportunity=opp,
                 repo_dir=repo_dir,
                 provider=provider,
                 config=llm_config,
                 approach_override=approach_desc,
             )
+            patch = patch_outcome.patch
 
             if patch is None:
                 logger.debug(
@@ -175,19 +184,39 @@ async def run_agent_cycle(
                 )
                 _emit("patch.approach.completed", "patch", {
                     "opportunity_index": opp_index,
+                    "location": opp.location,
+                    "type": opp.type,
                     "approach_index": idx,
+                    "total_approaches": len(approaches),
+                    "approach_desc_full": approach_desc,
                     "success": False,
                     "lines_changed": None,
                     "touched_files": [],
+                    "explanation": None,
+                    "diff": None,
+                    "patch_trace": _trace_to_event_dict(_final_patch_trace(patch_outcome)),
+                    "failure_stage": patch_outcome.failure_stage,
+                    "failure_reason": patch_outcome.failure_reason,
+                    "patchgen_tries": _serialise_patchgen_tries_for_event(patch_outcome.tries),
                 })
                 candidate_result = _make_error_candidate("Patch generation returned None")
             else:
                 _emit("patch.approach.completed", "patch", {
                     "opportunity_index": opp_index,
+                    "location": opp.location,
+                    "type": opp.type,
                     "approach_index": idx,
+                    "total_approaches": len(approaches),
+                    "approach_desc_full": approach_desc,
                     "success": True,
                     "lines_changed": patch.estimated_lines_changed,
                     "touched_files": patch.touched_files,
+                    "explanation": patch.explanation,
+                    "diff": patch.diff,
+                    "patch_trace": _trace_to_event_dict(_final_patch_trace(patch_outcome)),
+                    "failure_stage": None,
+                    "failure_reason": None,
+                    "patchgen_tries": _serialise_patchgen_tries_for_event(patch_outcome.tries),
                 })
                 proxy_patch = PatchResult(
                     diff=patch.diff,
@@ -256,6 +285,12 @@ async def run_agent_cycle(
             "gates_passed": winner_candidate.final_verdict.gates_passed if winner_candidate.final_verdict else [],
             "gates_failed": winner_candidate.final_verdict.gates_failed if winner_candidate.final_verdict else [],
             "approaches_tried": len(variants),
+            "attempts": _serialise_validation_attempts_for_event(winner_candidate),
+            "benchmark_comparison": (
+                winner_candidate.final_verdict.benchmark_comparison.to_dict()
+                if winner_candidate.final_verdict and winner_candidate.final_verdict.benchmark_comparison
+                else None
+            ),
         })
         if winner_candidate.is_accepted and selection_reason:
             _emit("selection.completed", "selection", {
@@ -387,3 +422,60 @@ def _make_error_candidate(error_msg: str) -> CandidateResult:
         final_verdict=verdict,
         is_accepted=False,
     )
+
+
+def _trace_to_event_dict(trace) -> Optional[dict]:
+    """Serialise a ThinkingTrace-like object to the run event payload."""
+    if not trace:
+        return None
+    try:
+        return trace.to_dict()
+    except Exception:
+        return None
+
+
+def _final_patch_trace(outcome: PatchGenerationOutcome):
+    if outcome.patch and outcome.patch.thinking_trace:
+        return outcome.patch.thinking_trace
+    if outcome.tries:
+        last_try = outcome.tries[-1]
+        if last_try.patch and last_try.patch.thinking_trace:
+            return last_try.patch.thinking_trace
+        return last_try.patch_trace
+    return None
+
+
+def _serialise_patchgen_tries_for_event(tries: list[PatchGenTryRecord]) -> list[dict]:
+    payload: list[dict] = []
+    for t in tries:
+        patch = t.patch
+        trace = patch.thinking_trace if patch and patch.thinking_trace else t.patch_trace
+        payload.append({
+            "attempt_number": t.attempt_number,
+            "success": t.success,
+            "failure_stage": t.failure_stage,
+            "failure_reason": t.failure_reason,
+            "diff": patch.diff if patch else None,
+            "explanation": patch.explanation if patch else None,
+            "touched_files": patch.touched_files if patch else [],
+            "estimated_lines_changed": patch.estimated_lines_changed if patch else 0,
+            "patch_trace": _trace_to_event_dict(trace),
+        })
+    return payload
+
+
+def _serialise_validation_attempts_for_event(candidate: CandidateResult) -> list[dict]:
+    payload: list[dict] = []
+    for attempt in candidate.attempts:
+        steps = []
+        if attempt.pipeline_result:
+            steps = [step.to_dict() for step in attempt.pipeline_result.steps]
+        payload.append({
+            "attempt_number": attempt.attempt_number,
+            "patch_applied": attempt.patch_applied,
+            "error": attempt.error,
+            "timestamp": attempt.timestamp,
+            "steps": steps,
+            "verdict": attempt.verdict.to_dict() if attempt.verdict else None,
+        })
+    return payload

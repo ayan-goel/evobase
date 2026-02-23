@@ -413,18 +413,22 @@ interface RunStats {
 
 function _deriveStats(events: RunEvent[]): RunStats {
   let totalFiles = 0;
-  let filesAnalysed = 0;
-  let opportunitiesFound = 0;
   let approachesStarted = 0;
   let candidatesAttempted = 0;
   let candidatesAccepted = 0;
+  const analysedFiles = new Set<string>();
+  const opportunitiesByFile = new Map<string, number>();
 
   for (const e of events) {
     if (e.type === "discovery.files.selected") {
       totalFiles = (e.data.count as number) ?? 0;
     } else if (e.type === "discovery.file.analysed") {
-      filesAnalysed++;
-      opportunitiesFound += (e.data.opportunities_found as number) ?? 0;
+      const file = typeof e.data.file === "string" ? e.data.file : null;
+      const count = (e.data.opportunities_found as number) ?? 0;
+      if (file) {
+        analysedFiles.add(file);
+        opportunitiesByFile.set(file, count);
+      }
     } else if (e.type === "patch.approach.started") {
       approachesStarted++;
     } else if (e.type === "validation.verdict") {
@@ -435,8 +439,11 @@ function _deriveStats(events: RunEvent[]): RunStats {
 
   return {
     totalFiles,
-    filesAnalysed,
-    opportunitiesFound,
+    filesAnalysed: analysedFiles.size,
+    opportunitiesFound: Array.from(opportunitiesByFile.values()).reduce(
+      (sum, count) => sum + count,
+      0,
+    ),
     approachesStarted,
     candidatesAttempted,
     candidatesAccepted,

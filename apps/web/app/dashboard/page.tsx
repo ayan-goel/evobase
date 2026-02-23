@@ -74,13 +74,6 @@ function RepoStatusBadge({
   status: string | null | undefined;
   setupFailing: boolean;
 }) {
-  if (setupFailing) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
-        Setup failing
-      </span>
-    );
-  }
   if (status === "running") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-300">
@@ -94,6 +87,13 @@ function RepoStatusBadge({
       <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium text-white/60">
         <span className="h-1.5 w-1.5 rounded-full bg-white/40 animate-pulse" />
         Queued
+      </span>
+    );
+  }
+  if (setupFailing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+        Setup failing
       </span>
     );
   }
@@ -143,11 +143,13 @@ function RepoCard({ repo }: { repo: Repository }) {
         />
       </div>
 
-      {repo.setup_failing && (
-        <p className="mt-2 text-xs text-amber-400/70">
-          {failureMessage} Update the project directory in Settings →
-        </p>
-      )}
+      {repo.setup_failing &&
+        repo.latest_run_status !== "running" &&
+        repo.latest_run_status !== "queued" && (
+          <p className="mt-2 text-xs text-amber-400/70">
+            {failureMessage} Update the project directory in Settings →
+          </p>
+        )}
 
       {(repo.build_cmd || repo.test_cmd) && (
         <div className="mt-3 flex flex-wrap gap-2">

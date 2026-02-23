@@ -86,6 +86,16 @@ async def _decode_jwt(token: str, settings: Settings) -> dict:
     raise JWTError(f"Unsupported algorithm: {alg}")
 
 
+async def decode_token(token: str, settings: Settings) -> dict:
+    """Public wrapper around JWT decoding for callers that handle auth manually.
+
+    Use this instead of the private ``_decode_jwt`` when bearer tokens must be
+    passed out-of-band (e.g. SSE endpoints where ``EventSource`` cannot set
+    custom request headers).
+    """
+    return await _decode_jwt(token, settings)
+
+
 async def get_current_user(
     authorization: str = Header(default=""),
     db: AsyncSession = Depends(get_db),

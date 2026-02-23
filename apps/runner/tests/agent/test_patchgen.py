@@ -13,6 +13,7 @@ import pytest
 from runner.agent.patchgen import (
     _parse_file_from_location,
     _parse_patch_response,
+    generate_agent_patch_with_diagnostics,
     generate_agent_patch,
 )
 from runner.agent.types import AgentOpportunity
@@ -105,6 +106,23 @@ class TestParsePatchResponse:
     def test_returns_none_for_invalid_json(self) -> None:
         result = _parse_patch_response("not json", None)
         assert result is None
+
+    def test_parses_markdown_fenced_json(self) -> None:
+        raw = (
+            "```json\n"
+            + json.dumps({
+                "reasoning": "I can fix this safely",
+                "diff": _make_valid_diff(),
+                "explanation": "Hoisted regex",
+                "touched_files": ["src/utils.ts"],
+                "estimated_lines_changed": 2,
+            })
+            + "\n```"
+        )
+        result = _parse_patch_response(raw, _make_trace())
+        assert result is not None
+        assert "--- a/src/utils.ts" in result.diff
+        assert result.explanation == "Hoisted regex"
 
     def test_attaches_thinking_trace(self) -> None:
         trace = _make_trace()
@@ -203,3 +221,101 @@ class TestGenerateAgentPatch:
         assert "my custom override approach" in captured_prompts[0]
         # The original approach ("hoist regex") should NOT appear
         assert "hoist regex" not in captured_prompts[0]
+
+
+class TestGenerateAgentPatchWithDiagnostics:
+    async def test_success_returns_patch_and_try_diagnostics(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "utils.ts").write_text("const x = 1;\nconst re = /abc/;\nreturn x;\n")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(return_value=_make_response(_make_valid_diff()))
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("src/utils.ts:10"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is True
+        assert outcome.patch is not None
+        assert outcome.failure_stage is None
+        assert len(outcome.tries) == 1
+        t = outcome.tries[0]
+        assert t.success is True
+        assert t.patch is not None
+        assert t.patch.diff.startswith("--- a/src/utils.ts")
+        assert t.patch_trace is not None
+
+    async def test_json_parse_failure_preserves_trace_in_diagnostics(self, tmp_path: Path) -> None:
+        (tmp_path / "a.ts").write_text("const x = 1;\n")
+        bad_response = LLMResponse(content="not json", thinking_trace=_make_trace())
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(return_value=bad_response)
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("a.ts:1"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is False
+        assert outcome.patch is None
+        assert outcome.failure_stage == "json_parse"
+        assert len(outcome.tries) == 1
+        assert outcome.tries[0].patch_trace is not None
+        assert outcome.tries[0].failure_stage == "json_parse"
+
+    async def test_constraint_failure_records_multiple_tries(self, tmp_path: Path) -> None:
+        (tmp_path / "big.ts").write_text("code\n")
+        too_big_diff = (
+            "--- a/big.ts\n+++ b/big.ts\n@@ -1,1 +1,205 @@\n"
+            + "".join(f"+line{i}\n" for i in range(205))
+        )
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(
+            side_effect=[
+                _make_response(too_big_diff),
+                _make_response(too_big_diff),
+            ]
+        )
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("big.ts:1"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is False
+        assert outcome.patch is None
+        assert outcome.failure_stage == "constraint"
+        assert len(outcome.tries) == 2
+        assert outcome.tries[0].failure_stage == "constraint"
+        assert outcome.tries[1].failure_stage == "constraint"
+
+    async def test_null_diff_returns_null_diff_failure_stage(self, tmp_path: Path) -> None:
+        (tmp_path / "a.ts").write_text("code\n")
+        null_response = LLMResponse(
+            content=json.dumps({"diff": None, "explanation": "can't fix"}),
+            thinking_trace=_make_trace(),
+        )
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(return_value=null_response)
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("a.ts:1"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is False
+        assert outcome.patch is None
+        assert outcome.failure_stage == "null_diff"
+        assert len(outcome.tries) == 1
+        assert outcome.tries[0].failure_stage == "null_diff"

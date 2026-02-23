@@ -40,15 +40,17 @@ class TestStreamKeys:
 class TestPublishEvent:
     @patch("app.runs.events._get_sync_redis")
     def test_publishes_event_to_stream(self, mock_get_redis):
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = ["1234567890-0", True]
         mock_redis = MagicMock()
-        mock_redis.xadd.return_value = "1234567890-0"
+        mock_redis.pipeline.return_value = mock_pipe
         mock_get_redis.return_value = mock_redis
 
         result = publish_event("run-1", "clone.started", "clone", {"repo": "org/repo"})
 
         assert result == "1234567890-0"
-        mock_redis.xadd.assert_called_once()
-        call_args = mock_redis.xadd.call_args
+        mock_pipe.xadd.assert_called_once()
+        call_args = mock_pipe.xadd.call_args
         assert call_args[0][0] == "run_events:run-1"
         payload = call_args[0][1]
         assert payload["type"] == "clone.started"
@@ -57,8 +59,10 @@ class TestPublishEvent:
 
     @patch("app.runs.events._get_sync_redis")
     def test_publish_handles_redis_error_gracefully(self, mock_get_redis):
+        mock_pipe = MagicMock()
+        mock_pipe.execute.side_effect = ConnectionError("Redis down")
         mock_redis = MagicMock()
-        mock_redis.xadd.side_effect = ConnectionError("Redis down")
+        mock_redis.pipeline.return_value = mock_pipe
         mock_get_redis.return_value = mock_redis
 
         result = publish_event("run-1", "clone.started", "clone")
@@ -66,13 +70,15 @@ class TestPublishEvent:
 
     @patch("app.runs.events._get_sync_redis")
     def test_publish_defaults_data_to_empty_dict(self, mock_get_redis):
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = ["1-0", True]
         mock_redis = MagicMock()
-        mock_redis.xadd.return_value = "1-0"
+        mock_redis.pipeline.return_value = mock_pipe
         mock_get_redis.return_value = mock_redis
 
         publish_event("run-1", "test.event", "test")
 
-        payload = mock_redis.xadd.call_args[0][1]
+        payload = mock_pipe.xadd.call_args[0][1]
         assert json.loads(payload["data"]) == {}
 
 
