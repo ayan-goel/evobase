@@ -47,7 +47,6 @@ function renderDetectionCompleted(event: RunEvent) {
   const language = d.language as string | undefined;
   const framework = d.framework as string | undefined;
   const packageManager = d.package_manager as string | undefined;
-  const confidence = d.confidence != null ? (d.confidence as number) : null;
   return (
     <TimelineRow icon="🔍" phase="Detection" ts={event.ts} success>
       <span>
@@ -61,11 +60,6 @@ function renderDetectionCompleted(event: RunEvent) {
         {packageManager ? (
           <span className="text-white/30 text-xs ml-2">
             via {packageManager}
-          </span>
-        ) : null}
-        {confidence != null ? (
-          <span className="text-white/20 text-xs ml-2">
-            ({Math.round(confidence * 100)}% confidence)
           </span>
         ) : null}
       </span>

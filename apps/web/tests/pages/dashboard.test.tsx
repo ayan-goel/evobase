@@ -113,34 +113,35 @@ describe("DashboardView", () => {
     );
   });
 
-  it("shows setting up badge when latest run is queued", () => {
+  it("shows queued badge when latest run is queued", () => {
     render(
       <DashboardView
         repos={[makeRepo({ latest_run_status: "queued" })]}
         installations={[]}
       />,
     );
-    expect(screen.getByText(/Setting up/i)).toBeInTheDocument();
+    expect(screen.getByText(/Queued/i)).toBeInTheDocument();
   });
 
-  it("shows setting up badge when latest run is running", () => {
+  it("shows running badge when latest run is running", () => {
     render(
       <DashboardView
         repos={[makeRepo({ latest_run_status: "running" })]}
         installations={[]}
       />,
     );
-    expect(screen.getByText(/Setting up/i)).toBeInTheDocument();
+    expect(screen.getByText(/Running/i)).toBeInTheDocument();
   });
 
-  it("shows no badge when latest run is completed", () => {
+  it("shows no active badge when latest run is completed", () => {
     render(
       <DashboardView
         repos={[makeRepo({ latest_run_status: "completed" })]}
         installations={[]}
       />,
     );
-    expect(screen.queryByText(/Setting up/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Queued/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Running/i)).not.toBeInTheDocument();
     expect(screen.getByText("→")).toBeInTheDocument();
   });
 
