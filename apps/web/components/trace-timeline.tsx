@@ -116,9 +116,9 @@ function AttemptEntry({ attempt }: { attempt: TraceAttempt }) {
               <p className="text-xs text-white/60 leading-relaxed">
                 {attempt.verdict.reason}
               </p>
-              {attempt.verdict.gates_failed.length > 0 && (
+              {(attempt.verdict.gates_failed ?? []).length > 0 && (
                 <p className="mt-1 text-xs text-red-300">
-                  Gates failed: {attempt.verdict.gates_failed.join(", ")}
+                  Gates failed: {(attempt.verdict.gates_failed ?? []).join(", ")}
                 </p>
               )}
             </div>

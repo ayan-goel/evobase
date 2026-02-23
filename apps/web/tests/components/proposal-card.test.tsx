@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ProposalCard } from "@/components/proposal-card";
 import type { Proposal } from "@/lib/types";
 
@@ -33,9 +33,16 @@ describe("ProposalCard", () => {
     expect(screen.getByText("Replaced indexOf with includes")).toBeDefined();
   });
 
-  it("renders confidence badge", () => {
-    render(<ProposalCard proposal={makeProposal({ confidence: "high" })} />);
-    expect(screen.getByText("High confidence")).toBeDefined();
+  it("fires onSelect when clicked", () => {
+    const onSelect = vi.fn();
+    render(<ProposalCard proposal={makeProposal()} onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
+  it("does not throw when onSelect is not provided", () => {
+    render(<ProposalCard proposal={makeProposal()} />);
+    expect(() => fireEvent.click(screen.getByRole("button"))).not.toThrow();
   });
 
   it("renders fallback summary when null", () => {
@@ -77,9 +84,9 @@ describe("ProposalCard", () => {
     expect(screen.getByText(/Test time/)).toBeDefined();
   });
 
-  it("links to the proposal page", () => {
+  it("renders as a button (not a link)", () => {
     render(<ProposalCard proposal={makeProposal({ id: "abc-123" })} />);
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe("/proposals/abc-123");
+    expect(screen.getByRole("button")).toBeDefined();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

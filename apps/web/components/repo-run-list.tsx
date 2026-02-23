@@ -418,7 +418,7 @@ function RunCard({
                 <span className="text-white/30 font-sans ml-1.5 group-hover:text-white/50">— {msg}</span>
               )}
             </span>
-            <span className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
+            <span suppressHydrationWarning className="text-xs text-white/30">{_fmtDate(run.created_at)}</span>
             <span className="text-[10px] text-white/20 group-hover:text-white/40 transition-colors">
               View details →
             </span>

@@ -117,14 +117,14 @@ export function ValidationAttemptsPanel({ attempts }: ValidationAttemptsPanelPro
           {attempt.verdict ? (
             <div className="mt-2 text-xs">
               <p className="text-white/40">{attempt.verdict.reason}</p>
-              {attempt.verdict.gates_failed.length > 0 ? (
+              {(attempt.verdict.gates_failed ?? []).length > 0 ? (
                 <p className="text-red-300/70 mt-0.5">
-                  Failed: {attempt.verdict.gates_failed.join(", ")}
+                  Failed: {(attempt.verdict.gates_failed ?? []).join(", ")}
                 </p>
               ) : null}
-              {attempt.verdict.gates_passed.length > 0 ? (
+              {(attempt.verdict.gates_passed ?? []).length > 0 ? (
                 <p className="text-emerald-300/70 mt-0.5">
-                  Passed: {attempt.verdict.gates_passed.join(", ")}
+                  Passed: {(attempt.verdict.gates_passed ?? []).join(", ")}
                 </p>
               ) : null}
             </div>

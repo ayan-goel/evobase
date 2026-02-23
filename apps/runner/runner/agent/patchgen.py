@@ -28,8 +28,18 @@ from runner.patchgen.types import ConstraintViolation, PatchResult
 
 logger = logging.getLogger(__name__)
 
-# Max characters of file content to send in a single patch generation call
-MAX_FILE_CHARS = 32_000
+# Max characters of file content to send in a single patch generation call (20KB)
+MAX_FILE_CHARS = 20_000
+
+
+def _patchgen_config(config: LLMConfig) -> LLMConfig:
+    """Return a config tuned for patch generation.
+
+    Uses a 4000-token thinking budget for Anthropic (down from 8000) and
+    keeps reasoning_effort=high for OpenAI reasoning models.
+    """
+    from dataclasses import replace
+    return replace(config, thinking_budget_tokens=4000)
 
 # Maximum self-correction attempts when a constraint is violated
 MAX_SELF_CORRECTION_ATTEMPTS = 1
@@ -141,7 +151,7 @@ async def generate_agent_patch_with_diagnostics(
         )
 
     if len(content) > MAX_FILE_CHARS:
-        content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 32KB] ..."
+        content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 20KB] ..."
 
     effective_approach = approach_override if approach_override is not None else opportunity.approach
     tries: list[PatchGenTryRecord] = []
@@ -267,7 +277,7 @@ async def _call_patch_agent_with_diagnostics(
     ]
 
     try:
-        response = await provider.complete(messages, config)
+        response = await provider.complete(messages, _patchgen_config(config))
     except LLMProviderError as exc:
         logger.error("Patch generation LLM call failed: %s", exc)
         return PatchGenTryRecord(

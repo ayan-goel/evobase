@@ -72,13 +72,13 @@ export function RunPRDialog({
     }
   }
 
+  if (!isOpen) return null;
+
   return (
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-50 bg-black/70 backdrop-blur-sm transition-opacity duration-200 ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -88,13 +88,8 @@ export function RunPRDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Create pull request"
-        className={`fixed left-1/2 z-50 w-full max-w-md -translate-x-1/2
-          bg-[#0d0d0d] border border-white/[0.10] rounded-xl shadow-2xl
-          transition-all duration-200
-          ${isOpen
-            ? "opacity-100 top-1/2 -translate-y-1/2 pointer-events-auto"
-            : "opacity-0 top-[48%] -translate-y-1/2 pointer-events-none"
-          }`}
+        className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2
+          bg-[#0d0d0d] border border-white/[0.10] rounded-xl shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.07]">

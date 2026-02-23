@@ -28,15 +28,45 @@ from runner.detector.types import DetectionResult
 from runner.llm.prompts.discovery_prompts import analysis_prompt, file_selection_prompt
 from runner.llm.prompts.system_prompts import build_system_prompt
 from runner.llm.provider import LLMProvider, LLMProviderError
-from runner.llm.types import LLMConfig, LLMMessage, ThinkingTrace
+from runner.llm.types import LLMConfig, LLMMessage, ThinkingTrace, get_selection_model
 
 logger = logging.getLogger(__name__)
 
 # Hard cap on files analysed per run to bound API cost
-MAX_FILES_TO_ANALYSE = 10
+MAX_FILES_TO_ANALYSE = 7
 
-# Maximum file size to send to the LLM (32KB) — larger files are truncated
-MAX_FILE_CHARS = 32_000
+# Maximum file size to send to the LLM (20KB) — larger files are truncated
+MAX_FILE_CHARS = 20_000
+
+
+def _selection_config(config: LLMConfig) -> LLMConfig:
+    """Return a cost-optimised config for the file-selection stage.
+
+    File selection is a simple ranking task — disable thinking and
+    switch to the provider's cheap/fast model.
+    """
+    from dataclasses import replace
+    selection_model = get_selection_model(config.provider, config.model)
+    return replace(
+        config,
+        model=selection_model,
+        enable_thinking=False,
+        thinking_budget_tokens=0,
+        reasoning_effort="low",
+    )
+
+
+def _analysis_config(config: LLMConfig) -> LLMConfig:
+    """Return a config for the file-analysis stage.
+
+    Uses a reduced thinking budget relative to patch generation.
+    """
+    from dataclasses import replace
+    return replace(
+        config,
+        thinking_budget_tokens=3000,
+        reasoning_effort="medium",
+    )
 
 
 EventCallback = Callable[[str, str, dict], None]
@@ -216,7 +246,7 @@ async def _select_files(
     ]
 
     try:
-        response = await provider.complete(messages, config)
+        response = await provider.complete(messages, _selection_config(config))
     except LLMProviderError as exc:
         logger.error("File selection LLM call failed: %s", exc)
         return []
@@ -247,7 +277,7 @@ async def _analyse_file(
         return []
 
     if len(content) > MAX_FILE_CHARS:
-        content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 32KB] ..."
+        content = content[:MAX_FILE_CHARS] + "\n\n... [file truncated at 20KB] ..."
 
     already_found = _format_seen_for_file(rel_path, seen_signatures)
     prompt = analysis_prompt(rel_path, content, already_found_in_file=already_found)
@@ -257,7 +287,7 @@ async def _analyse_file(
     ]
 
     try:
-        response = await provider.complete(messages, config)
+        response = await provider.complete(messages, _analysis_config(config))
     except LLMProviderError as exc:
         logger.error("Analysis LLM call failed for %s: %s", rel_path, exc)
         return []

@@ -28,7 +28,7 @@ class SettingsResponse(BaseModel):
     last_run_at: Optional[datetime] = None
     # LLM model configuration
     llm_provider: str = "anthropic"
-    llm_model: str = "claude-sonnet-4-5"
+    llm_model: str = "claude-sonnet-4-6"
     # Baseline execution strategy controls
     execution_mode: str = "adaptive"
     max_strategy_attempts: int = 2

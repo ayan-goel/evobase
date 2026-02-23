@@ -35,7 +35,7 @@ class TestGetSettings:
         assert data["repo_id"] == str(STUB_REPO_ID)
         assert data["compute_budget_minutes"] == 60
         assert data["max_proposals_per_run"] == 10
-        assert data["max_candidates_per_run"] == 20
+        assert data["max_candidates_per_run"] == 12
         assert data["paused"] is False
         assert data["consecutive_setup_failures"] == 0
         assert data["consecutive_flaky_runs"] == 0
@@ -208,30 +208,30 @@ class TestUpdateSettings:
     async def test_updates_llm_provider(self, seeded_client: AsyncClient) -> None:
         res = await seeded_client.put(
             f"/repos/{STUB_REPO_ID}/settings",
-            json={"llm_provider": "openai", "llm_model": "gpt-4o"},
+            json={"llm_provider": "openai", "llm_model": "gpt-5.2"},
         )
         assert res.status_code == 200
         data = res.json()
         assert data["llm_provider"] == "openai"
-        assert data["llm_model"] == "gpt-4o"
+        assert data["llm_model"] == "gpt-5.2"
 
     async def test_llm_provider_defaults_to_anthropic(self, seeded_client: AsyncClient) -> None:
         res = await seeded_client.get(f"/repos/{STUB_REPO_ID}/settings")
         data = res.json()
         assert data["llm_provider"] == "anthropic"
-        assert data["llm_model"] == "claude-sonnet-4-5"
+        assert data["llm_model"] == "claude-sonnet-4-6"
 
     async def test_updates_llm_model_independently(self, seeded_client: AsyncClient) -> None:
         await seeded_client.put(
             f"/repos/{STUB_REPO_ID}/settings",
-            json={"llm_provider": "anthropic", "llm_model": "claude-haiku-3-5"},
+            json={"llm_provider": "anthropic", "llm_model": "claude-haiku-4-5"},
         )
         res = await seeded_client.put(
             f"/repos/{STUB_REPO_ID}/settings",
-            json={"llm_model": "claude-sonnet-4-5"},
+            json={"llm_model": "claude-sonnet-4-6"},
         )
         data = res.json()
-        assert data["llm_model"] == "claude-sonnet-4-5"
+        assert data["llm_model"] == "claude-sonnet-4-6"
         assert data["llm_provider"] == "anthropic"  # unchanged
 
     async def test_updates_execution_mode_and_attempts(self, seeded_client: AsyncClient) -> None:

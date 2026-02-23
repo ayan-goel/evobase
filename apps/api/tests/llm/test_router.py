@@ -38,16 +38,16 @@ class TestListModels:
         res = await client.get("/llm/models")
         anthropic = next(p for p in res.json()["providers"] if p["id"] == "anthropic")
         model_ids = [m["id"] for m in anthropic["models"]]
-        assert "claude-sonnet-4-5" in model_ids
+        assert "claude-sonnet-4-6" in model_ids
 
-    async def test_openai_has_gpt4o(self, client: AsyncClient) -> None:
+    async def test_openai_has_gpt5(self, client: AsyncClient) -> None:
         res = await client.get("/llm/models")
         openai = next(p for p in res.json()["providers"] if p["id"] == "openai")
         model_ids = [m["id"] for m in openai["models"]]
-        assert "gpt-4o" in model_ids
+        assert "gpt-5.2" in model_ids
 
-    async def test_google_has_gemini_flash(self, client: AsyncClient) -> None:
+    async def test_google_has_gemini_25(self, client: AsyncClient) -> None:
         res = await client.get("/llm/models")
         google = next(p for p in res.json()["providers"] if p["id"] == "google")
         model_ids = [m["id"] for m in google["models"]]
-        assert "gemini-2.0-flash" in model_ids
+        assert "gemini-2.5-pro" in model_ids

@@ -170,9 +170,9 @@ class RunService:
 
                 # LLM settings — prefer per-repo, fall back to env vars
                 llm_provider = settings.llm_provider if settings else "anthropic"
-                llm_model = settings.llm_model if settings else "claude-sonnet-4-5"
+                llm_model = settings.llm_model if settings else "claude-sonnet-4-6"
                 max_candidates = (
-                    settings.max_candidates_per_run if settings else 20
+                    settings.max_candidates_per_run if settings else 12
                 )
                 max_proposals = (
                     settings.max_proposals_per_run if settings else 10
@@ -970,14 +970,14 @@ def _resolve_llm_credentials() -> tuple[str, str, str]:
     import os
 
     candidates = [
-        ("anthropic", "claude-sonnet-4-5", os.environ.get("ANTHROPIC_API_KEY", "")),
-        ("openai", "gpt-4o", os.environ.get("OPENAI_API_KEY", "")),
-        ("google", "gemini-2.0-flash", os.environ.get("GOOGLE_API_KEY", "")),
+        ("anthropic", "claude-sonnet-4-6", os.environ.get("ANTHROPIC_API_KEY", "")),
+        ("openai", "gpt-5.2", os.environ.get("OPENAI_API_KEY", "")),
+        ("google", "gemini-2.5-pro", os.environ.get("GOOGLE_API_KEY", "")),
     ]
     for provider, model, key in candidates:
         if key:
             return provider, model, key
-    return "anthropic", "claude-sonnet-4-5", ""
+    return "anthropic", "claude-sonnet-4-6", ""
 
 
 # ---------------------------------------------------------------------------

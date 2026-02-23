@@ -40,7 +40,7 @@ from runner.validator.types import BaselineResult, CandidateResult
 logger = logging.getLogger(__name__)
 
 # Default maximum patch attempts per run (overridden by Settings.max_candidates_per_run)
-DEFAULT_MAX_CANDIDATES = 20
+DEFAULT_MAX_CANDIDATES = 12
 
 # Maximum approach variants to try per opportunity
 MAX_PATCH_APPROACHES = 3
@@ -251,10 +251,11 @@ async def run_agent_cycle(
                 candidate_result=candidate_result,
             ))
 
-            # Stop trying more variants once we have an accepted high-confidence one
-            if candidate_result.is_accepted and _confidence_rank(candidate_result) == 2:
+            # Lazy approach generation: stop as soon as any variant is accepted.
+            # Approach 2 and 3 are only tried if approach 1 fails, saving ~$1.50-2.50/run.
+            if candidate_result.is_accepted:
                 logger.debug(
-                    "High-confidence acceptance on variant %d; skipping remaining variants",
+                    "Accepted variant %d; skipping remaining approach variants (lazy strategy)",
                     idx,
                 )
                 break

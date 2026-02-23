@@ -21,14 +21,20 @@ class LLMConfig:
     api_key is read from environment at call time; never stored in DB.
     max_tokens caps completion length; defaults are provider-appropriate.
     temperature=0 ensures deterministic outputs for patch generation.
+
+    thinking_budget_tokens: Anthropic-only — max tokens for the extended
+        thinking block.  Use 0 to disable thinking entirely.
+    reasoning_effort: OpenAI reasoning-model-only — "low" | "medium" | "high".
     """
 
     provider: str  # "openai" | "anthropic" | "google"
-    model: str     # e.g. "claude-sonnet-4-5", "gpt-4o", "gemini-2.0-flash"
+    model: str     # e.g. "claude-sonnet-4-6", "gpt-5.2", "gemini-2.5-pro"
     api_key: str
     max_tokens: int = 4096
     temperature: float = 0.2
-    enable_thinking: bool = True  # Use extended thinking / CoT when available
+    enable_thinking: bool = True   # Use extended thinking when supported
+    thinking_budget_tokens: int = 4000   # Anthropic: per-call thinking budget
+    reasoning_effort: str = "high"       # OpenAI reasoning models: effort tier
 
 
 @dataclass
@@ -93,10 +99,29 @@ class LLMResponse:
 # ---------------------------------------------------------------------------
 
 AVAILABLE_MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
-    "anthropic": ["claude-sonnet-4-5", "claude-haiku-3-5"],
-    "google": ["gemini-2.0-flash", "gemini-1.5-pro"],
+    "anthropic": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
+    "openai": ["gpt-5.2", "gpt-5-mini"],
+    "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
 }
 
 DEFAULT_PROVIDER = "anthropic"
-DEFAULT_MODEL = "claude-sonnet-4-5"
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
+# ---------------------------------------------------------------------------
+# Cheap model to use for the file-selection stage only
+# ---------------------------------------------------------------------------
+
+_SELECTION_MODEL: dict[str, str] = {
+    "anthropic": "claude-haiku-4-5",
+    "openai": "gpt-5-mini",
+    "google": "gemini-2.5-flash",
+}
+
+
+def get_selection_model(provider: str, current_model: str) -> str:
+    """Return the cheap model to use for the file-selection stage.
+
+    Falls back to the current model if the provider is not in the map
+    (e.g. a future provider) so callers never receive an empty string.
+    """
+    return _SELECTION_MODEL.get(provider, current_model)

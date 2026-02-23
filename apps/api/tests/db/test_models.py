@@ -96,6 +96,7 @@ class TestModelMetadata:
         expected = {
             "id", "repo_id", "sha", "status", "compute_minutes",
             "trace_id", "failure_step", "commit_message", "created_at",
+            "pr_url",
         }
         assert column_names == expected
 

@@ -344,7 +344,7 @@ class Settings(Base):
     compute_budget_minutes: Mapped[int] = mapped_column(nullable=False, default=60)
     max_prs_per_day: Mapped[int] = mapped_column(nullable=False, default=5)
     max_proposals_per_run: Mapped[int] = mapped_column(nullable=False, default=10)
-    max_candidates_per_run: Mapped[int] = mapped_column(nullable=False, default=20)
+    max_candidates_per_run: Mapped[int] = mapped_column(nullable=False, default=12)
     schedule: Mapped[str] = mapped_column(Text, nullable=False, default="0 2 * * *")
 
     # Auto-pause state
@@ -355,7 +355,7 @@ class Settings(Base):
 
     # LLM model selection — user configures which model analyses this repo
     llm_provider: Mapped[str] = mapped_column(Text, nullable=False, default="anthropic")
-    llm_model: Mapped[str] = mapped_column(Text, nullable=False, default="claude-sonnet-4-5")
+    llm_model: Mapped[str] = mapped_column(Text, nullable=False, default="claude-sonnet-4-6")
     # Baseline execution strategy: "strict" (single deterministic attempt)
     # or "adaptive" (strict first, then bounded adaptive fallback attempts).
     execution_mode: Mapped[str] = mapped_column(Text, nullable=False, default="adaptive")

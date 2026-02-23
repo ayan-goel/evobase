@@ -134,8 +134,8 @@ function VariantContent({ variant }: { variant: PatchVariant }) {
       )}
 
       {/* Gates */}
-      {verdict && (verdict.gates_passed.length > 0 || verdict.gates_failed.length > 0) && (
-        <GatesList passed={verdict.gates_passed} failed={verdict.gates_failed} />
+      {verdict && ((verdict.gates_passed ?? []).length > 0 || (verdict.gates_failed ?? []).length > 0) && (
+        <GatesList passed={verdict.gates_passed ?? []} failed={verdict.gates_failed ?? []} />
       )}
 
       {/* Rejection reason (non-winners) */}

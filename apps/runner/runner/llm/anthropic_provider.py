@@ -1,6 +1,6 @@
 """Anthropic (Claude) LLM provider implementation.
 
-Supports: claude-sonnet-4-5, claude-haiku-3-5.
+Supports: claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5 (and prior versions).
 
 Reasoning capture strategy:
   Extended thinking is enabled via the `thinking` parameter (budget_tokens).
@@ -25,11 +25,15 @@ from runner.llm.types import LLMConfig, LLMMessage, LLMResponse, ThinkingTrace
 
 logger = logging.getLogger(__name__)
 
-# Extended thinking budget in tokens — covers complex multi-file analysis
-_THINKING_BUDGET_TOKENS = 8000
-
-# Models that support extended thinking
-_THINKING_MODELS = {"claude-sonnet-4-5", "claude-opus-4-5", "claude-opus-4"}
+# Models that support extended thinking (updated to include all current models)
+_THINKING_MODELS = {
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5",
+    "claude-opus-4-6",
+    "claude-opus-4-5",
+    "claude-opus-4",
+    "claude-haiku-4-5",
+}
 
 
 class AnthropicProvider:
@@ -56,32 +60,54 @@ class AnthropicProvider:
 
         client = anthropic.AsyncAnthropic(api_key=config.api_key)
 
-        # Separate system message from user/assistant turns
+        # Separate system message from user/assistant turns.
+        # System prompt is passed as a content block with cache_control so
+        # Anthropic caches it across calls (charged at $0.30/MTok vs $3/MTok).
         system_content = ""
         api_messages = []
         for msg in messages:
             if msg.role == "system":
                 system_content = msg.content
             else:
-                api_messages.append({"role": msg.role, "content": msg.content})
+                # Pass user content as a structured block with cache_control
+                # so repeated file content is cached across approach variants.
+                api_messages.append({
+                    "role": msg.role,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": msg.content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                })
 
+        budget = config.thinking_budget_tokens
         use_thinking = (
             config.enable_thinking
+            and budget > 0
             and config.model in _THINKING_MODELS
         )
 
         kwargs: dict = {
             "model": config.model,
-            "max_tokens": config.max_tokens + (_THINKING_BUDGET_TOKENS if use_thinking else 0),
+            "max_tokens": config.max_tokens + (budget if use_thinking else 0),
             "messages": api_messages,
         }
         if system_content:
-            kwargs["system"] = system_content
+            # System prompt as a cacheable block
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": system_content,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
 
         if use_thinking:
             kwargs["thinking"] = {
                 "type": "enabled",
-                "budget_tokens": _THINKING_BUDGET_TOKENS,
+                "budget_tokens": budget,
             }
             # Temperature must be 1 when extended thinking is enabled
             kwargs["temperature"] = 1

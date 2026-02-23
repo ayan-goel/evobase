@@ -1,6 +1,6 @@
 """Google (Gemini) LLM provider implementation.
 
-Supports: gemini-2.0-flash, gemini-1.5-pro.
+Supports: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite (and prior versions).
 
 Reasoning capture strategy:
   Gemini models are instructed via the system prompt to include a `reasoning`

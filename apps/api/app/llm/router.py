@@ -16,33 +16,42 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 # Kept here (not in the runner) so the frontend can populate
 # the model selector without a runner dependency.
 AVAILABLE_MODELS: dict[str, list[dict]] = {
-    "openai": [
-        {"id": "gpt-4o", "label": "GPT-4o", "description": "Best general-purpose model"},
-        {"id": "gpt-4o-mini", "label": "GPT-4o Mini", "description": "Faster, lower cost"},
-        {"id": "o3-mini", "label": "o3-mini", "description": "Reasoning model, highest quality"},
-    ],
     "anthropic": [
         {
-            "id": "claude-sonnet-4-5",
-            "label": "Claude Sonnet 4.5",
+            "id": "claude-sonnet-4-6",
+            "label": "Claude Sonnet 4.6",
             "description": "Best reasoning-to-cost ratio (recommended)",
         },
         {
-            "id": "claude-haiku-3-5",
-            "label": "Claude Haiku 3.5",
+            "id": "claude-opus-4-6",
+            "label": "Claude Opus 4.6",
+            "description": "Highest capability, highest cost",
+        },
+        {
+            "id": "claude-haiku-4-5",
+            "label": "Claude Haiku 4.5",
             "description": "Fastest, lowest cost",
         },
     ],
+    "openai": [
+        {"id": "gpt-5.2", "label": "GPT-5.2", "description": "Flagship model, best quality"},
+        {"id": "gpt-5-mini", "label": "GPT-5 Mini", "description": "Fast and cost-efficient"},
+    ],
     "google": [
         {
-            "id": "gemini-2.0-flash",
-            "label": "Gemini 2.0 Flash",
-            "description": "Fast and capable (recommended)",
+            "id": "gemini-2.5-pro",
+            "label": "Gemini 2.5 Pro",
+            "description": "Highest capability (recommended)",
         },
         {
-            "id": "gemini-1.5-pro",
-            "label": "Gemini 1.5 Pro",
-            "description": "Long context, high quality",
+            "id": "gemini-2.5-flash",
+            "label": "Gemini 2.5 Flash",
+            "description": "Fast and cost-efficient",
+        },
+        {
+            "id": "gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "Lowest cost",
         },
     ],
 }

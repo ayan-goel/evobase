@@ -1,6 +1,6 @@
 """OpenAI LLM provider implementation.
 
-Supports: gpt-4o, gpt-4o-mini, o3-mini.
+Supports: gpt-5.2, gpt-5-mini, o3-mini, and legacy gpt-4o variants.
 
 Reasoning capture strategy:
   GPT-4o / gpt-4o-mini — the system prompt instructs the model to include
@@ -63,9 +63,9 @@ class OpenAIProvider:
             "response_format": {"type": "json_object"},
         }
 
-        # o3-mini uses reasoning_effort instead of temperature
+        # Reasoning models use reasoning_effort instead of temperature
         if config.model in _REASONING_MODELS:
-            kwargs["reasoning_effort"] = "high"
+            kwargs["reasoning_effort"] = config.reasoning_effort
         else:
             kwargs["temperature"] = config.temperature
 
