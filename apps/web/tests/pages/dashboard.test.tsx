@@ -15,6 +15,7 @@ function makeRepo(overrides: Partial<Repository> = {}): Repository {
     test_cmd: "npm test",
     typecheck_cmd: null,
     root_dir: null,
+    latest_failure_step: null,
     setup_failing: false,
     created_at: new Date().toISOString(),
     ...overrides,
@@ -140,5 +141,25 @@ describe("DashboardView", () => {
     );
     expect(screen.queryByText(/Setting up/i)).not.toBeInTheDocument();
     expect(screen.getByText("→")).toBeInTheDocument();
+  });
+
+  it("shows tests failing message when latest failure step is test", () => {
+    render(
+      <DashboardView
+        repos={[makeRepo({ setup_failing: true, latest_failure_step: "test" })]}
+        installations={[]}
+      />,
+    );
+    expect(screen.getByText(/Tests are failing\./i)).toBeInTheDocument();
+  });
+
+  it("shows install failing message when latest failure step is install", () => {
+    render(
+      <DashboardView
+        repos={[makeRepo({ setup_failing: true, latest_failure_step: "install" })]}
+        installations={[]}
+      />,
+    );
+    expect(screen.getByText(/Install step is failing\./i)).toBeInTheDocument();
   });
 });

@@ -96,7 +96,16 @@ function RepoStatusBadge({
   );
 }
 
+function setupFailureMessage(latestFailureStep?: string | null): string {
+  if (latestFailureStep === "test") return "Tests are failing.";
+  if (latestFailureStep === "build") return "Build is failing.";
+  if (latestFailureStep === "install") return "Install step is failing.";
+  return "Setup is failing.";
+}
+
 function RepoCard({ repo }: { repo: Repository }) {
+  const failureMessage = setupFailureMessage(repo.latest_failure_step);
+
   return (
     <Link
       href={`/repos/${repo.id}`}
@@ -128,7 +137,7 @@ function RepoCard({ repo }: { repo: Repository }) {
 
       {repo.setup_failing && (
         <p className="mt-2 text-xs text-amber-400/70">
-          Install step is failing. Update the project directory in Settings →
+          {failureMessage} Update the project directory in Settings →
         </p>
       )}
 

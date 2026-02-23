@@ -122,8 +122,33 @@ def run_step(
         "Step '%s' %s (exit=%d, %.1fs)",
         name, status, step_result.exit_code, step_result.duration_seconds,
     )
+    if not step_result.is_success:
+        if step_result.stderr:
+            logger.warning(
+                "Step '%s' stderr (tail):\n%s",
+                name,
+                _truncate_output(step_result.stderr),
+            )
+        if step_result.stdout:
+            logger.warning(
+                "Step '%s' stdout (tail):\n%s",
+                name,
+                _truncate_output(step_result.stdout),
+            )
 
     return step_result
+
+
+def _truncate_output(text: str, max_lines: int = 60, max_chars: int = 4000) -> str:
+    """Return a concise tail of command output for logs."""
+    if not text:
+        return ""
+    lines = text.splitlines()
+    tail = lines[-max_lines:]
+    joined = "\n".join(tail)
+    if len(joined) > max_chars:
+        joined = joined[-max_chars:]
+    return joined
 
 
 def run_baseline(

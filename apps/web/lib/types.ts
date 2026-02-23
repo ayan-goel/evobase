@@ -14,6 +14,7 @@ export interface Repository {
   typecheck_cmd: string | null;
   root_dir: string | null;
   latest_run_status?: string | null;
+  latest_failure_step?: string | null;
   setup_failing: boolean;
   created_at: string;
 }

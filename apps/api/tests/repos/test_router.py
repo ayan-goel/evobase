@@ -145,12 +145,18 @@ class TestListRepos:
         assert response.status_code == 200
         repo_data = response.json()["repos"][0]
         assert repo_data["latest_run_status"] is None
+        assert repo_data["latest_failure_step"] is None
 
     async def test_list_repos_includes_latest_run_status(self, seeded_client, seeded_db):
         """Repo with a completed run reports latest_run_status correctly."""
         from app.db.models import Run
 
-        run = Run(repo_id=STUB_REPO_ID, sha="abc123", status="completed")
+        run = Run(
+            repo_id=STUB_REPO_ID,
+            sha="abc123",
+            status="completed",
+            failure_step="test",
+        )
         seeded_db.add(run)
         await seeded_db.commit()
 
@@ -158,6 +164,7 @@ class TestListRepos:
         assert response.status_code == 200
         repo_data = response.json()["repos"][0]
         assert repo_data["latest_run_status"] == "completed"
+        assert repo_data["latest_failure_step"] == "test"
 
 
 class TestGetRepo:
@@ -177,14 +184,21 @@ class TestGetRepo:
         response = await seeded_client.get(f"/repos/{STUB_REPO_ID}")
         assert response.status_code == 200
         assert response.json()["latest_run_status"] is None
+        assert response.json()["latest_failure_step"] is None
 
         # Seed a running run and check the status updates
         from app.db.models import Run
 
-        run = Run(repo_id=STUB_REPO_ID, sha="def456", status="running")
+        run = Run(
+            repo_id=STUB_REPO_ID,
+            sha="def456",
+            status="running",
+            failure_step="install",
+        )
         seeded_db.add(run)
         await seeded_db.commit()
 
         response = await seeded_client.get(f"/repos/{STUB_REPO_ID}")
         assert response.status_code == 200
         assert response.json()["latest_run_status"] == "running"
+        assert response.json()["latest_failure_step"] == "install"

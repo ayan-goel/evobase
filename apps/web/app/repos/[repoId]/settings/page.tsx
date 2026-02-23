@@ -35,9 +35,9 @@ export default async function RepoSettingsPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
-      <NavWithUser maxWidthClass="max-w-2xl" />
+      <NavWithUser />
 
-      <div className="mx-auto max-w-2xl px-4 pt-28 pb-20">
+      <div className="mx-auto w-full max-w-4xl px-4 pt-28 pb-20">
         {/* Breadcrumb */}
         <nav className="mb-8 flex items-center gap-2 text-sm text-white/40">
           <Link

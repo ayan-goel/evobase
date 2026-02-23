@@ -70,6 +70,7 @@ class RepoResponse(BaseModel):
     bench_config: Optional[dict[str, Any]]
     root_dir: Optional[str] = None
     latest_run_status: Optional[str] = None
+    latest_failure_step: Optional[str] = None
     # True when consecutive_setup_failures > 0 for this repo's settings row.
     setup_failing: bool = False
     created_at: datetime

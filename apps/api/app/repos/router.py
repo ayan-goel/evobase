@@ -42,6 +42,19 @@ def _latest_status_subq():
     )
 
 
+def _latest_failure_step_subq():
+    """Correlated subquery that returns latest run's failure_step for a repo."""
+    return (
+        select(Run.failure_step)
+        .where(Run.repo_id == Repository.id)
+        .order_by(desc(Run.created_at))
+        .limit(1)
+        .correlate(Repository)
+        .scalar_subquery()
+        .label("latest_failure_step")
+    )
+
+
 def _setup_failures_subq():
     """Correlated subquery returning consecutive_setup_failures for a repo."""
     return (
@@ -53,12 +66,18 @@ def _setup_failures_subq():
     )
 
 
-def _build_repo_response(repo: Repository, latest_status, setup_failures) -> RepoResponse:
+def _build_repo_response(
+    repo: Repository,
+    latest_status,
+    latest_failure_step,
+    setup_failures,
+) -> RepoResponse:
     return RepoResponse(
         **RepoResponse.model_validate(repo).model_dump(
-            exclude={"latest_run_status", "setup_failing"}
+            exclude={"latest_run_status", "latest_failure_step", "setup_failing"}
         ),
         latest_run_status=latest_status,
+        latest_failure_step=latest_failure_step,
         setup_failing=bool(setup_failures and setup_failures > 0),
     )
 
@@ -147,7 +166,12 @@ async def list_repos(
     """
     rows = (
         await db.execute(
-            select(Repository, _latest_status_subq(), _setup_failures_subq())
+            select(
+                Repository,
+                _latest_status_subq(),
+                _latest_failure_step_subq(),
+                _setup_failures_subq(),
+            )
             .join(Organization)
             .where(Organization.owner_id == user_id)
             .order_by(Repository.created_at.desc())
@@ -156,8 +180,8 @@ async def list_repos(
 
     return RepoListResponse(
         repos=[
-            _build_repo_response(repo, latest_status, setup_failures)
-            for repo, latest_status, setup_failures in rows
+            _build_repo_response(repo, latest_status, latest_failure_step, setup_failures)
+            for repo, latest_status, latest_failure_step, setup_failures in rows
         ],
         count=len(rows),
     )
@@ -172,7 +196,12 @@ async def get_repo(
     """Get details for a single repository, including latest run status."""
     row = (
         await db.execute(
-            select(Repository, _latest_status_subq(), _setup_failures_subq())
+            select(
+                Repository,
+                _latest_status_subq(),
+                _latest_failure_step_subq(),
+                _setup_failures_subq(),
+            )
             .join(Organization)
             .where(Repository.id == repo_id, Organization.owner_id == user_id)
         )
@@ -184,8 +213,8 @@ async def get_repo(
             detail="Repository not found",
         )
 
-    repo, latest_status, setup_failures = row
-    return _build_repo_response(repo, latest_status, setup_failures)
+    repo, latest_status, latest_failure_step, setup_failures = row
+    return _build_repo_response(repo, latest_status, latest_failure_step, setup_failures)
 
 
 @router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -281,7 +310,21 @@ async def patch_repo(
         )
     ).scalar_one_or_none()
 
-    return _build_repo_response(repo, latest_status_row, 0 if root_dir_changed else setup_failures)
+    latest_failure_step_row = (
+        await db.execute(
+            select(Run.failure_step)
+            .where(Run.repo_id == repo_id)
+            .order_by(desc(Run.created_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    return _build_repo_response(
+        repo,
+        latest_status_row,
+        latest_failure_step_row,
+        0 if root_dir_changed else setup_failures,
+    )
 
 
 @router.post("/detect-framework", response_model=DetectFrameworkResponse)
