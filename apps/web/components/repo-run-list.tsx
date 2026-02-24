@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
@@ -79,42 +79,42 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
         id: runId,
         repo_id: repoId,
         sha: null,
-        status: "queued",
-        compute_minutes: null,
-        failure_step: null,
-        commit_message: null,
-        created_at: new Date().toISOString(),
-        proposals: [],
-      },
-      ...prev,
     ]);
   }
 
-  function handleEnterSelect() {
+  const handleEnterSelect = useCallback(() => {
     setIsSelectMode(true);
     setSelectedIds(new Set());
-  }
+  }, []);
 
-  function handleExitSelect() {
+  const handleExitSelect = useCallback(() => {
     setIsSelectMode(false);
     setSelectedIds(new Set());
     setPendingDelete(false);
-  }
+  }, []);
 
-  function handleToggle(runId: string) {
+  const handleToggle = useCallback((runId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(runId)) next.delete(runId);
       else next.add(runId);
       return next;
     });
-  }
+  }, [selectedIds]);
 
-  async function handleConfirmDelete() {
+  const handleConfirmDelete = useCallback(async () => {
     setIsDeleting(true);
     const ids = [...selectedIds];
     await Promise.allSettled(ids.map((id) => deleteRun(id)));
-    setRuns((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      return next;
+    });
+    setPendingDelete(false);
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+  }, [selectedIds]);
+
+  return (
+    <>
     setIsDeleting(false);
     setPendingDelete(false);
     setIsSelectMode(false);
