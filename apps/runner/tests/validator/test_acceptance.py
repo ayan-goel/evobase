@@ -36,12 +36,16 @@ def _make_baseline(
 
 def _make_candidate(
     test_passes: bool = True,
+    build_passes: bool = True,
+    has_build: bool = False,
     typecheck_passes: bool = True,
     has_typecheck: bool = False,
     has_bench: bool = False,
     bench_duration: float = 0.9,
 ) -> BaselineResult:
     r = BaselineResult()
+    if has_build:
+        r.steps.append(_make_step("build", exit_code=0 if build_passes else 1))
     r.steps.append(_make_step("test", exit_code=0 if test_passes else 1))
     if has_typecheck:
         r.steps.append(_make_step("typecheck", exit_code=0 if typecheck_passes else 1))
@@ -78,6 +82,46 @@ class TestTestGate:
         baseline = _make_baseline()
         verdict = evaluate_acceptance(candidate, baseline)
         assert "test" in verdict.reason.lower() or "Test" in verdict.reason
+
+
+class TestBuildGate:
+    def test_build_pass_accepts(self):
+        candidate = _make_candidate(has_build=True, build_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)
+        assert verdict.is_accepted is True
+        assert "build_gate" in verdict.gates_passed
+
+    def test_build_fail_rejects(self):
+        candidate = _make_candidate(has_build=True, build_passes=False)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)
+        assert verdict.is_accepted is False
+        assert "build_gate" in verdict.gates_failed
+
+    def test_build_fail_reason_mentions_build(self):
+        candidate = _make_candidate(has_build=True, build_passes=False)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)
+        assert "build" in verdict.reason.lower()
+
+    def test_build_fail_overrides_passing_tests(self):
+        """Tests passing is not enough — a broken build must be rejected."""
+        candidate = _make_candidate(has_build=True, build_passes=False, test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)
+        assert verdict.is_accepted is False
+        assert "test_gate" in verdict.gates_passed
+        assert "build_gate" in verdict.gates_failed
+
+    def test_no_build_step_skips_gate(self):
+        """When no build_cmd was configured, the build gate is simply absent."""
+        candidate = _make_candidate(has_build=False)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)
+        assert verdict.is_accepted is True
+        assert "build_gate" not in verdict.gates_passed
+        assert "build_gate" not in verdict.gates_failed
 
 
 class TestTypecheckGate:

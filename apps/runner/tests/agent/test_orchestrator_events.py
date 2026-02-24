@@ -364,3 +364,221 @@ async def test_medium_confidence_continues_to_next_approach(monkeypatch, tmp_pat
     approaches_tried = next(e for e in emitted if e[0] == "validation.verdict")[2]["approaches_tried"]
     assert approaches_tried == 2, "Medium-confidence should not stop early; both approaches should be tried"
     assert call_count["n"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Cumulative patch validation tests
+# ---------------------------------------------------------------------------
+
+async def test_accepted_patch_is_applied_permanently(monkeypatch, tmp_path):
+    """After a patch is accepted, apply_diff should be called to make it permanent."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp = _make_opportunity()
+    patch = _make_patch()
+
+    async def fake_discover(**kw):
+        return [opp]
+
+    async def fake_patchgen(**kw):
+        return _make_outcome(patch)
+
+    apply_calls: list[tuple] = []
+    original_apply = None
+
+    def tracking_apply(repo_dir, diff):
+        apply_calls.append((repo_dir, diff))
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr(
+        "runner.agent.orchestrator.run_candidate_validation",
+        lambda **kw: _make_simple_candidate(CONFIDENCE_MEDIUM),
+    )
+    monkeypatch.setattr("runner.agent.orchestrator.apply_diff", tracking_apply)
+
+    emitted: list[tuple[str, str, dict]] = []
+    result = await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+        on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+    )
+
+    assert result.accepted_count == 1
+    assert len(apply_calls) == 1, "apply_diff should be called once for the accepted patch"
+    assert apply_calls[0][1] == patch.diff
+
+    cumulative_events = [e for e in emitted if e[0] == "patch.applied_cumulative"]
+    assert len(cumulative_events) == 1
+    assert cumulative_events[0][2]["location"] == opp.location
+
+
+async def test_rejected_patch_is_not_applied(monkeypatch, tmp_path):
+    """When all variants are rejected, apply_diff should NOT be called."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp = _make_opportunity()
+    patch = _make_patch()
+
+    async def fake_discover(**kw):
+        return [opp]
+
+    async def fake_patchgen(**kw):
+        return _make_outcome(patch)
+
+    apply_calls: list[tuple] = []
+
+    def tracking_apply(repo_dir, diff):
+        apply_calls.append((repo_dir, diff))
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr(
+        "runner.agent.orchestrator.run_candidate_validation",
+        lambda **kw: _make_simple_candidate(CONFIDENCE_MEDIUM, accepted=False),
+    )
+    monkeypatch.setattr("runner.agent.orchestrator.apply_diff", tracking_apply)
+
+    result = await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+    )
+
+    assert result.accepted_count == 0
+    assert len(apply_calls) == 0, "apply_diff should not be called for rejected patches"
+
+
+async def test_apply_failure_downgrades_to_rejected(monkeypatch, tmp_path):
+    """When apply_diff raises PatchApplyError, the candidate should be downgraded."""
+    from runner.validator.patch_applicator import PatchApplyError
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp = _make_opportunity()
+    patch = _make_patch()
+
+    async def fake_discover(**kw):
+        return [opp]
+
+    async def fake_patchgen(**kw):
+        return _make_outcome(patch)
+
+    def failing_apply(repo_dir, diff):
+        raise PatchApplyError("hunk FAILED -- saving rejects")
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr(
+        "runner.agent.orchestrator.run_candidate_validation",
+        lambda **kw: _make_simple_candidate(CONFIDENCE_MEDIUM),
+    )
+    monkeypatch.setattr("runner.agent.orchestrator.apply_diff", failing_apply)
+
+    emitted: list[tuple[str, str, dict]] = []
+    result = await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+        on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+    )
+
+    assert result.accepted_count == 0, "Candidate should be downgraded to rejected"
+    assert result.candidate_results[0].is_accepted is False
+    assert result.candidate_results[0].final_verdict.is_accepted is False
+    assert "stacked" in result.candidate_results[0].final_verdict.reason.lower()
+
+    fail_events = [e for e in emitted if e[0] == "patch.apply_failed"]
+    assert len(fail_events) == 1
+    assert "hunk FAILED" in fail_events[0][2]["error"]
+
+
+async def test_second_patch_sees_repo_with_first_patch_applied(monkeypatch, tmp_path):
+    """With 2 opportunities, the second patch gen call should operate on a repo
+    that already has the first accepted patch applied."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp1 = AgentOpportunity(
+        type="performance",
+        location="src/ui.tsx:1",
+        rationale="reason 1",
+        risk_level="low",
+        approaches=["approach 1"],
+        affected_lines=2,
+        thinking_trace=_make_trace(),
+    )
+    opp2 = AgentOpportunity(
+        type="performance",
+        location="src/ui.tsx:2",
+        rationale="reason 2",
+        risk_level="low",
+        approaches=["approach 2"],
+        affected_lines=2,
+        thinking_trace=_make_trace(),
+    )
+
+    patch1 = _make_patch()
+    patch2 = AgentPatch(
+        diff="--- a/src/ui.tsx\n+++ b/src/ui.tsx\n@@ -1 +1 @@\n-a\n+b\n",
+        explanation="Second patch",
+        touched_files=["src/ui.tsx"],
+        estimated_lines_changed=2,
+        thinking_trace=_make_trace("patch trace 2"),
+    )
+
+    # Track which patches apply_diff is called with (in order)
+    applied_diffs: list[str] = []
+    patchgen_call_count = {"n": 0}
+
+    async def fake_discover(**kw):
+        return [opp1, opp2]
+
+    async def fake_patchgen(**kw):
+        patchgen_call_count["n"] += 1
+        if patchgen_call_count["n"] == 1:
+            return _make_outcome(patch1)
+        return _make_outcome(patch2)
+
+    def tracking_apply(repo_dir, diff):
+        applied_diffs.append(diff)
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr(
+        "runner.agent.orchestrator.run_candidate_validation",
+        lambda **kw: _make_simple_candidate(CONFIDENCE_MEDIUM),
+    )
+    monkeypatch.setattr("runner.agent.orchestrator.apply_diff", tracking_apply)
+
+    result = await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+    )
+
+    assert result.accepted_count == 2
+    assert patchgen_call_count["n"] == 2
+    assert len(applied_diffs) == 2, "Both accepted patches should be applied cumulatively"
+    assert applied_diffs[0] == patch1.diff
+    assert applied_diffs[1] == patch2.diff

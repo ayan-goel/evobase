@@ -76,24 +76,19 @@ export function RunPRDialog({
     setLoading(true);
     setError(null);
 
-    // Open the tab immediately while we're still inside the synchronous part of
-    // the click handler — before any await. Popup blockers only allow
-    // window.open() when it's called as a direct result of a user gesture.
-    // We navigate the tab to the real URL once the API responds.
-    const prTab = window.open("", "_blank", "noopener,noreferrer");
-
     try {
       const result = await createRunPR(repoId, runId, [...selectedIds]);
       onPRCreated(result.pr_url);
-      if (prTab) {
-        prTab.location.href = result.pr_url;
-      } else {
-        // Fallback: tab was blocked despite our attempt — navigate current tab.
-        window.location.href = result.pr_url;
-      }
       onClose();
+      // Open the PR tab after the dialog is already closing. Some browsers
+      // allow window.open() within the same microtask chain as a user gesture;
+      // if blocked, fall back to a direct navigation link shown via onPRCreated.
+      const tab = window.open(result.pr_url, "_blank", "noopener,noreferrer");
+      if (!tab) {
+        // Popup was blocked — surface the URL in the parent via onPRCreated so
+        // the "View PR" anchor in the run card is immediately clickable.
+      }
     } catch (err) {
-      prTab?.close();
       setError(err instanceof Error ? err.message : "Failed to create PR");
     } finally {
       setLoading(false);
@@ -173,7 +168,8 @@ export function RunPRDialog({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-white/15 px-4 py-1.5 text-xs text-white/50 hover:text-white/70 hover:bg-white/[0.05] transition-colors"
+                disabled={loading}
+                className="rounded-lg border border-white/15 px-4 py-1.5 text-xs text-white/50 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Cancel
               </button>
@@ -181,9 +177,22 @@ export function RunPRDialog({
                 type="button"
                 onClick={handleCreate}
                 disabled={loading || selectedIds.size === 0}
-                className="rounded-lg bg-white px-4 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-lg bg-white px-4 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {loading ? "Creating…" : "Create PR on GitHub"}
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-black/60 shrink-0" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    <GitHubIcon className="h-3.5 w-3.5 shrink-0" />
+                    Create PR on GitHub
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -191,5 +200,13 @@ export function RunPRDialog({
       </div>
     </>,
     document.body,
+  );
+}
+
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
   );
 }

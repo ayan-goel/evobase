@@ -1,10 +1,12 @@
 """Acceptance logic for candidate patches.
 
 Gates (in order of application):
-  1. test_gate — candidate tests must pass (always required)
-  2. typecheck_gate — candidate typecheck must pass (if available; failure
+  1. test_gate     — candidate tests must pass (always required)
+  2. build_gate    — if a build_cmd ran, it must succeed (hard rejection;
+                     a patch that breaks the build must never become a proposal)
+  3. typecheck_gate — candidate typecheck must pass (if available; failure
                       downgrades confidence to "low" but does not reject)
-  3. benchmark_gate — if baseline has bench data, candidate must show
+  4. benchmark_gate — if baseline has bench data, candidate must show
                       ≥3% improvement beyond noise (rejects if it regresses)
 
 Confidence levels:
@@ -96,7 +98,23 @@ def evaluate_acceptance(
         )
     gates_passed.append("test_gate")
 
-    # --- Gate 2: typecheck (soft gate) ---
+    # --- Gate 2: build must pass (hard gate, only when build ran) ---
+    # A patch that breaks the build is never safe to propose regardless of
+    # passing tests — it would cause CI/CD failures on the target branch.
+    build_step = _find_step(candidate_result, "build")
+    if build_step is not None and not build_step.is_success:
+        gates_failed.append("build_gate")
+        return AcceptanceVerdict(
+            is_accepted=False,
+            confidence=CONFIDENCE_LOW,
+            reason="Build failed — patch introduces a compilation or build error",
+            gates_passed=gates_passed,
+            gates_failed=gates_failed,
+        )
+    if build_step is not None:
+        gates_passed.append("build_gate")
+
+    # --- Gate 3: typecheck (soft gate) ---
     typecheck_step = _find_step(candidate_result, "typecheck")
     typecheck_ok = typecheck_step is None or typecheck_step.is_success
     if not typecheck_ok:

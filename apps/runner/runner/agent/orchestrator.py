@@ -6,7 +6,14 @@ Pipeline:
      string in opportunity.approaches (up to MAX_PATCH_APPROACHES).
   3. run_candidate_validation() — existing pipeline tests each diff
   4. _select_best_variant() — picks the winner by confidence + benchmark delta
-  5. Returns all CandidateResult objects (accepted + rejected) for packaging
+  5. Accepted patch is permanently applied to the repo (cumulative mode)
+  6. Returns all CandidateResult objects (accepted + rejected) for packaging
+
+Cumulative validation:
+  After each accepted patch, the diff is permanently applied to the repo
+  working directory.  Subsequent opportunities are generated and validated
+  against the already-modified state.  This guarantees that accepted patches
+  are mutually compatible and will not conflict when combined into a PR.
 
 Budget enforcement:
   - Stops generating patches once max_candidates is reached.
@@ -38,6 +45,7 @@ from runner.llm.factory import get_provider, validate_model
 from runner.llm.types import LLMConfig
 from runner.patchgen.types import PatchResult
 from runner.validator.candidate import run_candidate_validation
+from runner.validator.patch_applicator import PatchApplyError, apply_diff
 from runner.validator.types import BaselineResult, CandidateResult
 
 logger = logging.getLogger(__name__)
@@ -318,6 +326,36 @@ async def run_agent_cycle(
                 ),
                 "patch_title": winning_patch.title if winning_patch and winning_patch.title else None,
             })
+
+        # Cumulative validation: permanently apply accepted patches so that
+        # subsequent opportunities are generated and validated against a repo
+        # state that already includes all prior accepted changes.  This prevents
+        # patches from conflicting when combined into a single PR branch.
+        if winner_candidate.is_accepted and winning_patch:
+            try:
+                apply_diff(repo_dir, winning_patch.diff)
+                _emit("patch.applied_cumulative", "patch", {
+                    "index": candidates_attempted,
+                    "location": opp.location,
+                    "patch_title": winning_patch.title if winning_patch.title else None,
+                })
+            except PatchApplyError as exc:
+                logger.error(
+                    "Failed to permanently apply accepted patch for %s: %s — "
+                    "downgrading to rejected to avoid PR conflicts",
+                    opp.location, exc,
+                )
+                winner_candidate.is_accepted = False
+                if winner_candidate.final_verdict:
+                    winner_candidate.final_verdict.is_accepted = False
+                    winner_candidate.final_verdict.reason = (
+                        f"Patch could not be stacked on prior accepted patches: {exc}"
+                    )
+                _emit("patch.apply_failed", "patch", {
+                    "index": candidates_attempted,
+                    "location": opp.location,
+                    "error": str(exc),
+                })
 
         agent_run.patches.append(winning_patch)
         agent_run.errors.append(None if winning_patch else "No valid patch")

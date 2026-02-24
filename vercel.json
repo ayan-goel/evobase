@@ -3,5 +3,5 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "ignoreCommand": "[[ $VERCEL_GIT_COMMIT_REF == coreloop/* ]] && exit 1 || exit 0"
+  "ignoreCommand": "[[ $VERCEL_GIT_COMMIT_REF == coreloop/* ]]"
 }

@@ -163,6 +163,9 @@ def _run_candidate_pipeline(
 
     try:
         # Build (optional — same as baseline)
+        # A failing build is reported to the acceptance evaluator, which treats
+        # it as a hard rejection gate. We still continue here to collect
+        # typecheck and test output for diagnostic traceability.
         if config.build_cmd:
             build_step = run_step(
                 "build", config.build_cmd, repo_dir,
@@ -170,7 +173,7 @@ def _run_candidate_pipeline(
             )
             result.steps.append(build_step)
             if not build_step.is_success:
-                logger.warning("Candidate build failed (non-critical); continuing")
+                logger.warning("Candidate build failed; acceptance evaluator will reject this patch")
 
         # Typecheck (optional)
         if config.typecheck_cmd:
