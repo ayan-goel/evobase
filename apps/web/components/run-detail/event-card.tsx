@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { DiffViewer } from "@/components/diff-viewer";
 import { PatchReasoningPanel } from "@/components/patch-reasoning-panel";
 import {
@@ -44,10 +44,13 @@ interface PatchApproachCompletedDetail {
   failureReason: string | null;
 }
 
-export function EventCard({ event }: EventCardProps) {
-  const renderer = EVENT_RENDERERS[event.type] ?? renderGeneric;
-  return renderer(event);
-}
+export const EventCard = memo(
+  ({ event }: EventCardProps) => {
+    const renderer = EVENT_RENDERERS[event.type] ?? renderGeneric;
+    return renderer(event);
+  },
+  (prev, next) => prev.event.type === next.event.type && prev.event.ts === next.event.ts
+);
 
 // ---------------------------------------------------------------------------
 // Per-event-type renderers
