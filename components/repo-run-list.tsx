@@ -32,3 +32,10 @@ import { OnboardingBanner } from "@/components/onboarding-banner";
 
   function handleQueued(runId: string) {
     setRuns((prev) => [
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const activeRunStatus = useMemo(() => getActiveRunStatus(runs), [runs]);
+
+  useEffect(() => {
+    if (!hasActiveRun(runs)) return;
