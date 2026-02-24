@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
+import { PhaseProgress } from "@/components/run-detail/phase-progress";
 import { ProposalCard } from "@/components/proposal-card";
 import { ProposalDrawer } from "@/components/proposal-drawer";
 import { RunPRDialog } from "@/components/run-pr-dialog";
@@ -241,6 +242,11 @@ interface DerivedStatus {
   phaseLabel: string;
   detail: string;
   opportunitiesFound: number;
+  approachesTested: number;
+  candidatesValidated: number;
+  candidatesAccepted: number;
+  totalFiles: number;
+  filesAnalysed: number;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -258,10 +264,11 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
   let phaseLabel = "Starting up";
   let detail = "";
   let opportunitiesFound = 0;
-
+  let approachesTested = 0;
+  let candidatesValidated = 0;
+  let candidatesAccepted = 0;
   let totalFiles = 0;
   let filesAnalysed = 0;
-  let lastAnalysingFile = "";
 
   for (const ev of events) {
     phaseLabel = PHASE_LABELS[ev.phase] ?? phaseLabel;
@@ -296,32 +303,32 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
         totalFiles = (ev.data.count as number) ?? 0;
         detail = `Selected ${totalFiles} file${totalFiles !== 1 ? "s" : ""} to analyse`;
         break;
-      case "discovery.file.analysing":
-        lastAnalysingFile = _truncatePath(ev.data.file as string);
+      case "discovery.file.analysing": {
+        const fileIdx = (ev.data.file_index as number) ?? 0;
+        const file = _truncatePath(ev.data.file as string);
         detail = totalFiles
-          ? `Analysing file ${(ev.data.file_index as number) + 1} of ${totalFiles} — ${lastAnalysingFile}`
-          : `Analysing ${lastAnalysingFile}`;
+          ? `Analysing file ${fileIdx + 1} of ${totalFiles} — ${file}`
+          : `Analysing ${file}`;
         break;
+      }
       case "discovery.file.analysed": {
         filesAnalysed += 1;
         const found = (ev.data.opportunities_found as number) ?? 0;
         opportunitiesFound += found;
         detail = totalFiles
-          ? `Analysed ${filesAnalysed} of ${totalFiles} files — ${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"} found`
+          ? `Analysed ${filesAnalysed} of ${totalFiles} files`
           : `${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"} found`;
         break;
       }
       case "discovery.completed":
-        detail = `Discovery complete — ${opportunitiesFound} opportunit${opportunitiesFound !== 1 ? "ies" : "y"}`;
+        detail = `Discovery complete`;
         break;
-      case "patch.approach.started": {
-        const opp = (ev.data.opportunity_index as number) ?? 0;
-        const approach = (ev.data.approach_index as number) ?? 0;
-        detail = `Opportunity ${opp + 1}, approach ${approach + 1}`;
+      case "patch.approach.started":
+        approachesTested += 1;
+        detail = `Generating approach ${approachesTested}`;
         break;
-      }
       case "patch.approach.completed":
-        detail = "Patch generated";
+        detail = "Approach ready";
         break;
       case "validation.candidate.started": {
         const idx = (ev.data.candidate_index as number) ?? 0;
@@ -329,8 +336,10 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
         break;
       }
       case "validation.verdict": {
+        candidatesValidated += 1;
         const accepted = ev.data.is_accepted as boolean;
-        detail = accepted ? "Candidate accepted" : "Candidate rejected";
+        if (accepted) candidatesAccepted += 1;
+        detail = accepted ? "Candidate accepted ✓" : "Candidate rejected";
         break;
       }
       case "selection.completed":
@@ -339,7 +348,16 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
     }
   }
 
-  return { phaseLabel, detail, opportunitiesFound };
+  return {
+    phaseLabel,
+    detail,
+    opportunitiesFound,
+    approachesTested,
+    candidatesValidated,
+    candidatesAccepted,
+    totalFiles,
+    filesAnalysed,
+  };
 }
 
 function _truncatePath(path: string): string {
@@ -354,33 +372,73 @@ function _truncatePath(path: string): string {
 // ---------------------------------------------------------------------------
 
 function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
-  const { events } = useRunEvents(runId, true);
-
+  const { events, currentPhase, isDone } = useRunEvents(runId, true);
   const status = useMemo(() => deriveStatus(events), [events]);
 
+  const stats: { label: string; value: number | string; show: boolean }[] = [
+    {
+      label: "Opportunities",
+      value: status.opportunitiesFound,
+      show: status.opportunitiesFound > 0,
+    },
+    {
+      label: "Approaches",
+      value: status.approachesTested,
+      show: status.approachesTested > 0,
+    },
+    {
+      label: "Validated",
+      value: status.candidatesValidated,
+      show: status.candidatesValidated > 0,
+    },
+    {
+      label: "Accepted",
+      value: status.candidatesAccepted,
+      show: status.candidatesValidated > 0,
+    },
+  ];
+
+  const visibleStats = stats.filter((s) => s.show);
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {/* Phase progress bar */}
+      <PhaseProgress currentPhase={currentPhase} isDone={isDone} />
+
+      {/* Current action */}
       <div className="flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
+        <span className="relative flex h-2 w-2 shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
         </span>
-        <span className="text-xs font-medium text-blue-300">{status.phaseLabel}</span>
-        {status.opportunitiesFound > 0 && (
+        <span className="text-xs text-blue-300/80 font-medium">{status.phaseLabel}</span>
+        {status.detail && (
           <>
             <span className="text-white/15">·</span>
-            <span className="text-xs text-emerald-400/70">
-              {status.opportunitiesFound} opportunit{status.opportunitiesFound !== 1 ? "ies" : "y"}
-            </span>
+            <span className="text-xs text-white/35 truncate">{status.detail}</span>
           </>
         )}
       </div>
-      {status.detail && (
-        <p className="text-xs text-white/35 pl-4">{status.detail}</p>
+
+      {/* Live stats */}
+      {visibleStats.length > 0 && (
+        <div className="flex items-center gap-4 flex-wrap">
+          {visibleStats.map((s) => (
+            <div key={s.label} className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-white/25">
+                {s.label}
+              </span>
+              <span className="text-sm font-semibold tabular-nums text-white/70">
+                {s.value}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
+
       <Link
         href={`/repos/${repoId}/runs/${runId}`}
-        className="inline-block text-xs text-blue-400/60 hover:text-blue-400/80 transition-colors pl-4"
+        className="inline-block text-xs text-blue-400/50 hover:text-blue-400/80 transition-colors"
       >
         View live details →
       </Link>

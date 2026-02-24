@@ -292,15 +292,17 @@ describe("EventCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Patch ready/i }));
 
+    // Explanation and diff are shown inline (no collapsible needed)
     expect(screen.getByText(/Patch explanation/i)).toBeDefined();
     expect(screen.getByText(/Memoizes grouped rows to avoid repeated timeline regrouping/i)).toBeDefined();
-    expect(screen.getByText(/Patch generation tries \(1\)/i)).toBeDefined();
+    expect(screen.getByText(/--- a\/components\/run-detail\/event-card\.tsx/)).toBeDefined();
 
+    // Patch generation tries section has been removed
+    expect(screen.queryByText(/Patch generation tries/i)).toBeNull();
+
+    // Reasoning is still available as a collapsible
     fireEvent.click(screen.getByRole("button", { name: /Patch generation reasoning/i }));
     expect(screen.getByText(/memoized the grouped event rows/i)).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: /^View diff/i }));
-    expect(screen.getByText(/--- a\/components\/run-detail\/event-card\.tsx/)).toBeDefined();
   });
 
   it("renders expandable patch.approach.completed failure row with diagnostics", () => {
@@ -359,9 +361,9 @@ describe("EventCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Approach 2 failed/i }));
     expect(screen.getByText(/Failure stage: json_parse/i)).toBeDefined();
-    // failure_reason appears in both the summary box and the PatchGenTryCard
     expect(screen.getAllByText(/Expecting value: line 1 column 1/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Try 1/)).toBeDefined();
+    // Patch generation tries section has been removed — "Try 1" no longer rendered
+    expect(screen.queryByText(/Try 1/)).toBeNull();
   });
 
   it("falls back to compact patch rows for older patch payloads", () => {
