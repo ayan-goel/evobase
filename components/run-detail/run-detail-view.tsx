@@ -32,3 +32,17 @@ const StatRow = memo(function StatRow({
 
 // ---------------------------------------------------------------------------
 // Helpers
+  );
+}
+
+const PhaseGroupHeader = memo(function PhaseGroupHeader({ phase }: { phase: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-3 pb-1 first:pt-0">
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+      <div className="flex-1 h-px bg-white/[0.06]" />
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Sidebar sub-components
