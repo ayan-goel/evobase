@@ -18,3 +18,17 @@ const PhaseIcon = memo(function PhaseIcon({
 
 function StatRow({
   label,
+  );
+}
+
+const StatRow = memo(function StatRow({
+  label,
+  value,
+  accent,
+      </span>
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
