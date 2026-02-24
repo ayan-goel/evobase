@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
@@ -50,20 +50,28 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
   const [pendingDelete, setPendingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const activeRunStatus = getActiveRunStatus(runs);
+  const hasActiveRunRef = useRef(hasActiveRun(runs));
 
+  // Update ref when runs change
   useEffect(() => {
-    if (!hasActiveRun(runs)) return;
+    hasActiveRunRef.current = hasActiveRun(runs);
+  }, [runs]);
+
+  // Poll for updates only when repoId changes
+  useEffect(() => {
+    if (!hasActiveRunRef.current) return;
 
     const interval = setInterval(async () => {
+      if (!hasActiveRunRef.current) {
+        clearInterval(interval);
+        return;
+      }
       const updated = await fetchRunsWithProposals(repoId);
       setRuns(updated);
-      if (!hasActiveRun(updated)) {
-        clearInterval(interval);
-      }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [repoId, runs]);
+  }, [repoId]);
 
   function handleQueued(runId: string) {
     setRuns((prev) => [
