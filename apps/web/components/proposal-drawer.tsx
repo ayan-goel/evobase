@@ -42,15 +42,15 @@ export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
 
   return (
     <>
-      {/* Backdrop — covers full viewport */}
+      {/* Backdrop — above the navbar (z-50) so the entire screen is blurred */}
       <div
-        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Centering container */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
         {/* Panel */}
         <div
           role="dialog"
@@ -109,7 +109,7 @@ function ModalContent({ proposal, onClose }: { proposal: Proposal; onClose: () =
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.12)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb:hover]:bg-white/20">
 
         {/* What changed and why */}
         <ModalSection title="What changed and why">

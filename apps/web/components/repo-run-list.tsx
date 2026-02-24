@@ -10,7 +10,7 @@ import { ProposalDrawer } from "@/components/proposal-drawer";
 import { RunPRDialog } from "@/components/run-pr-dialog";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
-import type { ConfidenceLevel, Proposal, Run, RunEvent } from "@/lib/types";
+import type { Proposal, Run, RunEvent } from "@/lib/types";
 
 type RunWithProposals = Run & { proposals: Proposal[] };
 
@@ -156,12 +156,12 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
 
       {/* Delete confirmation dialog */}
       {pendingDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70 backdrop-blur-md"
             onClick={() => setPendingDelete(false)}
           />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-white/[0.08] bg-[#111] p-6 shadow-2xl">
+          <div className="relative z-[110] w-full max-w-sm rounded-xl border border-white/[0.08] bg-[#111] p-6 shadow-2xl">
             <h2 className="text-sm font-semibold text-white">Delete runs?</h2>
             <p className="mt-2 text-xs text-white/50">
               Are you sure you want to delete{" "}
@@ -394,18 +394,7 @@ function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
 
 function _confidenceBreakdown(proposals: Proposal[]): string {
   if (proposals.length === 0) return "No opportunities";
-  const counts: Record<string, number> = {};
-  for (const p of proposals) {
-    const key = p.confidence ?? "unknown";
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  const parts: string[] = [];
-  for (const level of ["high", "medium", "low"] as ConfidenceLevel[]) {
-    if (counts[level]) parts.push(`${counts[level]} ${level}`);
-  }
-  if (counts["unknown"]) parts.push(`${counts["unknown"]} unrated`);
-  const label = `${proposals.length} proposal${proposals.length !== 1 ? "s" : ""}`;
-  return parts.length > 0 ? `${label} — ${parts.join(", ")}` : label;
+  return `${proposals.length} proposal${proposals.length !== 1 ? "s" : ""}`;
 }
 
 function _prStatusSummary(proposals: Proposal[]): string | null {

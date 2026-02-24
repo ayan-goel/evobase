@@ -78,7 +78,7 @@ export function RunPRDialog({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -88,7 +88,7 @@ export function RunPRDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Create pull request"
-        className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2
+        className="fixed left-1/2 top-1/2 z-[110] w-full max-w-md -translate-x-1/2 -translate-y-1/2
           bg-[#0d0d0d] border border-white/[0.10] rounded-xl shadow-2xl"
       >
         {/* Header */}

@@ -153,7 +153,7 @@ describe("RepoView", () => {
         runs={[makeRun("completed", [makeProposal()])]}
       />,
     );
-    expect(screen.getByText(/1 proposal — 1 high/)).toBeDefined();
+    expect(screen.getByText(/1 proposal/)).toBeDefined();
   });
 
   it("shows 'No opportunities' in meta row for completed run with no proposals", () => {
