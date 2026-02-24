@@ -23,12 +23,16 @@ export type { LLMModel, LLMProvider } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   try {
-    const supabase = createClient();
+    if (!supabaseClient) {
+      supabaseClient = createClient();
+    }
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await supabaseClient.auth.getSession();
     if (session?.access_token) {
       return { Authorization: `Bearer ${session.access_token}` };
     }
