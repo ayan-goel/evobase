@@ -87,18 +87,19 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
     const sha = run.sha ? run.sha.slice(0, 7) : "no sha";
     const msg = run.commit_message
       ? run.commit_message.length > 72
-        ? run.commit_message.slice(0, 72) + "…"
-        : run.commit_message
-      : null;
-    return { sha, msg };
-  }, [run.sha, run.commit_message]);
+      : run.commit_message
+    : null;
 
-  const currentPhaseIdx =
-    currentPhase != null
+  const currentPhaseIdx = useMemo(() => {
+    return currentPhase != null
       ? (PHASE_ORDER_INDEX[currentPhase] ?? -1)
       : isDone
         ? 5
         : -1;
+  }, [currentPhase, isDone]);
+
+  // Derive live stats from the event stream
+  const stats = useMemo(() => _deriveStats(events), [events]);
 
   // Derive live stats from the event stream
   const stats = useMemo(() => _deriveStats(events), [events]);
