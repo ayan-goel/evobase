@@ -57,6 +57,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
     isActive,
   );
   const timelineEndRef = useRef<HTMLDivElement>(null);
+  const lastFetchRef = useRef(0);
 
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,6 +69,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
       try {
         const updated = await getRun(run.id);
         setRun(updated);
+        lastFetchRef.current = Date.now();
       } catch {
         // ignore
       }
@@ -76,7 +78,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
   }, [run.id, isActive]);
 
   useEffect(() => {
-    if (isDone && isActive) {
+    if (isDone && isActive && Date.now() - lastFetchRef.current > 2000) {
       getRun(run.id)
         .then(setRun)
         .catch(() => {});
