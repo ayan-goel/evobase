@@ -13,6 +13,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from httpx import HTTPStatusError
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -340,6 +341,15 @@ async def create_pr(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
+    except HTTPStatusError as exc:
+        logger.error(
+            "GitHub API error creating proposal PR for proposal %s: %s %s",
+            proposal_id, exc.response.status_code, exc.response.text[:200],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"GitHub API error: {exc.response.status_code} — {exc.response.text[:200]}",
+        )
 
     proposal.pr_url = pr_url
     await db.commit()
@@ -408,6 +418,15 @@ async def create_run_pr(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
+        )
+    except HTTPStatusError as exc:
+        logger.error(
+            "GitHub API error creating run PR for run %s: %s %s",
+            run_id, exc.response.status_code, exc.response.text[:200],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"GitHub API error: {exc.response.status_code} — {exc.response.text[:200]}",
         )
 
     run.pr_url = pr_url

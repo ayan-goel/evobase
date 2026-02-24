@@ -169,6 +169,23 @@ async def generate_agent_patch_with_diagnostics(
         tries.append(try_record)
 
         if not try_record.success or try_record.patch is None:
+            stage = try_record.failure_stage
+            # search_not_found and json_parse are recoverable: the LLM made a
+            # transcription error that corrective feedback can fix.  Retry once
+            # with an explicit description of what went wrong.
+            if attempt < MAX_SELF_CORRECTION_ATTEMPTS and stage in (
+                PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND,
+                PATCHGEN_FAILURE_STAGE_JSON_PARSE,
+            ):
+                logger.info(
+                    "Patch generation failed on attempt %d (%s); retrying with corrective feedback",
+                    attempt + 1, stage,
+                )
+                effective_approach = _build_correction_feedback(
+                    effective_approach, stage, try_record.failure_reason or "",
+                )
+                continue
+
             return PatchGenerationOutcome(
                 success=False,
                 patch=None,
@@ -459,6 +476,41 @@ def _parse_patch_response_detailed(
         estimated_lines_changed=estimated,
         thinking_trace=thinking_trace,
     ), None, None
+
+
+def _build_correction_feedback(
+    previous_approach: str,
+    failure_stage: str,
+    failure_reason: str,
+) -> str:
+    """Return an augmented approach string that instructs the LLM to fix its mistake.
+
+    Called when the first patch generation attempt fails in a recoverable way.
+    The corrective message is appended to the original approach so the LLM has
+    full context on both the task and what went wrong.
+    """
+    if failure_stage == PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND:
+        return (
+            f"{previous_approach}\n\n"
+            f"PREVIOUS ATTEMPT FAILED — search block not found.\n"
+            f"Error detail: {failure_reason}\n\n"
+            "The search text you provided does not appear verbatim in the file.\n"
+            "To fix this:\n"
+            "1. Re-read the file content shown above very carefully.\n"
+            "2. Copy the exact characters from the file — do NOT paraphrase, re-indent,\n"
+            "   or change any whitespace, quotes, or punctuation.\n"
+            "3. Include at least 5 lines of surrounding context so the block is unique.\n"
+            "4. If you cannot find the exact text, respond with empty edits."
+        )
+    if failure_stage == PATCHGEN_FAILURE_STAGE_JSON_PARSE:
+        return (
+            f"{previous_approach}\n\n"
+            "PREVIOUS ATTEMPT FAILED — response was not valid JSON.\n"
+            f"Error detail: {failure_reason}\n\n"
+            "Return ONLY the JSON object described in the instructions — "
+            "no markdown fences, no extra prose, no trailing commas."
+        )
+    return previous_approach
 
 
 def _parse_file_from_location(location: str) -> str:

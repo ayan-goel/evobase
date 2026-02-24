@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from runner.agent.patchgen import (
+    PATCHGEN_FAILURE_STAGE_JSON_PARSE,
     PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND,
+    _build_correction_feedback,
     _parse_file_from_location,
     _parse_patch_response,
     apply_search_replace,
@@ -379,7 +381,8 @@ class TestGenerateAgentPatchWithDiagnostics:
         assert t.patch.diff.startswith("--- a/src/utils.ts")
         assert t.patch_trace is not None
 
-    async def test_json_parse_failure_preserves_trace_in_diagnostics(self, tmp_path: Path) -> None:
+    async def test_json_parse_failure_retries_and_records_two_tries(self, tmp_path: Path) -> None:
+        """json_parse is retryable — the loop makes 2 attempts and records both."""
         (tmp_path / "a.ts").write_text("const x = 1;\n")
         bad_response = LLMResponse(content="not json", thinking_trace=_make_trace())
 
@@ -396,9 +399,10 @@ class TestGenerateAgentPatchWithDiagnostics:
         assert outcome.success is False
         assert outcome.patch is None
         assert outcome.failure_stage == "json_parse"
-        assert len(outcome.tries) == 1
-        assert outcome.tries[0].patch_trace is not None
+        # Both attempts are recorded (original + one retry)
+        assert len(outcome.tries) == 2
         assert outcome.tries[0].failure_stage == "json_parse"
+        assert outcome.tries[1].failure_stage == "json_parse"
 
     async def test_constraint_failure_records_multiple_tries(self, tmp_path: Path) -> None:
         (tmp_path / "big.ts").write_text(_BIG_FILE_CONTENT)
@@ -447,7 +451,8 @@ class TestGenerateAgentPatchWithDiagnostics:
         assert len(outcome.tries) == 1
         assert outcome.tries[0].failure_stage == "null_diff"
 
-    async def test_search_not_found_returns_correct_failure_stage(self, tmp_path: Path) -> None:
+    async def test_search_not_found_retries_and_records_two_tries(self, tmp_path: Path) -> None:
+        """search_not_found is retryable — both attempts are recorded on repeated failure."""
         (tmp_path / "a.ts").write_text("const x = 1;\n")
         bad_search_response = LLMResponse(
             content=json.dumps({
@@ -470,3 +475,161 @@ class TestGenerateAgentPatchWithDiagnostics:
         assert outcome.success is False
         assert outcome.patch is None
         assert outcome.failure_stage == PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND
+        # Both attempts recorded
+        assert len(outcome.tries) == 2
+        assert outcome.tries[0].failure_stage == PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND
+        assert outcome.tries[1].failure_stage == PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND
+
+    async def test_search_not_found_retry_succeeds_on_second_attempt(self, tmp_path: Path) -> None:
+        """If the second attempt produces a valid patch, the outcome is success."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "utils.ts").write_text(_UTILS_TS_CONTENT)
+
+        bad_response = LLMResponse(
+            content=json.dumps({
+                "edits": [{"file": "src/utils.ts", "search": "WRONG TEXT\n", "replace": "x\n"}],
+                "explanation": "fix",
+                "estimated_lines_changed": 1,
+            }),
+            thinking_trace=_make_trace(),
+        )
+        good_response = _make_response()
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[bad_response, good_response])
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("src/utils.ts:10"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is True
+        assert outcome.patch is not None
+        assert len(outcome.tries) == 2
+        assert outcome.tries[0].failure_stage == PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND
+        assert outcome.tries[1].success is True
+
+    async def test_json_parse_retry_succeeds_on_second_attempt(self, tmp_path: Path) -> None:
+        """If the second attempt produces valid JSON, the outcome is success."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "utils.ts").write_text(_UTILS_TS_CONTENT)
+
+        bad_response = LLMResponse(content="not valid json at all", thinking_trace=_make_trace())
+        good_response = _make_response()
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[bad_response, good_response])
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("src/utils.ts:10"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is True
+        assert outcome.patch is not None
+        assert len(outcome.tries) == 2
+        assert outcome.tries[0].failure_stage == PATCHGEN_FAILURE_STAGE_JSON_PARSE
+        assert outcome.tries[1].success is True
+
+    async def test_retry_prompt_includes_corrective_feedback(self, tmp_path: Path) -> None:
+        """The second LLM call receives a prompt augmented with corrective instructions."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "utils.ts").write_text(_UTILS_TS_CONTENT)
+
+        bad_response = LLMResponse(
+            content=json.dumps({
+                "edits": [{"file": "src/utils.ts", "search": "WRONG\n", "replace": "x\n"}],
+                "explanation": "fix",
+                "estimated_lines_changed": 1,
+            }),
+            thinking_trace=_make_trace(),
+        )
+        good_response = _make_response()
+
+        captured_prompts: list[str] = []
+
+        async def fake_complete(messages, config):
+            for m in messages:
+                if m.role == "user":
+                    captured_prompts.append(m.content)
+            return captured_prompts.__len__() == 1 and bad_response or good_response
+
+        async def side_effect(messages, config):
+            for m in messages:
+                if m.role == "user":
+                    captured_prompts.append(m.content)
+            if len(captured_prompts) == 1:
+                return bad_response
+            return good_response
+
+        mock_provider = MagicMock()
+        mock_provider.complete = side_effect
+
+        await generate_agent_patch_with_diagnostics(
+            _make_opportunity("src/utils.ts:10"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert len(captured_prompts) == 2
+        # Retry prompt must contain the corrective signal
+        assert "PREVIOUS ATTEMPT FAILED" in captured_prompts[1]
+        assert "verbatim" in captured_prompts[1]
+
+    async def test_null_diff_does_not_trigger_retry(self, tmp_path: Path) -> None:
+        """null_diff (LLM chose to skip) is NOT retried — it's an intentional response."""
+        (tmp_path / "a.ts").write_text("code\n")
+        null_response = LLMResponse(
+            content=json.dumps({"edits": [], "explanation": "can't fix"}),
+            thinking_trace=_make_trace(),
+        )
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(return_value=null_response)
+
+        outcome = await generate_agent_patch_with_diagnostics(
+            _make_opportunity("a.ts:1"),
+            tmp_path,
+            mock_provider,
+            _make_config(),
+        )
+
+        assert outcome.success is False
+        assert outcome.failure_stage == "null_diff"
+        # Only one attempt — null_diff is not retried
+        assert len(outcome.tries) == 1
+        mock_provider.complete.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _build_correction_feedback
+# ---------------------------------------------------------------------------
+
+class TestBuildCorrectionFeedback:
+    def test_search_not_found_feedback_contains_key_instructions(self) -> None:
+        result = _build_correction_feedback(
+            "my approach", PATCHGEN_FAILURE_STAGE_SEARCH_NOT_FOUND, "search block not found"
+        )
+        assert "my approach" in result
+        assert "PREVIOUS ATTEMPT FAILED" in result
+        assert "verbatim" in result
+        assert "search block not found" in result
+
+    def test_json_parse_feedback_mentions_json(self) -> None:
+        result = _build_correction_feedback(
+            "my approach", PATCHGEN_FAILURE_STAGE_JSON_PARSE, "Expecting value: line 1"
+        )
+        assert "my approach" in result
+        assert "JSON" in result
+        assert "Expecting value: line 1" in result
+
+    def test_unknown_stage_returns_original_approach(self) -> None:
+        result = _build_correction_feedback("my approach", "unknown_stage", "some error")
+        assert result == "my approach"

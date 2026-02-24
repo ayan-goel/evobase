@@ -8,6 +8,7 @@ GitHub API client. It translates proposals into GitHub API calls.
 """
 
 import logging
+import time
 
 from unidiff import PatchSet
 
@@ -58,7 +59,10 @@ async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
     )
 
     short_id = str(proposal.id)[:8]
-    branch_name = f"{BRANCH_PREFIX}{short_id}"
+    # Append a seconds-precision timestamp so retries after a mid-flight failure
+    # never collide with a branch left behind by the previous attempt.
+    ts = str(int(time.time()))[-6:]
+    branch_name = f"{BRANCH_PREFIX}{short_id}-{ts}"
 
     await github_client.create_branch(
         token, owner, repo_name, branch_name, head_sha
@@ -125,7 +129,10 @@ async def create_pr_for_run(
     )
 
     short_id = str(run.id)[:8]
-    branch_name = f"{RUN_BRANCH_PREFIX}{short_id}"
+    # Append a seconds-precision timestamp so retries after a mid-flight failure
+    # never collide with a branch left behind by the previous attempt.
+    ts = str(int(time.time()))[-6:]
+    branch_name = f"{RUN_BRANCH_PREFIX}{short_id}-{ts}"
 
     await github_client.create_branch(token, owner, repo_name, branch_name, head_sha)
 
