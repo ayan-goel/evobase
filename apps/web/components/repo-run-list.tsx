@@ -49,10 +49,10 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const activeRunStatus = getActiveRunStatus(runs);
-  const hasActiveRunRef = useRef(hasActiveRun(runs));
+  const activeRunStatus = useMemo(() => getActiveRunStatus(runs), [runs]);
 
-  // Update ref when runs change
+  useEffect(() => {
+    if (!hasActiveRun(runs)) return;
   useEffect(() => {
     hasActiveRunRef.current = hasActiveRun(runs);
   }, [runs]);
