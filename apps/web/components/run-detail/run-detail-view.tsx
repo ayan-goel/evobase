@@ -83,12 +83,15 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
     }
   }, [isDone, isActive, run.id]);
 
-  const sha = run.sha ? run.sha.slice(0, 7) : "no sha";
-  const msg = run.commit_message
-    ? run.commit_message.length > 72
-      ? run.commit_message.slice(0, 72) + "…"
-      : run.commit_message
-    : null;
+  const { sha, msg } = useMemo(() => {
+    const sha = run.sha ? run.sha.slice(0, 7) : "no sha";
+    const msg = run.commit_message
+      ? run.commit_message.length > 72
+        ? run.commit_message.slice(0, 72) + "…"
+        : run.commit_message
+      : null;
+    return { sha, msg };
+  }, [run.sha, run.commit_message]);
 
   const currentPhaseIdx =
     currentPhase != null
