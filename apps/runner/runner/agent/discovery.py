@@ -33,7 +33,7 @@ from runner.llm.types import LLMConfig, LLMMessage, ThinkingTrace, get_selection
 logger = logging.getLogger(__name__)
 
 # Hard cap on files analysed per run to bound API cost
-MAX_FILES_TO_ANALYSE = 7
+MAX_FILES_TO_ANALYSE = 10
 
 # Maximum file size to send to the LLM (20KB) — larger files are truncated
 MAX_FILE_CHARS = 20_000

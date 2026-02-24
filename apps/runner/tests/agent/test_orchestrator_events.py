@@ -13,6 +13,8 @@ from runner.validator.types import (
     BaselineResult,
     BenchmarkComparison,
     CandidateResult,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_MEDIUM,
     StepResult,
 )
 
@@ -243,3 +245,122 @@ async def test_emits_patch_failure_diagnostics_when_patchgen_returns_none(monkey
     verdict = next(e for e in emitted if e[0] == "validation.verdict")[2]
     assert isinstance(verdict["attempts"], list)
     assert verdict["attempts"][0]["steps"] == []
+
+
+# ---------------------------------------------------------------------------
+# Smart lazy stopping: high-confidence breaks early; medium does not
+# ---------------------------------------------------------------------------
+
+def _make_outcome(patch: AgentPatch) -> PatchGenerationOutcome:
+    return PatchGenerationOutcome(
+        success=True,
+        patch=patch,
+        tries=[PatchGenTryRecord(attempt_number=1, success=True, patch=patch, patch_trace=patch.thinking_trace)],
+    )
+
+
+def _make_simple_candidate(confidence: str, accepted: bool = True) -> CandidateResult:
+    verdict = AcceptanceVerdict(
+        is_accepted=accepted,
+        confidence=confidence,
+        reason="ok",
+        gates_passed=["test"] if accepted else [],
+        gates_failed=[] if accepted else ["test"],
+        benchmark_comparison=None,
+    )
+    attempt = AttemptRecord(attempt_number=1, patch_applied=True, pipeline_result=None, verdict=verdict)
+    return CandidateResult(attempts=[attempt], final_verdict=verdict, is_accepted=accepted)
+
+
+async def test_high_confidence_stops_after_first_approach(monkeypatch, tmp_path):
+    """A high-confidence accepted variant should short-circuit; no further approaches tried."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp = AgentOpportunity(
+        type="performance",
+        location="src/ui.tsx:1",
+        rationale="reason",
+        risk_level="low",
+        approaches=["approach A", "approach B", "approach C"],
+        affected_lines=2,
+        thinking_trace=_make_trace(),
+    )
+    patch = _make_patch()
+
+    async def fake_discover(**kw):
+        return [opp]
+
+    async def fake_patchgen(**kw):
+        return _make_outcome(patch)
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr(
+        "runner.agent.orchestrator.run_candidate_validation",
+        lambda **kw: _make_simple_candidate(CONFIDENCE_HIGH),
+    )
+
+    emitted: list[tuple[str, str, dict]] = []
+    result = await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+        on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+    )
+
+    approaches_tried = next(e for e in emitted if e[0] == "validation.verdict")[2]["approaches_tried"]
+    assert approaches_tried == 1, "High-confidence should stop after the first approach"
+
+
+async def test_medium_confidence_continues_to_next_approach(monkeypatch, tmp_path):
+    """A medium-confidence accepted variant should NOT stop the loop; approach 2 gets tried."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ui.tsx").write_text("const x = 1;\n")
+
+    opp = AgentOpportunity(
+        type="performance",
+        location="src/ui.tsx:1",
+        rationale="reason",
+        risk_level="low",
+        approaches=["approach A", "approach B"],
+        affected_lines=2,
+        thinking_trace=_make_trace(),
+    )
+    patch = _make_patch()
+
+    call_count = {"n": 0}
+
+    async def fake_discover(**kw):
+        return [opp]
+
+    async def fake_patchgen(**kw):
+        return _make_outcome(patch)
+
+    def fake_validate(**kw):
+        call_count["n"] += 1
+        return _make_simple_candidate(CONFIDENCE_MEDIUM)
+
+    monkeypatch.setattr("runner.agent.orchestrator.validate_model", lambda *a, **k: None)
+    monkeypatch.setattr("runner.agent.orchestrator.get_provider", lambda *a, **k: MagicMock())
+    monkeypatch.setattr("runner.agent.orchestrator.discover_opportunities", fake_discover)
+    monkeypatch.setattr("runner.agent.orchestrator.generate_agent_patch_with_diagnostics", fake_patchgen)
+    monkeypatch.setattr("runner.agent.orchestrator.run_candidate_validation", fake_validate)
+
+    emitted: list[tuple[str, str, dict]] = []
+    await run_agent_cycle(
+        repo_dir=tmp_path,
+        detection=DetectionResult(test_cmd="npm test"),
+        llm_config=_make_llm_config(),
+        baseline=BaselineResult(is_success=True),
+        max_candidates=5,
+        on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+    )
+
+    approaches_tried = next(e for e in emitted if e[0] == "validation.verdict")[2]["approaches_tried"]
+    assert approaches_tried == 2, "Medium-confidence should not stop early; both approaches should be tried"
+    assert call_count["n"] == 2

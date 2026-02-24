@@ -75,12 +75,25 @@ export function RunPRDialog({
     if (selectedIds.size === 0) return;
     setLoading(true);
     setError(null);
+
+    // Open the tab immediately while we're still inside the synchronous part of
+    // the click handler — before any await. Popup blockers only allow
+    // window.open() when it's called as a direct result of a user gesture.
+    // We navigate the tab to the real URL once the API responds.
+    const prTab = window.open("", "_blank", "noopener,noreferrer");
+
     try {
       const result = await createRunPR(repoId, runId, [...selectedIds]);
       onPRCreated(result.pr_url);
-      window.open(result.pr_url, "_blank", "noopener,noreferrer");
+      if (prTab) {
+        prTab.location.href = result.pr_url;
+      } else {
+        // Fallback: tab was blocked despite our attempt — navigate current tab.
+        window.location.href = result.pr_url;
+      }
       onClose();
     } catch (err) {
+      prTab?.close();
       setError(err instanceof Error ? err.message : "Failed to create PR");
     } finally {
       setLoading(false);

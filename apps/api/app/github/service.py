@@ -7,10 +7,14 @@ This layer is the boundary between our domain models and the
 GitHub API client. It translates proposals into GitHub API calls.
 """
 
+import logging
+
 from unidiff import PatchSet
 
 from app.db.models import Proposal, Repository, Run
 from app.github import client as github_client
+
+logger = logging.getLogger(__name__)
 
 
 # Branch naming convention: coreloop/proposal-{short_id}
@@ -62,7 +66,7 @@ async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
 
     # Apply the proposal diff to the branch before creating the PR
     if proposal.diff:
-        commit_message = f"[Coreloop] {proposal.summary or 'Code optimization'}"
+        commit_message = f"[Coreloop] {proposal.title or proposal.summary or 'Code optimization'}"
         await _commit_diff_to_branch(
             token=token,
             owner=owner,
@@ -70,9 +74,10 @@ async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
             branch=branch_name,
             diff=proposal.diff,
             commit_message=commit_message,
+            root_dir=repo.root_dir,
         )
 
-    pr_title = f"[Coreloop] {proposal.summary or 'Code optimization'}"
+    pr_title = f"[Coreloop] {proposal.title or proposal.summary or 'Code optimization'}"
     pr_body = _build_pr_body(proposal)
 
     pr_data = await github_client.create_pull_request(
@@ -127,7 +132,7 @@ async def create_pr_for_run(
     for proposal in proposals:
         if not proposal.diff:
             continue
-        commit_message = f"[Coreloop] {proposal.summary or 'Code optimization'}"
+        commit_message = f"[Coreloop] {proposal.title or proposal.summary or 'Code optimization'}"
         await _commit_diff_to_branch(
             token=token,
             owner=owner,
@@ -135,6 +140,7 @@ async def create_pr_for_run(
             branch=branch_name,
             diff=proposal.diff,
             commit_message=commit_message,
+            root_dir=repo.root_dir,
         )
 
     pr_title = f"[Coreloop] {len(proposals)} optimization{'s' if len(proposals) != 1 else ''}"
@@ -160,20 +166,30 @@ async def _commit_diff_to_branch(
     branch: str,
     diff: str,
     commit_message: str,
+    root_dir: str | None = None,
 ) -> None:
-    """Parse the unified diff and commit each changed file to the branch."""
+    """Parse the unified diff and commit each changed file to the branch.
+
+    Args:
+        root_dir: Monorepo subdirectory the diff paths are relative to
+            (e.g. ``"apps/web"``). When set, each path extracted from the
+            diff is prefixed with this value before calling the GitHub
+            Contents API, producing the full repo-relative path.
+    """
     patch_set = PatchSet(diff)
     for pf in patch_set:
-        # unidiff exposes .path which strips the a/ b/ prefixes
-        path = pf.path
+        # unidiff strips the a/ b/ prefixes, giving a work_dir-relative path.
+        # Prepend root_dir so the GitHub API receives the full repo-relative path.
+        rel_path = pf.path
+        full_path = f"{root_dir.strip('/')}/{rel_path}" if root_dir else rel_path
 
         if pf.is_removed_file:
             file_data = await github_client.get_file_content(
-                token, owner, repo_name, path, branch
+                token, owner, repo_name, full_path, branch
             )
             if file_data:
                 await github_client.delete_file(
-                    token, owner, repo_name, path,
+                    token, owner, repo_name, full_path,
                     commit_message, file_data["sha"], branch,
                 )
 
@@ -182,18 +198,25 @@ async def _commit_diff_to_branch(
                 line.value for hunk in pf for line in hunk if line.line_type != "-"
             )
             await github_client.put_file_content(
-                token, owner, repo_name, path,
+                token, owner, repo_name, full_path,
                 commit_message, new_content, branch,
             )
 
         else:
             file_data = await github_client.get_file_content(
-                token, owner, repo_name, path, branch
+                token, owner, repo_name, full_path, branch
             )
+            if file_data is None:
+                logger.warning(
+                    "Could not fetch existing file '%s' from branch '%s' — "
+                    "patch will be applied to an empty base. "
+                    "Check that root_dir ('%s') is configured correctly for this repo.",
+                    full_path, branch, root_dir,
+                )
             original = file_data["content"] if file_data else ""
             new_content = _apply_patch_to_content(original, pf)
             await github_client.put_file_content(
-                token, owner, repo_name, path,
+                token, owner, repo_name, full_path,
                 commit_message, new_content, branch,
                 current_sha=file_data["sha"] if file_data else None,
             )
@@ -233,15 +256,12 @@ def _apply_patch_to_content(original: str, patched_file) -> str:
 
 
 def _build_pr_body(proposal: Proposal) -> str:
-    """Build the PR description from a proposal's evidence.
+    """Build the PR description from a proposal's evidence."""
+    title = proposal.title or proposal.summary or "Code optimization"
+    sections = [f"## {title}\n"]
 
-    Includes the optimization summary, metrics comparison, and risk score.
-    This gives reviewers all the context needed for a fast review.
-    """
-    sections = ["## Coreloop Optimization Proposal\n"]
-
-    if proposal.summary:
-        sections.append(f"**Summary:** {proposal.summary}\n")
+    if proposal.summary and proposal.summary != title:
+        sections.append(f"{proposal.summary}\n")
 
     if proposal.metrics_before and proposal.metrics_after:
         sections.append("### Metrics\n")
@@ -254,32 +274,30 @@ def _build_pr_body(proposal: Proposal) -> str:
             sections.append(f"| {key} | {before} | {after} |")
         sections.append("")
 
-    if proposal.risk_score is not None:
-        sections.append(f"**Risk Score:** {proposal.risk_score}\n")
-
     sections.append("---")
-    sections.append("*This PR was generated by [Coreloop](https://github.com/ayangoel/coreloop) — an autonomous code optimization system.*")
+    sections.append("*Generated by [Coreloop](https://github.com/ayangoel/coreloop) — autonomous code optimization.*")
 
     return "\n".join(sections)
 
 
 def _build_run_pr_body(run: Run, proposals: list[Proposal]) -> str:
     """Build a combined PR description for a run-level PR."""
+    count = len(proposals)
     sections = [f"## Coreloop Optimizations — Run `{str(run.id)[:8]}`\n"]
     sections.append(
-        f"This PR contains {len(proposals)} optimization"
-        f"{'s' if len(proposals) != 1 else ''} generated by Coreloop.\n"
+        f"This PR contains {count} optimization"
+        f"{'s' if count != 1 else ''} generated by Coreloop.\n"
     )
 
     for i, proposal in enumerate(proposals, 1):
-        sections.append(f"### {i}. {proposal.summary or 'Optimization'}")
-        if proposal.selection_reason:
-            sections.append(f"> {proposal.selection_reason}")
-        if proposal.risk_score is not None:
-            sections.append(f"**Risk:** {round(proposal.risk_score * 100)}%")
+        title = proposal.title or proposal.summary or "Optimization"
+        sections.append(f"### {i}. {title}")
+        # Include the full description only when it differs from the title
+        if proposal.summary and proposal.summary != title:
+            sections.append(f"\n{proposal.summary}")
         sections.append("")
 
     sections.append("---")
-    sections.append("*This PR was generated by [Coreloop](https://github.com/ayangoel/coreloop) — an autonomous code optimization system.*")
+    sections.append("*Generated by [Coreloop](https://github.com/ayangoel/coreloop) — autonomous code optimization.*")
 
     return "\n".join(sections)

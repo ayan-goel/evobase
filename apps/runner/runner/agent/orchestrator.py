@@ -12,6 +12,9 @@ Budget enforcement:
   - Stops generating patches once max_candidates is reached.
   - Each opportunity counts as one candidate regardless of how many
     approach variants were tried.
+  - Approach variants use smart lazy stopping: high-confidence acceptance
+    short-circuits immediately; medium/low confidence continues to try
+    remaining approaches in case a better patch exists.
 
 All reasoning traces are attached to the returned results so the packaging
 layer can store them alongside the validation evidence.
@@ -251,14 +254,24 @@ async def run_agent_cycle(
                 candidate_result=candidate_result,
             ))
 
-            # Lazy approach generation: stop as soon as any variant is accepted.
-            # Approach 2 and 3 are only tried if approach 1 fails, saving ~$1.50-2.50/run.
+            # Smart lazy stopping: stop immediately only on high-confidence acceptance.
+            # For medium/low confidence, continue trying remaining approaches — a later
+            # variant may produce a better patch, improving proposal quality.
             if candidate_result.is_accepted:
+                is_high_confidence = (
+                    candidate_result.final_verdict is not None
+                    and candidate_result.final_verdict.confidence == "high"
+                )
+                if is_high_confidence:
+                    logger.debug(
+                        "High-confidence accepted variant %d; skipping remaining approach variants",
+                        idx,
+                    )
+                    break
                 logger.debug(
-                    "Accepted variant %d; skipping remaining approach variants (lazy strategy)",
+                    "Medium/low-confidence accepted variant %d; trying remaining approaches for a better patch",
                     idx,
                 )
-                break
 
         # Select the best variant
         winner_idx, selection_reason = _select_best_variant(variants)

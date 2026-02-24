@@ -34,6 +34,7 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
         },
     ],
     "openai": [
+        {"id": "gpt-4.1", "label": "GPT-4.1", "description": "Best reasoning-to-cost ratio (recommended)"},
         {"id": "gpt-5.2", "label": "GPT-5.2", "description": "Flagship model, best quality"},
         {"id": "gpt-5-mini", "label": "GPT-5 Mini", "description": "Fast and cost-efficient"},
     ],

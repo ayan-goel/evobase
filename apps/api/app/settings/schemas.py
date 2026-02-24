@@ -27,8 +27,8 @@ class SettingsResponse(BaseModel):
     consecutive_flaky_runs: int
     last_run_at: Optional[datetime] = None
     # LLM model configuration
-    llm_provider: str = "anthropic"
-    llm_model: str = "claude-sonnet-4-6"
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4.1"
     # Baseline execution strategy controls
     execution_mode: str = "adaptive"
     max_strategy_attempts: int = 2

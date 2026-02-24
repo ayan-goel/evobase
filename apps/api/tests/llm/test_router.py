@@ -40,10 +40,11 @@ class TestListModels:
         model_ids = [m["id"] for m in anthropic["models"]]
         assert "claude-sonnet-4-6" in model_ids
 
-    async def test_openai_has_gpt5(self, client: AsyncClient) -> None:
+    async def test_openai_has_gpt41_and_gpt5(self, client: AsyncClient) -> None:
         res = await client.get("/llm/models")
         openai = next(p for p in res.json()["providers"] if p["id"] == "openai")
         model_ids = [m["id"] for m in openai["models"]]
+        assert "gpt-4.1" in model_ids
         assert "gpt-5.2" in model_ids
 
     async def test_google_has_gemini_25(self, client: AsyncClient) -> None:

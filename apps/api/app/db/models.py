@@ -355,8 +355,8 @@ class Settings(Base):
     last_run_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     # LLM model selection — user configures which model analyses this repo
-    llm_provider: Mapped[str] = mapped_column(Text, nullable=False, default="anthropic")
-    llm_model: Mapped[str] = mapped_column(Text, nullable=False, default="claude-sonnet-4-6")
+    llm_provider: Mapped[str] = mapped_column(Text, nullable=False, default="openai")
+    llm_model: Mapped[str] = mapped_column(Text, nullable=False, default="gpt-4.1")
     # Baseline execution strategy: "strict" (single deterministic attempt)
     # or "adaptive" (strict first, then bounded adaptive fallback attempts).
     execution_mode: Mapped[str] = mapped_column(Text, nullable=False, default="adaptive")

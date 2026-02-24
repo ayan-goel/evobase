@@ -169,8 +169,8 @@ class RunService:
                 repo_framework = repo.framework
 
                 # LLM settings — prefer per-repo, fall back to env vars
-                llm_provider = settings.llm_provider if settings else "anthropic"
-                llm_model = settings.llm_model if settings else "claude-sonnet-4-6"
+                llm_provider = settings.llm_provider if settings else "openai"
+                llm_model = settings.llm_model if settings else "gpt-4.1"
                 max_candidates = (
                     settings.max_candidates_per_run if settings else 12
                 )

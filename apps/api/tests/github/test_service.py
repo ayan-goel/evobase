@@ -11,6 +11,7 @@ from app.github.service import (
     BRANCH_PREFIX,
     _apply_patch_to_content,
     _build_pr_body,
+    _commit_diff_to_branch,
     create_pr_for_proposal,
 )
 
@@ -43,10 +44,17 @@ class TestBuildPrBody:
         assert "| avg_latency_ms | 120 | 110 |" in body
         assert "| p95_ms | 250 | 230 |" in body
 
-    def test_body_includes_risk_score(self):
+    def test_body_does_not_include_risk_score(self):
+        """Risk score is an internal metric and should not appear in the PR body."""
         proposal = self._make_proposal()
         body = _build_pr_body(proposal)
-        assert "0.15" in body
+        assert "0.15" not in body
+        assert "Risk" not in body
+
+    def test_body_uses_title_as_heading_when_present(self):
+        proposal = self._make_proposal(title="Use Set.has for O(1) membership check")
+        body = _build_pr_body(proposal)
+        assert "## Use Set.has for O(1) membership check" in body
 
     def test_body_includes_coreloop_attribution(self):
         proposal = self._make_proposal()
@@ -357,3 +365,146 @@ class TestApplyPatchToContent:
         pf = self._make_patched_file([])
         result = _apply_patch_to_content(original, pf)
         assert result == original
+
+
+# ---------------------------------------------------------------------------
+# Minimal unified diff fixtures for _commit_diff_to_branch tests
+# ---------------------------------------------------------------------------
+
+_MODIFY_DIFF = (
+    "--- a/src/utils.ts\n"
+    "+++ b/src/utils.ts\n"
+    "@@ -1,2 +1,2 @@\n"
+    " context\n"
+    "-old\n"
+    "+new\n"
+)
+
+_ADD_DIFF = (
+    "--- /dev/null\n"
+    "+++ b/src/added.ts\n"
+    "@@ -0,0 +1 @@\n"
+    "+brand new\n"
+)
+
+_REMOVE_DIFF = (
+    "--- a/src/gone.ts\n"
+    "+++ /dev/null\n"
+    "@@ -1 +0,0 @@\n"
+    "-deleted\n"
+)
+
+
+class TestCommitDiffToBranchRootDir:
+    """Verify that _commit_diff_to_branch prefixes paths with root_dir when set."""
+
+    async def _run(self, diff: str, root_dir: str | None, client_overrides: dict | None = None):
+        """Run _commit_diff_to_branch with fully mocked GitHub client calls."""
+        defaults = {
+            "app.github.client.get_file_content": AsyncMock(
+                return_value={"content": "context\nold\n", "sha": "sha123"}
+            ),
+            "app.github.client.put_file_content": AsyncMock(return_value=None),
+            "app.github.client.delete_file": AsyncMock(return_value=None),
+        }
+        if client_overrides:
+            defaults.update(client_overrides)
+
+        with (
+            patch("app.github.client.get_file_content", defaults["app.github.client.get_file_content"]),
+            patch("app.github.client.put_file_content", defaults["app.github.client.put_file_content"]),
+            patch("app.github.client.delete_file", defaults["app.github.client.delete_file"]),
+        ):
+            await _commit_diff_to_branch(
+                token="tok",
+                owner="acme",
+                repo_name="api",
+                branch="coreloop/test",
+                diff=diff,
+                commit_message="fix",
+                root_dir=root_dir,
+            )
+        return defaults
+
+    @pytest.mark.asyncio
+    async def test_modified_file_path_prefixed_with_root_dir(self):
+        """get_file_content and put_file_content receive the root_dir-prefixed path."""
+        mocks = await self._run(_MODIFY_DIFF, root_dir="apps/web")
+
+        get_call = mocks["app.github.client.get_file_content"].call_args
+        put_call = mocks["app.github.client.put_file_content"].call_args
+
+        # path is the 3rd positional arg (token, owner, repo, path, ref)
+        assert get_call.args[3] == "apps/web/src/utils.ts"
+        assert put_call.args[3] == "apps/web/src/utils.ts"
+
+    @pytest.mark.asyncio
+    async def test_modified_file_path_unchanged_without_root_dir(self):
+        """When root_dir is None the diff path is used verbatim."""
+        mocks = await self._run(_MODIFY_DIFF, root_dir=None)
+
+        get_call = mocks["app.github.client.get_file_content"].call_args
+        assert get_call.args[3] == "src/utils.ts"
+
+    @pytest.mark.asyncio
+    async def test_root_dir_trailing_slash_is_stripped(self):
+        """root_dir values with trailing slashes produce clean paths."""
+        mocks = await self._run(_MODIFY_DIFF, root_dir="apps/web/")
+
+        get_call = mocks["app.github.client.get_file_content"].call_args
+        assert get_call.args[3] == "apps/web/src/utils.ts"
+        assert "//" not in get_call.args[3]
+
+    @pytest.mark.asyncio
+    async def test_added_file_path_prefixed_with_root_dir(self):
+        """New-file commits also receive the prefixed path."""
+        mocks = await self._run(_ADD_DIFF, root_dir="apps/web")
+
+        put_call = mocks["app.github.client.put_file_content"].call_args
+        assert put_call.args[3] == "apps/web/src/added.ts"
+
+    @pytest.mark.asyncio
+    async def test_removed_file_path_prefixed_with_root_dir(self):
+        """delete_file also receives the prefixed path."""
+        mocks = await self._run(_REMOVE_DIFF, root_dir="apps/web")
+
+        delete_call = mocks["app.github.client.delete_file"].call_args
+        assert delete_call.args[3] == "apps/web/src/gone.ts"
+
+    @pytest.mark.asyncio
+    async def test_missing_file_logs_warning(self, caplog):
+        """A warning is emitted when get_file_content returns None for a modified file."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.github.service"):
+            await self._run(
+                _MODIFY_DIFF,
+                root_dir="apps/web",
+                client_overrides={
+                    "app.github.client.get_file_content": AsyncMock(return_value=None),
+                    "app.github.client.put_file_content": AsyncMock(return_value=None),
+                },
+            )
+        assert any("apps/web/src/utils.ts" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_create_pr_for_proposal_passes_root_dir_to_commit(self):
+        """create_pr_for_proposal propagates repo.root_dir to _commit_diff_to_branch."""
+        repo = _make_repo(root_dir="apps/web")
+        proposal = _make_proposal_obj(diff=_MODIFY_DIFF)
+
+        get_file_mock = AsyncMock(return_value={"content": "context\nold\n", "sha": "sha123"})
+
+        with (
+            patch("app.github.client.get_installation_token", AsyncMock(return_value="tok")),
+            patch("app.github.client.get_default_branch_sha", AsyncMock(return_value="sha")),
+            patch("app.github.client.create_branch", AsyncMock()),
+            patch("app.github.client.get_file_content", get_file_mock),
+            patch("app.github.client.put_file_content", AsyncMock()),
+            patch("app.github.client.create_pull_request", AsyncMock(
+                return_value={"html_url": "https://github.com/acme/api/pull/1"}
+            )),
+        ):
+            await create_pr_for_proposal(repo, proposal)
+
+        get_call = get_file_mock.call_args
+        assert get_call.args[3] == "apps/web/src/utils.ts"

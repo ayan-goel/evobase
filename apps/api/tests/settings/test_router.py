@@ -215,11 +215,11 @@ class TestUpdateSettings:
         assert data["llm_provider"] == "openai"
         assert data["llm_model"] == "gpt-5.2"
 
-    async def test_llm_provider_defaults_to_anthropic(self, seeded_client: AsyncClient) -> None:
+    async def test_llm_provider_defaults_to_openai(self, seeded_client: AsyncClient) -> None:
         res = await seeded_client.get(f"/repos/{STUB_REPO_ID}/settings")
         data = res.json()
-        assert data["llm_provider"] == "anthropic"
-        assert data["llm_model"] == "claude-sonnet-4-6"
+        assert data["llm_provider"] == "openai"
+        assert data["llm_model"] == "gpt-4.1"
 
     async def test_updates_llm_model_independently(self, seeded_client: AsyncClient) -> None:
         await seeded_client.put(
