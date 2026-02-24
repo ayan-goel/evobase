@@ -13,3 +13,14 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     if (session?.access_token) {
       return { Authorization: `Bearer ${session.access_token}` };
     }
+    return undefined as T;
+  }
+
+  // Modern typed APIs reliably return JSON; parse directly.
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
