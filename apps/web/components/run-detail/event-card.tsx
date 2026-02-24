@@ -641,7 +641,6 @@ function renderValidationVerdict(event: RunEvent) {
   const d = event.data as Record<string, unknown>;
   const isOk = Boolean(d.accepted);
   const opportunity = d.opportunity as string | undefined;
-  const confidence = d.confidence as string | undefined;
   const reason = d.reason as string | undefined;
   const gatesPassed = Array.isArray(d.gates_passed) ? (d.gates_passed as string[]) : [];
   const gatesFailed = Array.isArray(d.gates_failed) ? (d.gates_failed as string[]) : [];
@@ -663,11 +662,6 @@ function renderValidationVerdict(event: RunEvent) {
           ) : (
             <span className="text-red-400/70">rejected</span>
           )}
-          {confidence ? (
-            <Badge variant={confidence === "high" ? "success" : confidence === "medium" ? "warn" : "default"}>
-              {confidence}
-            </Badge>
-          ) : null}
           {approachesTried > 1 ? (
             <span className="text-white/20 text-xs ml-1">
               ({approachesTried} approaches)

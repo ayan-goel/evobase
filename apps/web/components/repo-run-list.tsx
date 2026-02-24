@@ -11,7 +11,7 @@ import { ProposalDrawer } from "@/components/proposal-drawer";
 import { RunPRDialog } from "@/components/run-pr-dialog";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { TriggerRunButton } from "@/components/trigger-run-button";
-import type { Proposal, Run, RunEvent } from "@/lib/types";
+import type { Proposal, Run, RunEvent, RunPhase } from "@/lib/types";
 
 type RunWithProposals = Run & { proposals: Proposal[] };
 
@@ -241,6 +241,7 @@ const FAILURE_MESSAGES: Record<string, { title: string; hint: string }> = {
 interface DerivedStatus {
   phaseLabel: string;
   detail: string;
+  currentPhase: RunPhase | null;
   opportunitiesFound: number;
   approachesTested: number;
   candidatesValidated: number;
@@ -248,6 +249,12 @@ interface DerivedStatus {
   totalFiles: number;
   filesAnalysed: number;
 }
+
+// Phases in pipeline order — used to ensure currentPhase only advances forward.
+const PHASE_ORDER: RunPhase[] = [
+  "clone", "detection", "baseline", "discovery",
+  "patching", "validation", "selection", "run",
+];
 
 const PHASE_LABELS: Record<string, string> = {
   clone: "Cloning repository",
@@ -263,6 +270,8 @@ const PHASE_LABELS: Record<string, string> = {
 function deriveStatus(events: RunEvent[]): DerivedStatus {
   let phaseLabel = "Starting up";
   let detail = "";
+  let currentPhase: RunPhase | null = null;
+  let highestPhaseIdx = -1;
   let opportunitiesFound = 0;
   let approachesTested = 0;
   let candidatesValidated = 0;
@@ -272,6 +281,13 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
 
   for (const ev of events) {
     phaseLabel = PHASE_LABELS[ev.phase] ?? phaseLabel;
+
+    // Advance currentPhase monotonically — never go backwards.
+    const evPhaseIdx = PHASE_ORDER.indexOf(ev.phase as RunPhase);
+    if (evPhaseIdx > highestPhaseIdx) {
+      highestPhaseIdx = evPhaseIdx;
+      currentPhase = ev.phase as RunPhase;
+    }
 
     switch (ev.type) {
       case "clone.started":
@@ -351,6 +367,7 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
   return {
     phaseLabel,
     detail,
+    currentPhase,
     opportunitiesFound,
     approachesTested,
     candidatesValidated,
@@ -372,8 +389,13 @@ function _truncatePath(path: string): string {
 // ---------------------------------------------------------------------------
 
 function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
-  const { events, currentPhase, isDone } = useRunEvents(runId, true);
+  const { events, isDone } = useRunEvents(runId, true);
   const status = useMemo(() => deriveStatus(events), [events]);
+
+  // Use the highest phase seen across all events (monotonically advancing).
+  // Fall back to "clone" so the bar always shows at least the first segment
+  // active while the SSE connection is establishing.
+  const currentPhase: RunPhase = status.currentPhase ?? "clone";
 
   const stats: { label: string; value: number | string; show: boolean }[] = [
     {
