@@ -12,7 +12,7 @@ interface ProposalDrawerProps {
 }
 
 /**
- * Slide-over drawer showing the full detail of a proposal:
+ * Centered modal dialog showing the full detail of a proposal:
  * diff, why it was changed, other approaches tried, and why this one won.
  */
 export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
@@ -38,36 +38,45 @@ export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
 
+  if (!isOpen) return null;
+
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — covers full viewport */}
       <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Panel */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Proposal details"
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-2xl
-          bg-[#0d0d0d] border-l border-white/[0.08] shadow-2xl
-          flex flex-col overflow-hidden
-          transition-transform duration-300 ease-out
-          ${isOpen ? "translate-x-0" : "translate-x-full"}`}
-      >
-        {proposal && <DrawerContent proposal={proposal} onClose={onClose} />}
+      {/* Centering container */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        {/* Panel */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Proposal details"
+          className="relative w-full max-w-2xl max-h-[90vh] rounded-2xl
+            bg-[#0d0d0d] border border-white/[0.08] shadow-2xl
+            flex flex-col overflow-hidden
+            animate-in fade-in zoom-in-95 duration-200"
+        >
+          {proposal && <ModalContent proposal={proposal} onClose={onClose} />}
+        </div>
       </div>
     </>
   );
 }
 
-function DrawerContent({ proposal, onClose }: { proposal: Proposal; onClose: () => void }) {
+function ModalContent({ proposal, onClose }: { proposal: Proposal; onClose: () => void }) {
   const hasVariants = proposal.patch_variants && proposal.patch_variants.length > 1;
+
+  // Prefer the selected variant's LLM verdict reason over the internal
+  // confidence label stored in selection_reason.
+  const selectedVariant = proposal.patch_variants?.find(v => v.is_selected);
+  const verdictReason =
+    selectedVariant?.validation_result?.reason ||
+    _filterSelectionReason(proposal.selection_reason);
 
   return (
     <>
@@ -82,9 +91,11 @@ function DrawerContent({ proposal, onClose }: { proposal: Proposal; onClose: () 
               </span>
             )}
           </div>
-          <h2 className="text-base font-semibold text-white leading-snug">
-            {proposal.summary ?? "Optimization Proposal"}
-          </h2>
+          {(proposal.title || proposal.summary) && (
+            <h2 className="text-base font-semibold text-white leading-snug">
+              {proposal.title ?? _shortTitle(proposal.summary)}
+            </h2>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -100,34 +111,34 @@ function DrawerContent({ proposal, onClose }: { proposal: Proposal; onClose: () 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-7">
 
-        {/* Why this change? */}
-        <DrawerSection title="What changed and why">
+        {/* What changed and why */}
+        <ModalSection title="What changed and why">
           <p className="text-sm text-white/60 leading-relaxed">
             {proposal.summary ?? "No description available."}
           </p>
-        </DrawerSection>
+        </ModalSection>
 
         {/* Diff */}
-        <DrawerSection title="Code change">
+        <ModalSection title="Code change">
           <DiffViewer diff={proposal.diff} />
-        </DrawerSection>
+        </ModalSection>
 
         {/* Why this approach won */}
-        {proposal.selection_reason && (
-          <DrawerSection title="Why this approach was selected">
+        {verdictReason && (
+          <ModalSection title="Why this approach was selected">
             <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.05] px-4 py-3">
               <p className="text-sm text-emerald-200/80 leading-relaxed">
-                {proposal.selection_reason}
+                {verdictReason}
               </p>
             </div>
-          </DrawerSection>
+          </ModalSection>
         )}
 
         {/* Other approaches */}
         {hasVariants && (
-          <DrawerSection title={`Other approaches tried (${proposal.patch_variants.length})`}>
+          <ModalSection title={`Other approaches tried (${proposal.patch_variants.length})`}>
             <PatchVariants variants={proposal.patch_variants} />
-          </DrawerSection>
+          </ModalSection>
         )}
 
       </div>
@@ -135,7 +146,7 @@ function DrawerContent({ proposal, onClose }: { proposal: Proposal; onClose: () 
   );
 }
 
-function DrawerSection({ title, children }: { title: string; children: React.ReactNode }) {
+function ModalSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
       <h3 className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-3">
@@ -144,4 +155,22 @@ function DrawerSection({ title, children }: { title: string; children: React.Rea
       {children}
     </section>
   );
+}
+
+/** Truncate a long summary to a brief fallback title for legacy proposals. */
+function _shortTitle(s: string | null): string {
+  if (!s) return "Optimization Proposal";
+  return s.length <= 72 ? s : s.slice(0, 69) + "…";
+}
+
+/**
+ * Filter out bare confidence labels from selection_reason.
+ * Returns null when the string is just an internal confidence label
+ * with no meaningful user-facing content.
+ */
+function _filterSelectionReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  // Strip if it's purely a confidence label (optionally with rejection counts)
+  const bare = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+  return bare.test(reason.trim()) ? null : reason;
 }

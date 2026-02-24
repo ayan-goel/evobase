@@ -58,13 +58,13 @@ export function DiffViewer({ diff, className }: DiffViewerProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-x-auto",
+        "rounded-xl border border-white/[0.06] bg-white/[0.02]",
         className,
       )}
       role="region"
       aria-label="Code diff"
     >
-      <pre className="text-xs leading-5 font-mono p-4 min-w-max">
+      <pre className="text-xs leading-5 font-mono p-4 whitespace-pre-wrap break-all overflow-hidden">
         {lines.map((line, i) => (
           <span
             key={i}

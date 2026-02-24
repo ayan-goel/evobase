@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { RepoView } from "@/app/repos/[repoId]/page";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
@@ -11,6 +11,14 @@ vi.mock("@/lib/hooks/use-run-events", () => ({
     isDone: false,
   }),
 }));
+
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    deleteRun: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 function makeRepo(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -138,16 +146,6 @@ describe("RepoView", () => {
     expect(link.getAttribute("href")).toBe("/dashboard");
   });
 
-  it("shows Clear button when there are runs", () => {
-    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
-    expect(screen.getByRole("button", { name: "Clear" })).toBeDefined();
-  });
-
-  it("does not show Clear button when there are no runs", () => {
-    render(<RepoView repo={makeRepo()} runs={[]} />);
-    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
-  });
-
   it("shows meta row with proposal count and confidence for completed runs", () => {
     render(
       <RepoView
@@ -169,32 +167,95 @@ describe("RepoView", () => {
     expect(screen.getByText(/3\.2 min compute/)).toBeDefined();
   });
 
-  it("shows View all runs button after clicking Clear", () => {
-    const oldRun = {
-      ...makeRun("completed"),
-      id: "run-old",
-      created_at: new Date(Date.now() - 10000).toISOString(),
-    };
-    render(<RepoView repo={makeRepo()} runs={[oldRun]} />);
+  // ---------------------------------------------------------------------------
+  // Select / delete flow
+  // ---------------------------------------------------------------------------
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-
-    expect(screen.getByRole("button", { name: "View all runs" })).toBeDefined();
+  it("shows Select button when there are runs", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    expect(screen.getByRole("button", { name: "Select" })).toBeDefined();
   });
 
-  it("restores hidden runs when View all runs is clicked", () => {
-    const oldRun = {
-      ...makeRun("completed"),
-      id: "run-old",
-      created_at: new Date(Date.now() - 10000).toISOString(),
-    };
-    render(<RepoView repo={makeRepo()} runs={[oldRun]} />);
+  it("does not show Select button when there are no runs", () => {
+    render(<RepoView repo={makeRepo()} runs={[]} />);
+    expect(screen.queryByRole("button", { name: "Select" })).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(screen.getByRole("button", { name: "View all runs" })).toBeDefined();
+  it("shows Cancel button and Delete button (disabled) after clicking Select", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "View all runs" }));
-    expect(screen.queryByRole("button", { name: "View all runs" })).toBeNull();
-    expect(screen.getByText("abc1234")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
+    const deleteBtn = screen.getByRole("button", { name: /Delete/ });
+    expect(deleteBtn).toBeDefined();
+    expect((deleteBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("hides Select button and shows checkboxes when in select mode", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+
+    expect(screen.queryByRole("button", { name: "Select" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Select run|Deselect run/ })).toBeDefined();
+  });
+
+  it("enables Delete button after checking a run", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Select run" }));
+
+    const deleteBtn = screen.getByRole("button", { name: /Delete \(1\)/ });
+    expect((deleteBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("clicking Cancel exits select mode and hides checkboxes", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByRole("button", { name: "Select" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("shows confirmation dialog with correct count when Delete is clicked", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select run" }));
+    fireEvent.click(screen.getByRole("button", { name: /Delete \(1\)/ }));
+
+    expect(screen.getByText(/Are you sure you want to delete/)).toBeDefined();
+    expect(screen.getByText(/1 run/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Yes, delete" })).toBeDefined();
+  });
+
+  it("closes confirmation dialog when Cancel is clicked inside it", () => {
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select run" }));
+    fireEvent.click(screen.getByRole("button", { name: /Delete \(1\)/ }));
+
+    // click the Cancel inside the dialog (there may be two "Cancel" buttons)
+    const cancelBtns = screen.getAllByRole("button", { name: "Cancel" });
+    fireEvent.click(cancelBtns[cancelBtns.length - 1]);
+
+    expect(screen.queryByText(/Are you sure you want to delete/)).toBeNull();
+  });
+
+  it("calls deleteRun and removes run from list after confirming delete", async () => {
+    const { deleteRun: mockDeleteRun } = await import("@/lib/api");
+    render(<RepoView repo={makeRepo()} runs={[makeRun()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select run" }));
+    fireEvent.click(screen.getByRole("button", { name: /Delete \(1\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => {
+      expect(mockDeleteRun).toHaveBeenCalledWith("run-1");
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("abc1234")).toBeNull();
+    });
   });
 });

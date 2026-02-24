@@ -125,6 +125,7 @@ class TestModelMetadata:
             "id",
             "run_id",
             "diff",
+            "title",
             "summary",
             "metrics_before",
             "metrics_after",

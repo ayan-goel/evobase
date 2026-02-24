@@ -26,9 +26,9 @@ export function ProposalCard({ proposal, onSelect, className }: ProposalCardProp
         className,
       )}
     >
-      {/* Summary */}
+      {/* Title (short) — with summary as fallback for legacy proposals */}
       <p className="text-sm font-medium text-white leading-snug line-clamp-2">
-        {proposal.summary ?? "Optimization proposal"}
+        {proposal.title ?? proposal.summary ?? "Optimization proposal"}
       </p>
 
       {/* Metrics delta row */}

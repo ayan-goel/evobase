@@ -123,13 +123,15 @@ function VariantContent({ variant }: { variant: PatchVariant }) {
         )}
       </div>
 
-      {/* Selection reason (winner only) */}
-      {variant.is_selected && variant.selection_reason && (
+      {/* Selection reason (winner only) — prefer the LLM verdict reason */}
+      {variant.is_selected && (variant.validation_result?.reason || _filterSelectionReason(variant.selection_reason)) && (
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5">
           <p className="text-xs text-white/40 mb-0.5 font-medium uppercase tracking-wider">
             Why chosen
           </p>
-          <p className="text-xs text-white/65">{variant.selection_reason}</p>
+          <p className="text-xs text-white/65">
+            {variant.validation_result?.reason || _filterSelectionReason(variant.selection_reason)}
+          </p>
         </div>
       )}
 
@@ -313,4 +315,15 @@ function _confidenceLabel(confidence: string): string {
   if (confidence === "high") return "High confidence";
   if (confidence === "medium") return "Medium confidence";
   return "Low confidence";
+}
+
+/**
+ * Returns null when the string is just a bare internal confidence label
+ * (e.g. "medium confidence; 2 other approaches rejected") with no
+ * meaningful user-facing content.
+ */
+function _filterSelectionReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  const bare = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+  return bare.test(reason.trim()) ? null : reason;
 }

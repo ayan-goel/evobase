@@ -120,6 +120,64 @@ class TestCancelRun:
         assert response.status_code == 404
 
 
+class TestDeleteRun:
+    async def test_delete_completed_run(self, seeded_client, seeded_db):
+        create_resp = await seeded_client.post(
+            f"/repos/{STUB_REPO_ID}/run", json={"sha": "del123"}
+        )
+        run_id = create_resp.json()["id"]
+
+        # Manually mark the run as completed so deletion is allowed
+        from app.db.models import Run as RunModel
+        from sqlalchemy import update
+
+        await seeded_db.execute(
+            update(RunModel)
+            .where(RunModel.id == uuid.UUID(run_id))
+            .values(status="completed")
+        )
+        await seeded_db.commit()
+
+        response = await seeded_client.delete(f"/runs/{run_id}")
+        assert response.status_code == 204
+
+        # Should be gone
+        get_resp = await seeded_client.get(f"/runs/{run_id}")
+        assert get_resp.status_code == 404
+
+    async def test_delete_active_run_rejected(self, seeded_client):
+        create_resp = await seeded_client.post(
+            f"/repos/{STUB_REPO_ID}/run", json={}
+        )
+        run_id = create_resp.json()["id"]
+        # Run is still "queued" — deletion must be rejected
+        response = await seeded_client.delete(f"/runs/{run_id}")
+        assert response.status_code == 409
+
+    async def test_delete_nonexistent_run(self, seeded_client):
+        response = await seeded_client.delete(f"/runs/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    async def test_delete_failed_run(self, seeded_client, seeded_db):
+        create_resp = await seeded_client.post(
+            f"/repos/{STUB_REPO_ID}/run", json={}
+        )
+        run_id = create_resp.json()["id"]
+
+        from app.db.models import Run as RunModel
+        from sqlalchemy import update
+
+        await seeded_db.execute(
+            update(RunModel)
+            .where(RunModel.id == uuid.UUID(run_id))
+            .values(status="failed")
+        )
+        await seeded_db.commit()
+
+        response = await seeded_client.delete(f"/runs/{run_id}")
+        assert response.status_code == 204
+
+
 class _FakeRedis:
     """Minimal Redis mock for cancel tests."""
 

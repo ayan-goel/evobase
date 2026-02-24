@@ -215,6 +215,26 @@ async def stream_run_events(
     )
 
 
+@router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_run(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+) -> None:
+    """Permanently delete a run and all associated proposals/events."""
+    run = await _get_run_for_user(run_id, user_id, db)
+
+    if run.status in ("queued", "running"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete an active run. Cancel it first.",
+        )
+
+    await db.delete(run)
+    await db.commit()
+    logger.info("Run %s deleted by user %s", run_id, user_id)
+
+
 @router.post("/runs/{run_id}/cancel", response_model=RunCancelResponse)
 async def cancel_run(
     run_id: uuid.UUID,

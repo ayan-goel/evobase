@@ -274,6 +274,11 @@ export async function getRun(runId: string): Promise<Run> {
   return apiFetch<Run>(`/runs/${runId}`);
 }
 
+/** Permanently delete a run and all its associated data. */
+export async function deleteRun(runId: string): Promise<void> {
+  await apiFetch(`/runs/${runId}`, { method: "DELETE" });
+}
+
 /** Cancel a queued or running run. */
 export async function cancelRun(runId: string): Promise<RunCancelResult> {
   return apiFetch<RunCancelResult>(`/runs/${runId}/cancel`, { method: "POST" });

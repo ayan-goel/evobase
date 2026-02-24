@@ -32,18 +32,6 @@ interface PatchApproachStartedDetail {
   affectedLines: number | null;
 }
 
-interface PatchGenTryDetail {
-  attemptNumber: number;
-  success: boolean;
-  failureStage: string | null;
-  failureReason: string | null;
-  diff: string | null;
-  explanation: string | null;
-  touchedFiles: string[];
-  estimatedLinesChanged: number;
-  patchTrace: ThinkingTrace | null;
-}
-
 interface PatchApproachCompletedDetail {
   location: string | null;
   type: string | null;
@@ -54,7 +42,6 @@ interface PatchApproachCompletedDetail {
   patchTrace: ThinkingTrace | null;
   failureStage: string | null;
   failureReason: string | null;
-  patchgenTries: PatchGenTryDetail[];
 }
 
 export function EventCard({ event }: EventCardProps) {
@@ -321,7 +308,7 @@ function renderFileAnalysed(event: RunEvent) {
                 </div>
                 {opp.rationale ? (
                   <p className="mt-1.5 text-xs text-white/40 leading-relaxed">
-                    <InlineMarkdown text={opp.rationale} />
+                    <RichText text={opp.rationale} />
                   </p>
                 ) : null}
                 {opp.approaches.length > 0 ? (
@@ -332,7 +319,7 @@ function renderFileAnalysed(event: RunEvent) {
                     <ol className="list-decimal list-inside space-y-1">
                       {opp.approaches.map((approach, approachIdx) => (
                         <li key={approachIdx} className="leading-relaxed">
-                          <InlineMarkdown text={approach} />
+                          <RichText text={approach} />
                         </li>
                       ))}
                     </ol>
@@ -411,7 +398,7 @@ function renderPatchApproachStarted(event: RunEvent) {
             ) : null}
             {detail.rationale ? (
               <p className="text-xs text-white/40 leading-relaxed">
-                <InlineMarkdown text={detail.rationale} />
+                <RichText text={detail.rationale} />
               </p>
             ) : null}
             {detail.approachDescFull ? (
@@ -420,7 +407,7 @@ function renderPatchApproachStarted(event: RunEvent) {
                   Full approach
                 </p>
                 <p className="text-xs text-white/60 leading-relaxed">
-                  <InlineMarkdown text={detail.approachDescFull} />
+                  <RichText text={detail.approachDescFull} />
                 </p>
               </div>
             ) : null}
@@ -506,7 +493,7 @@ function renderPatchApproachCompleted(event: RunEvent) {
 
             {detail.approachDescFull ? (
               <p className="text-xs text-white/50 leading-relaxed">
-                <InlineMarkdown text={detail.approachDescFull} />
+                <RichText text={detail.approachDescFull} />
               </p>
             ) : null}
 
@@ -531,7 +518,7 @@ function renderPatchApproachCompleted(event: RunEvent) {
                   Patch explanation
                 </p>
                 <p className="text-xs text-white/55 leading-relaxed">
-                  <InlineMarkdown text={detail.explanation} />
+                  <RichText text={detail.explanation} />
                 </p>
               </div>
             ) : null}
@@ -551,26 +538,16 @@ function renderPatchApproachCompleted(event: RunEvent) {
               </div>
             ) : null}
 
-            {detail.patchgenTries.length > 0 ? (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-white/40">
-                  Patch generation tries ({detail.patchgenTries.length})
-                </p>
-                {detail.patchgenTries.map((patchTry) => (
-                  <PatchGenTryCard key={patchTry.attemptNumber} patchTry={patchTry} />
-                ))}
+            {detail.diff ? (
+              <div>
+                <p className="text-xs font-medium text-white/40 mb-1.5">Code change</p>
+                <DiffViewer diff={detail.diff} />
               </div>
             ) : null}
 
             {detail.patchTrace ? (
               <MiniCollapsible label="Patch generation reasoning">
                 <PatchReasoningPanel trace={detail.patchTrace} />
-              </MiniCollapsible>
-            ) : null}
-
-            {detail.diff ? (
-              <MiniCollapsible label="View diff">
-                <DiffViewer diff={detail.diff} />
               </MiniCollapsible>
             ) : null}
           </div>
@@ -739,17 +716,34 @@ function renderValidationVerdict(event: RunEvent) {
 }
 
 function renderSelectionCompleted(event: RunEvent) {
-  const reason = event.data.reason as string | undefined;
+  const patchTitle = event.data.patch_title as string | undefined;
+  // Prefer the LLM verdict reason (added in newer runs); fall back to
+  // filtering out bare internal confidence labels from the legacy field.
+  const verdictReason = event.data.verdict_reason as string | undefined;
+  const legacyReason = event.data.reason as string | undefined;
+  const displayReason = verdictReason ?? _filterBareConfidenceLabel(legacyReason);
   return (
     <TimelineRow icon="🏆" phase="Selection" ts={event.ts} success>
-      Best approach selected
-      {reason ? (
-        <span className="text-white/30 text-xs ml-2">
-          — {reason}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span>
+          Best approach selected
+          {patchTitle ? (
+            <span className="text-white/50 ml-2">— {patchTitle}</span>
+          ) : null}
         </span>
-      ) : null}
+        {displayReason ? (
+          <span className="text-white/30 text-xs leading-relaxed">{displayReason}</span>
+        ) : null}
+      </div>
     </TimelineRow>
   );
+}
+
+/** Returns null when the string is just an internal confidence label. */
+function _filterBareConfidenceLabel(s: string | undefined): string | null {
+  if (!s) return null;
+  const bare = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+  return bare.test(s.trim()) ? null : s;
 }
 
 function renderRunCompleted(event: RunEvent) {
@@ -984,61 +978,6 @@ function MiniCollapsible({
   );
 }
 
-function PatchGenTryCard({ patchTry }: { patchTry: PatchGenTryDetail }) {
-  return (
-    <div className="rounded-md border border-white/[0.05] bg-black/10 px-3 py-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-white/70">Try {patchTry.attemptNumber}</span>
-        <span
-          className={`text-[10px] rounded px-1.5 py-0.5 ${
-            patchTry.success
-              ? "bg-emerald-500/10 text-emerald-300"
-              : "bg-red-500/10 text-red-300"
-          }`}
-        >
-          {patchTry.success ? "success" : "failed"}
-        </span>
-        {patchTry.estimatedLinesChanged > 0 ? (
-          <span className="text-[10px] text-white/25">
-            ~{patchTry.estimatedLinesChanged} lines
-          </span>
-        ) : null}
-      </div>
-      {patchTry.failureStage ? (
-        <p className="mt-1 text-[11px] text-red-300/70">
-          {patchTry.failureStage}
-          {patchTry.failureReason ? `: ${patchTry.failureReason}` : ""}
-        </p>
-      ) : null}
-      {patchTry.explanation ? (
-        <p className="mt-1 text-[11px] text-white/40">{patchTry.explanation}</p>
-      ) : null}
-      {patchTry.touchedFiles.length > 0 ? (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {patchTry.touchedFiles.map((f) => (
-            <span key={f} title={f}>
-              <Mono>{shortenPath(f)}</Mono>
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {patchTry.patchTrace ? (
-        <div className="mt-2">
-          <MiniCollapsible label="Try reasoning">
-            <PatchReasoningPanel trace={patchTry.patchTrace} />
-          </MiniCollapsible>
-        </div>
-      ) : null}
-      {patchTry.diff ? (
-        <div className="mt-2">
-          <MiniCollapsible label="Try diff">
-            <DiffViewer diff={patchTry.diff} />
-          </MiniCollapsible>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function parseDiscoveryFileOpportunities(value: unknown): DiscoveryFileOpportunity[] {
   if (!Array.isArray(value)) return [];
@@ -1134,40 +1073,7 @@ function parsePatchApproachCompletedDetail(
       typeof data.failure_stage === "string" ? data.failure_stage : null,
     failureReason:
       typeof data.failure_reason === "string" ? data.failure_reason : null,
-    patchgenTries: parsePatchGenTries(data.patchgen_tries),
   };
-}
-
-function parsePatchGenTries(value: unknown): PatchGenTryDetail[] {
-  if (!Array.isArray(value)) return [];
-  const result: PatchGenTryDetail[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object") continue;
-    const d = item as Record<string, unknown>;
-    const attemptNumber =
-      typeof d.attempt_number === "number" && Number.isFinite(d.attempt_number)
-        ? d.attempt_number
-        : 0;
-    const estimated =
-      typeof d.estimated_lines_changed === "number" &&
-      Number.isFinite(d.estimated_lines_changed)
-        ? d.estimated_lines_changed
-        : 0;
-    result.push({
-      attemptNumber,
-      success: Boolean(d.success),
-      failureStage: typeof d.failure_stage === "string" ? d.failure_stage : null,
-      failureReason: typeof d.failure_reason === "string" ? d.failure_reason : null,
-      diff: typeof d.diff === "string" ? d.diff : null,
-      explanation: typeof d.explanation === "string" ? d.explanation : null,
-      touchedFiles: Array.isArray(d.touched_files)
-        ? d.touched_files.filter((f): f is string => typeof f === "string")
-        : [],
-      estimatedLinesChanged: estimated,
-      patchTrace: parseThinkingTrace(d.patch_trace),
-    });
-  }
-  return result;
 }
 
 function parseValidationAttempts(value: unknown): ValidationAttemptSummary[] {
@@ -1291,23 +1197,40 @@ function shortenPath(path: string): string {
   return `…/${parts.slice(-2).join("/")}`;
 }
 
-function InlineMarkdown({ text }: { text: string }) {
-  const parts = text.split(/(`[^`]+`)/g);
+/**
+ * Renders text that may contain backtick-delimited code spans.
+ * Short code spans (≤50 chars) render inline; longer ones are promoted to
+ * their own block <pre> so they read like code in an IDE rather than
+ * awkward inline blobs inside a sentence.
+ */
+function RichText({ text }: { text: string }) {
+  const parts = text.split(/(`[^`\n]+`)/g);
   return (
-    <>
+    <span>
       {parts.map((part, i) => {
         if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+          const code = part.slice(1, -1);
+          if (code.length > 50) {
+            return (
+              <pre
+                key={i}
+                className="mt-1.5 mb-1 rounded bg-white/[0.05] px-3 py-2 text-[11px] font-mono text-emerald-300/80 whitespace-pre-wrap break-all"
+              >
+                {code}
+              </pre>
+            );
+          }
           return (
             <code
               key={i}
               className="font-mono text-emerald-300/80 bg-white/[0.06] rounded px-1 py-0.5 text-[11px] break-all"
             >
-              {part.slice(1, -1)}
+              {code}
             </code>
           );
         }
         return <span key={i}>{part}</span>;
       })}
-    </>
+    </span>
   );
 }

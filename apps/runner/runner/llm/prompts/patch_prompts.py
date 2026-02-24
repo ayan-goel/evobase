@@ -66,6 +66,7 @@ Search/replace format:
 Respond with ONLY this JSON structure:
 {{
   "reasoning": "<your detailed step-by-step thinking: what the code does now, why it's suboptimal, what the fix does, and why it's safe>",
+  "title": "<5-8 word imperative-mood title for this change, like a git commit subject line, e.g. 'Memoize Badge to cut redundant re-renders'>",
   "edits": [
     {{
       "file": "{file_path}",
@@ -80,6 +81,7 @@ Respond with ONLY this JSON structure:
 If you cannot produce a safe, correct edit, respond with:
 {{
   "reasoning": "<why you cannot produce the edit>",
+  "title": null,
   "edits": [],
   "explanation": null,
   "estimated_lines_changed": 0

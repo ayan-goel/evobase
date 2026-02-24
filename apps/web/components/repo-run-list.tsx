@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getProposalsByRun, getRuns } from "@/lib/api";
+import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { ProposalCard } from "@/components/proposal-card";
@@ -21,7 +21,6 @@ interface RepoRunListProps {
 }
 
 const POLL_INTERVAL_MS = 5000;
-const CLEARED_IDS_KEY = (repoId: string) => `clearedRunIds:${repoId}`;
 
 function hasActiveRun(runs: RunWithProposals[]): boolean {
   return runs.some((r) => r.status === "queued" || r.status === "running");
@@ -45,18 +44,11 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
 
 export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
-  const [clearedIds, setClearedIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const activeRunStatus = getActiveRunStatus(runs);
-
-  // Load persisted cleared IDs on mount (client-only)
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CLEARED_IDS_KEY(repoId));
-      if (stored) setClearedIds(new Set(JSON.parse(stored) as string[]));
-    } catch {
-      // ignore malformed localStorage
-    }
-  }, [repoId]);
 
   useEffect(() => {
     if (!hasActiveRun(runs)) return;
@@ -89,63 +81,131 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
     ]);
   }
 
-  function handleClear() {
-    const newCleared = new Set([...clearedIds, ...runs.map((r) => r.id)]);
-    localStorage.setItem(CLEARED_IDS_KEY(repoId), JSON.stringify([...newCleared]));
-    setClearedIds(newCleared);
+  function handleEnterSelect() {
+    setIsSelectMode(true);
+    setSelectedIds(new Set());
   }
 
-  function handleViewAll() {
-    localStorage.removeItem(CLEARED_IDS_KEY(repoId));
-    setClearedIds(new Set());
+  function handleExitSelect() {
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+    setPendingDelete(false);
   }
 
-  // Hide only runs that were explicitly cleared; active runs always visible
-  const visibleRuns = runs.filter((r) => !clearedIds.has(r.id));
+  function handleToggle(runId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(runId)) next.delete(runId);
+      else next.add(runId);
+      return next;
+    });
+  }
 
-  const hiddenCount = runs.length - visibleRuns.length;
+  async function handleConfirmDelete() {
+    setIsDeleting(true);
+    const ids = [...selectedIds];
+    await Promise.allSettled(ids.map((id) => deleteRun(id)));
+    setRuns((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+    setIsDeleting(false);
+    setPendingDelete(false);
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+  }
 
   return (
     <>
       <OnboardingBanner runs={runs} />
 
-      <div className="mb-6 flex items-center gap-2">
+      <div className="mb-6 flex items-center gap-2 flex-wrap">
         <TriggerRunButton
           repoId={repoId}
           onQueued={handleQueued}
           activeStatus={activeRunStatus}
         />
-        {runs.length > 0 && (
+
+        {!isSelectMode && runs.length > 0 && (
           <button
             type="button"
-            onClick={handleClear}
+            onClick={handleEnterSelect}
             className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
           >
-            Clear
+            Select
           </button>
         )}
-        {hiddenCount > 0 && (
-          <button
-            type="button"
-            onClick={handleViewAll}
-            className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
-          >
-            View all runs
-          </button>
+
+        {isSelectMode && (
+          <>
+            <button
+              type="button"
+              onClick={handleExitSelect}
+              className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingDelete(true)}
+              disabled={selectedIds.size === 0}
+              className="rounded-lg border border-red-500/30 bg-red-500/[0.08] px-4 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+            </button>
+          </>
         )}
       </div>
 
-      {visibleRuns.length === 0 ? (
+      {/* Delete confirmation dialog */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setPendingDelete(false)}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-white/[0.08] bg-[#111] p-6 shadow-2xl">
+            <h2 className="text-sm font-semibold text-white">Delete runs?</h2>
+            <p className="mt-2 text-xs text-white/50">
+              Are you sure you want to delete{" "}
+              <span className="text-white/80 font-medium">
+                {selectedIds.size} run{selectedIds.size !== 1 ? "s" : ""}
+              </span>
+              ? This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(false)}
+                disabled={isDeleting}
+                className="rounded-lg border border-white/15 bg-white/[0.05] px-4 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="rounded-lg border border-red-500/30 bg-red-500/[0.08] px-4 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-40"
+              >
+                {isDeleting ? "Deleting…" : "Yes, delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {runs.length === 0 ? (
         <EmptyRuns />
       ) : (
         <div className="space-y-4">
-          {visibleRuns.map((run) => (
+          {runs.map((run) => (
             <RunCard
               key={run.id}
               run={run}
               proposals={run.proposals}
               repoId={repoId}
               setupFailing={setupFailing}
+              isSelectMode={isSelectMode}
+              isSelected={selectedIds.has(run.id)}
+              onToggleSelect={() => handleToggle(run.id)}
             />
           ))}
         </div>
@@ -365,11 +425,17 @@ function RunCard({
   proposals,
   repoId,
   setupFailing,
+  isSelectMode,
+  isSelected,
+  onToggleSelect,
 }: {
   run: Run;
   proposals: Proposal[];
   repoId: string;
   setupFailing: boolean;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [prDialogOpen, setPrDialogOpen] = useState(false);
@@ -404,7 +470,21 @@ function RunCard({
         />
       )}
 
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition-colors hover:border-white/[0.12]">
+      <div className="flex items-start gap-3">
+        {isSelectMode && (
+          <button
+            type="button"
+            aria-label={isSelected ? "Deselect run" : "Select run"}
+            onClick={onToggleSelect}
+            className="mt-4 shrink-0 flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-white/[0.04] transition-colors hover:border-white/40 focus:outline-none"
+          >
+            {isSelected && (
+              <span className="block h-2 w-2 rounded-sm bg-red-400" />
+            )}
+          </button>
+        )}
+
+      <div className="flex-1 rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition-colors hover:border-white/[0.12]">
         {/* Header row */}
         <div className="flex items-center gap-3 flex-wrap">
           <Link
@@ -508,6 +588,7 @@ function RunCard({
             </div>
           )}
         </div>
+      </div>
       </div>
     </>
   );

@@ -265,6 +265,7 @@ class Proposal(Base):
         ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
     )
     diff: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(Text)
     summary: Mapped[Optional[str]] = mapped_column(Text)
     metrics_before: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     metrics_after: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)

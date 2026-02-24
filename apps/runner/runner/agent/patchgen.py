@@ -422,6 +422,7 @@ def _parse_patch_response_detailed(
     if not isinstance(edits, list):
         return None, PATCHGEN_FAILURE_STAGE_JSON_PARSE, "'edits' is not a list"
 
+    title = str(data.get("title") or "")
     explanation = str(data.get("explanation") or "")
     estimated = int(data.get("estimated_lines_changed", 0) or 0)
 
@@ -453,6 +454,7 @@ def _parse_patch_response_detailed(
     return AgentPatch(
         diff=combined_diff,
         explanation=explanation,
+        title=title,
         touched_files=touched_files,
         estimated_lines_changed=estimated,
         thinking_trace=thinking_trace,

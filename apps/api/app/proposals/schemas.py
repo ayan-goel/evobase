@@ -32,6 +32,7 @@ class ProposalResponse(BaseModel):
     # without a separate lookup.
     repo_id: uuid.UUID
     diff: str
+    title: Optional[str] = None
     summary: Optional[str]
     metrics_before: Optional[dict[str, Any]]
     metrics_after: Optional[dict[str, Any]]
@@ -74,6 +75,7 @@ class ProposalResponse(BaseModel):
             run_id=proposal.run_id,
             repo_id=proposal.run.repo_id,
             diff=proposal.diff,
+            title=proposal.title,
             summary=proposal.summary,
             metrics_before=proposal.metrics_before,
             metrics_after=proposal.metrics_after,

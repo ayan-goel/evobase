@@ -94,6 +94,7 @@ export interface Proposal {
   run_id: string;
   repo_id: string;
   diff: string;
+  title?: string | null;
   summary: string | null;
   metrics_before: Metrics | null;
   metrics_after: Metrics | null;

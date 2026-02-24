@@ -297,6 +297,13 @@ async def run_agent_cycle(
             _emit("selection.completed", "selection", {
                 "index": candidates_attempted,
                 "reason": selection_reason,
+                # LLM-generated acceptance verdict — more meaningful than confidence label
+                "verdict_reason": (
+                    winner_candidate.final_verdict.reason
+                    if winner_candidate.final_verdict
+                    else None
+                ),
+                "patch_title": winning_patch.title if winning_patch and winning_patch.title else None,
             })
 
         agent_run.patches.append(winning_patch)

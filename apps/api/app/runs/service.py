@@ -679,6 +679,7 @@ def _write_proposals_to_db(
                 proposal_row = Proposal(
                     run_id=uuid.UUID(run_id),
                     diff=patch.diff if patch else "",
+                    title=patch.title or None if patch else None,
                     summary=agent_opp.rationale or agent_opp.type,
                     risk_score=float(agent_opp.risk_score),
                     confidence=candidate.final_verdict.confidence,
