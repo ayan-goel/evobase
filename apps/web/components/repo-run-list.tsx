@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { OnboardingBanner } from "@/components/onboarding-banner";
@@ -385,12 +385,12 @@ function deriveStatus(events: RunEvent[]): DerivedStatus {
   };
 }
 
-function _truncatePath(path: string): string {
-  if (!path) return "";
-  const parts = path.split("/");
-  if (parts.length <= 3) return path;
-  return "…/" + parts.slice(-2).join("/");
-}
+// LiveRunSummary — compact live status for active run cards
+// ---------------------------------------------------------------------------
+
+const LiveRunSummary = React.memo(function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
+  const { events, isDone } = useRunEvents(runId, true);
+  const status = useMemo(() => deriveStatus(events), [events]);
 
 // ---------------------------------------------------------------------------
 // LiveRunSummary — compact live status for active run cards
@@ -463,13 +463,13 @@ function LiveRunSummary({ runId, repoId }: { runId: string; repoId: string }) {
               </span>
             </div>
           ))}
-        </div>
-      )}
+      </Link>
+    </div>
+  );
+});
 
-      <Link
-        href={`/repos/${repoId}/runs/${runId}`}
-        className="inline-block text-xs text-blue-400/50 hover:text-blue-400/80 transition-colors"
-      >
+// ---------------------------------------------------------------------------
+// Terminal run summary helpers
         View live details →
       </Link>
     </div>
