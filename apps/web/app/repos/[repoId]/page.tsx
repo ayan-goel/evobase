@@ -22,6 +22,7 @@ interface RepoPageData {
 
 /** Presentational view — tested in isolation with mock data. */
 export function RepoView({ repo, runs }: RepoPageData) {
+  const displayName = repoDisplayName(repo);
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -31,14 +32,14 @@ export function RepoView({ repo, runs }: RepoPageData) {
             Dashboard
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-white/70">{repoDisplayName(repo)}</span>
+          <span className="text-white/70">{displayName}</span>
         </nav>
 
         {/* Repo header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
-              {repoDisplayName(repo)}
+              {displayName}
             </h1>
             <div className="mt-1.5 flex items-center gap-3 text-sm text-white/50">
               <span>{repo.default_branch}</span>
