@@ -64,24 +64,39 @@ describe("ProposalCard", () => {
     expect(screen.getByText("View →")).toBeDefined();
   });
 
-  it("renders metrics delta when metrics available", () => {
+  it("renders changed file name and +/- counts from diff", () => {
     const proposal = makeProposal({
-      metrics_before: {
-        is_success: true,
-        total_duration_seconds: 5.0,
-        step_count: 1,
-        steps: [{ name: "test", exit_code: 0, duration_seconds: 5.0, is_success: true }],
-      } as Proposal["metrics_before"],
-      metrics_after: {
-        is_success: true,
-        total_duration_seconds: 4.5,
-        step_count: 1,
-        steps: [{ name: "test", exit_code: 0, duration_seconds: 4.5, is_success: true }],
-      } as Proposal["metrics_after"],
+      diff: "--- a/src/utils.ts\n+++ b/src/utils.ts\n@@ -1,4 +1,5 @@\n context\n-old line\n+new line 1\n+new line 2\n context\n",
     });
     render(<ProposalCard proposal={proposal} />);
-    // Should show some test time metric
-    expect(screen.getByText(/Test time/)).toBeDefined();
+    expect(screen.getByText("src/utils.ts")).toBeDefined();
+    expect(screen.getByText("+2")).toBeDefined();
+    expect(screen.getByText("−1")).toBeDefined();
+  });
+
+  it("shows only last two path segments for deep paths", () => {
+    const proposal = makeProposal({
+      diff: "--- a/apps/web/components/Foo.tsx\n+++ b/apps/web/components/Foo.tsx\n@@ -1 +1 @@\n-x\n+y\n",
+    });
+    render(<ProposalCard proposal={proposal} />);
+    expect(screen.getByText("components/Foo.tsx")).toBeDefined();
+  });
+
+  it("shows overflow indicator when more than 3 files changed", () => {
+    const files = ["a.ts", "b.ts", "c.ts", "d.ts"];
+    const diff = files
+      .map((f) => `--- a/${f}\n+++ b/${f}\n@@ -1 +1 @@\n-x\n+y\n`)
+      .join("");
+    const proposal = makeProposal({ diff });
+    render(<ProposalCard proposal={proposal} />);
+    expect(screen.getByText("+1 more file")).toBeDefined();
+  });
+
+  it("shows nothing when diff is empty", () => {
+    const proposal = makeProposal({ diff: "" });
+    render(<ProposalCard proposal={proposal} />);
+    // No file rows rendered — just summary and footer
+    expect(screen.queryByText(/more file/)).toBeNull();
   });
 
   it("renders as a button (not a link)", () => {

@@ -11,8 +11,7 @@ interface ProposalCardProps {
 
 /** Compact proposal card — click fires onSelect to open the detail drawer. */
 export function ProposalCard({ proposal, onSelect, className }: ProposalCardProps) {
-  const testDelta = _testDurationDelta(proposal);
-  const benchDelta = _benchDurationDelta(proposal);
+  const fileStats = _parseDiffFiles(proposal.diff);
 
   return (
     <div
@@ -31,14 +30,31 @@ export function ProposalCard({ proposal, onSelect, className }: ProposalCardProp
         {proposal.title ?? proposal.summary ?? "Optimization proposal"}
       </p>
 
-      {/* Metrics delta row */}
-      {(testDelta !== null || benchDelta !== null) && (
-        <div className="mt-3 flex flex-wrap gap-3">
-          {testDelta !== null && (
-            <MetricDelta label="Test time" delta={testDelta} unit="s" />
-          )}
-          {benchDelta !== null && (
-            <MetricDelta label="Bench" delta={benchDelta} unit="s" />
+      {/* Changed files row */}
+      {fileStats.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {fileStats.slice(0, 3).map((f) => (
+            <div key={f.file} className="flex items-center gap-2 min-w-0">
+              <span className="shrink-0 text-white/20">
+                <FileIcon />
+              </span>
+              <span className="truncate text-xs text-white/50 font-mono min-w-0 flex-1">
+                {f.file}
+              </span>
+              <span className="shrink-0 flex items-center gap-1 text-xs font-mono tabular-nums">
+                {f.added > 0 && (
+                  <span className="text-emerald-400">+{f.added}</span>
+                )}
+                {f.removed > 0 && (
+                  <span className="text-red-400">−{f.removed}</span>
+                )}
+              </span>
+            </div>
+          ))}
+          {fileStats.length > 3 && (
+            <p className="text-xs text-white/25 pl-5">
+              +{fileStats.length - 3} more file{fileStats.length - 3 !== 1 ? "s" : ""}
+            </p>
           )}
         </div>
       )}
@@ -61,56 +77,57 @@ export function ProposalCard({ proposal, onSelect, className }: ProposalCardProp
   );
 }
 
-function MetricDelta({
-  label,
-  delta,
-  unit,
-}: {
-  label: string;
-  delta: number;
-  unit: string;
-}) {
-  const improved = delta < 0;
-  const sign = improved ? "−" : "+";
-  const abs = Math.abs(delta).toFixed(2);
-
+function FileIcon() {
   return (
-    <span
-      className={cn(
-        "text-xs font-medium rounded-full px-2 py-0.5 border",
-        improved
-          ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
-          : "bg-red-500/10 text-red-300 border-red-500/20",
-      )}
-    >
-      {label}: {sign}{abs}{unit}
-    </span>
+    <svg width="10" height="12" viewBox="0 0 10 12" fill="none" aria-hidden="true">
+      <path
+        d="M6 1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4L6 1Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M6 1v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
   );
 }
 
-function _testDurationDelta(proposal: Proposal): number | null {
-  const before = _findStepDuration(proposal.metrics_before, "test");
-  const after = _findStepDuration(proposal.metrics_after, "test");
-  if (before === null || after === null) return null;
-  return after - before;
+interface FileDiffStats {
+  file: string;
+  added: number;
+  removed: number;
 }
 
-function _benchDurationDelta(proposal: Proposal): number | null {
-  const before = proposal.metrics_before?.bench_result?.duration_seconds ?? null;
-  const after = proposal.metrics_after?.bench_result?.duration_seconds ?? null;
-  if (before === null || after === null) return null;
-  return (after as number) - (before as number);
-}
+/**
+ * Parse a unified diff string and return per-file added/removed line counts.
+ * Shows the two innermost path segments for readability (e.g. "components/Foo.tsx").
+ */
+function _parseDiffFiles(diff: string): FileDiffStats[] {
+  if (!diff) return [];
 
-function _findStepDuration(
-  metrics: Proposal["metrics_before"],
-  stepName: string,
-): number | null {
-  if (!metrics?.steps) return null;
-  const step = (metrics.steps as Array<{ name: string; duration_seconds: number }>).find(
-    (s) => s.name === stepName,
-  );
-  return step?.duration_seconds ?? null;
+  const files: FileDiffStats[] = [];
+  let current: FileDiffStats | null = null;
+
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ b/") || line.startsWith("+++ ")) {
+      const rawPath = line.startsWith("+++ b/")
+        ? line.slice(6)
+        : line.slice(4);
+      const parts = rawPath.trim().split("/");
+      const displayPath = parts.length > 2
+        ? parts.slice(-2).join("/")
+        : rawPath.trim();
+      current = { file: displayPath, added: 0, removed: 0 };
+      files.push(current);
+    } else if (current) {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        current.added++;
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        current.removed++;
+      }
+    }
+  }
+
+  return files;
 }
 
 function _formatRelative(iso: string): string {
