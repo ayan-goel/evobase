@@ -108,10 +108,7 @@ function renderBaselineAttemptStarted(event: RunEvent) {
   const mode = event.data.mode as string | undefined;
   return (
     <TimelineRow icon="▶" phase="Baseline" ts={event.ts}>
-      Starting baseline attempt {attempt}{" "}
-      <Badge variant={mode === "adaptive" ? "warn" : "default"}>
-        {mode}
-      </Badge>
+      Starting baseline attempt {attempt}
     </TimelineRow>
   );
 }
