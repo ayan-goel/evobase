@@ -3,11 +3,10 @@ import { getProposal, getArtifactSignedUrl } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { DiffViewer } from "@/components/diff-viewer";
-import { TraceTimeline } from "@/components/trace-timeline";
 import { CreatePRButton } from "@/components/create-pr-button";
 import { AgentReasoning } from "@/components/agent-reasoning";
 import { PatchVariants } from "@/components/patch-variants";
-import type { Artifact, Metrics, Proposal, ThinkingTrace, TraceAttempt } from "@/lib/types";
+import type { Artifact, Metrics, Proposal, ThinkingTrace } from "@/lib/types";
 
 export const metadata = { title: "Proposal — Coreloop" };
 
@@ -18,8 +17,6 @@ interface ProposalPageData {
 
 /** Presentational view — tested in isolation with mock data. */
 export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
-  const traceAttempts = _extractTraceAttempts(proposal);
-
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -103,13 +100,6 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
                 discoveryTrace={_extractDiscoveryTrace(proposal)}
                 patchTrace={_extractPatchTrace(proposal)}
               />
-            </Section>
-          )}
-
-          {/* Trace timeline */}
-          {traceAttempts.length > 0 && (
-            <Section title="Validation trace">
-              <TraceTimeline attempts={traceAttempts} />
             </Section>
           )}
 
@@ -202,13 +192,6 @@ function MetricsCard({
       </div>
     </div>
   );
-}
-
-function _extractTraceAttempts(proposal: Proposal): TraceAttempt[] {
-  // The trace timeline is stored as an artifact (trace.json).
-  // For MVP, we reconstruct attempts from the proposal's metrics as a
-  // single-attempt summary. The full trace is available via the evidence link.
-  return [];
 }
 
 function _extractRepoId(proposal: Proposal): string {
