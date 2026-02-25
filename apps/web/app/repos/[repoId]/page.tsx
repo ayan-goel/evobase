@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getRepo, getRuns, getProposalsByRun } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { RepoRunList } from "@/components/repo-run-list";
@@ -89,8 +90,22 @@ export default async function RepoPage({
         return { ...run, proposals };
       }),
     );
-  } catch {
-    // API not reachable — show fallback
+  } catch (err: unknown) {
+    const status =
+      (err as { status?: number; statusCode?: number })?.status ??
+      (err as { status?: number; statusCode?: number })?.statusCode;
+
+    if (status === 404) {
+      // Repo genuinely does not exist — return a proper 404 response.
+      notFound();
+    }
+
+    // For all other errors (401, 5xx, network failures) log and re-throw so
+    // the Next.js error boundary (error.tsx) handles them. This prevents a
+    // transient infrastructure failure from silently masquerading as a missing
+    // repo and makes each failure class independently observable.
+    console.error(`[RepoPage] Failed to load repo "${repoId}":`, err);
+    throw err;
   }
 
   if (!repo) {
