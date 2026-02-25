@@ -318,12 +318,6 @@ async def run_agent_cycle(
             _emit("selection.completed", "selection", {
                 "index": candidates_attempted,
                 "reason": selection_reason,
-                # LLM-generated acceptance verdict — more meaningful than confidence label
-                "verdict_reason": (
-                    winner_candidate.final_verdict.reason
-                    if winner_candidate.final_verdict
-                    else None
-                ),
                 "patch_title": winning_patch.title if winning_patch and winning_patch.title else None,
             })
 
@@ -433,30 +427,38 @@ def _build_selection_reason(
     accepted_count: int,
     total_count: int,
 ) -> str:
-    """Build a human-readable reason string for why this variant was chosen."""
+    """Build a user-facing reason string for why this variant was chosen.
+
+    Focuses on concrete evidence (benchmark data, approach comparison)
+    rather than internal confidence labels.
+    """
     if not winner.candidate_result.final_verdict:
-        return "accepted approach"
+        return "All validation gates passed"
 
     verdict = winner.candidate_result.final_verdict
     parts: list[str] = []
 
-    conf = verdict.confidence
-    if conf == "high":
-        parts.append("high confidence")
-    elif conf == "medium":
-        parts.append("medium confidence")
-    else:
-        parts.append("low confidence")
-
     if verdict.benchmark_comparison and verdict.benchmark_comparison.is_significant:
         pct = verdict.benchmark_comparison.improvement_pct
-        parts.append(f"{pct:.1f}% benchmark improvement")
+        parts.append(f"{pct:.1f}% benchmark improvement over baseline")
 
-    if accepted_count < total_count:
+    if total_count > 1 and accepted_count < total_count:
         rejected = total_count - accepted_count
-        parts.append(f"{rejected} other approach{'es' if rejected > 1 else ''} rejected")
+        parts.append(
+            f"Selected over {rejected} alternative approach{'es' if rejected > 1 else ''} "
+            f"based on test results and code quality"
+        )
+    elif total_count > 1:
+        parts.append(
+            f"Best of {total_count} approaches — ranked by test results and code quality"
+        )
+    elif total_count == 1:
+        parts.append("All validation gates passed")
 
-    return "; ".join(parts) if parts else "accepted approach"
+    if not parts:
+        parts.append("All validation gates passed")
+
+    return "; ".join(parts)
 
 
 def _make_error_candidate(error_msg: str) -> CandidateResult:

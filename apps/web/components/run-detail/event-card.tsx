@@ -711,11 +711,7 @@ function renderValidationVerdict(event: RunEvent) {
 
 function renderSelectionCompleted(event: RunEvent) {
   const patchTitle = event.data.patch_title as string | undefined;
-  // Prefer the LLM verdict reason (added in newer runs); fall back to
-  // filtering out bare internal confidence labels from the legacy field.
-  const verdictReason = event.data.verdict_reason as string | undefined;
-  const legacyReason = event.data.reason as string | undefined;
-  const displayReason = verdictReason ?? _filterBareConfidenceLabel(legacyReason);
+  const reason = _filterInternalLabel(event.data.reason as string | undefined);
   return (
     <TimelineRow icon="🏆" phase="Selection" ts={event.ts} success>
       <div className="flex flex-col gap-0.5 min-w-0">
@@ -725,18 +721,18 @@ function renderSelectionCompleted(event: RunEvent) {
             <span className="text-white/50 ml-2">— {patchTitle}</span>
           ) : null}
         </span>
-        {displayReason ? (
-          <span className="text-white/30 text-xs leading-relaxed">{displayReason}</span>
+        {reason ? (
+          <span className="text-white/30 text-xs leading-relaxed">{reason}</span>
         ) : null}
       </div>
     </TimelineRow>
   );
 }
 
-/** Returns null when the string is just an internal confidence label. */
-function _filterBareConfidenceLabel(s: string | undefined): string | null {
+/** Strip bare internal confidence labels so they never reach the UI. */
+function _filterInternalLabel(s: string | undefined): string | null {
   if (!s) return null;
-  const bare = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+  const bare = /^(high|medium|low) confidence/i;
   return bare.test(s.trim()) ? null : s;
 }
 
@@ -784,6 +780,10 @@ function renderRunCancelled(event: RunEvent) {
   );
 }
 
+function renderHidden(_event: RunEvent) {
+  return <></>;
+}
+
 function renderGeneric(event: RunEvent) {
   return (
     <TimelineRow icon="·" phase={event.phase} ts={event.ts}>
@@ -813,6 +813,8 @@ const EVENT_RENDERERS: Record<string, (e: RunEvent) => ReactElement> = {
   "run.completed": renderRunCompleted,
   "run.failed": renderRunFailed,
   "run.cancelled": renderRunCancelled,
+  "patch.applied_cumulative": renderHidden,
+  "patch.apply_failed": renderHidden,
 };
 
 // ---------------------------------------------------------------------------

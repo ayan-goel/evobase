@@ -127,7 +127,7 @@ class TestSelectBestVariant:
         ]
         idx, reason = _select_best_variant(variants)
         assert idx == 1
-        assert "high confidence" in reason
+        assert "best of" in reason.lower()
 
     def test_prefers_medium_over_low_confidence(self) -> None:
         variants = [
@@ -169,7 +169,7 @@ class TestSelectBestVariant:
             _make_variant(2, "C", accepted=True, confidence=CONFIDENCE_MEDIUM),
         ]
         _, reason = _select_best_variant(variants)
-        assert "rejected" in reason
+        assert "2 alternative" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -199,20 +199,20 @@ class TestConfidenceRank:
 # ---------------------------------------------------------------------------
 
 class TestBuildSelectionReason:
-    def test_high_confidence_in_reason(self) -> None:
+    def test_single_approach_mentions_validation(self) -> None:
         v = _make_variant(0, "A", accepted=True, confidence=CONFIDENCE_HIGH)
         reason = _build_selection_reason(v, 1, 1)
-        assert "high confidence" in reason
+        assert "validation" in reason.lower()
 
     def test_benchmark_improvement_in_reason(self) -> None:
         v = _make_variant(0, "A", accepted=True, confidence=CONFIDENCE_HIGH, improvement_pct=7.2)
         reason = _build_selection_reason(v, 1, 1)
         assert "7.2%" in reason
 
-    def test_rejected_count_in_reason(self) -> None:
+    def test_multiple_approaches_mentions_alternatives(self) -> None:
         v = _make_variant(0, "A", accepted=True, confidence=CONFIDENCE_MEDIUM)
         reason = _build_selection_reason(v, 1, 3)
-        assert "rejected" in reason
+        assert "alternative" in reason.lower() or "selected over" in reason.lower()
 
     def test_no_verdict_returns_fallback(self) -> None:
         v = PatchVariantResult(
@@ -222,4 +222,11 @@ class TestBuildSelectionReason:
             candidate_result=CandidateResult(attempts=[], final_verdict=None, is_accepted=False),
         )
         reason = _build_selection_reason(v, 1, 1)
-        assert reason == "accepted approach"
+        assert "validation" in reason.lower()
+
+    def test_reason_does_not_contain_confidence_label(self) -> None:
+        v = _make_variant(0, "A", accepted=True, confidence=CONFIDENCE_MEDIUM)
+        reason = _build_selection_reason(v, 1, 1)
+        assert "medium confidence" not in reason.lower()
+        assert "high confidence" not in reason.lower()
+        assert "low confidence" not in reason.lower()
