@@ -630,9 +630,17 @@ function renderOpportunityFound(event: RunEvent) {
 
 function renderDiscoveryCompleted(event: RunEvent) {
   const count = (event.data.count as number | undefined) ?? 0;
+  const filesAnalysed = event.data.files_analysed as number | undefined;
+  const filesSelected = event.data.files_selected as number | undefined;
+  const showFileStats = filesAnalysed != null && filesSelected != null && filesAnalysed < filesSelected;
   return (
     <TimelineRow icon="✓" phase="Discovery" ts={event.ts} success>
       Discovery complete — {count} opportunit{count === 1 ? "y" : "ies"} found
+      {showFileStats ? (
+        <span className="text-white/20 text-xs ml-1">
+          ({filesAnalysed}/{filesSelected} files analysed)
+        </span>
+      ) : null}
     </TimelineRow>
   );
 }

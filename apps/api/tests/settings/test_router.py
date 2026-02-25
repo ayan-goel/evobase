@@ -35,7 +35,7 @@ class TestGetSettings:
         assert data["repo_id"] == str(STUB_REPO_ID)
         assert data["compute_budget_minutes"] == 60
         assert data["max_proposals_per_run"] == 10
-        assert data["max_candidates_per_run"] == 12
+        assert data["max_candidates_per_run"] == 20
         assert data["paused"] is False
         assert data["consecutive_setup_failures"] == 0
         assert data["consecutive_flaky_runs"] == 0

@@ -51,7 +51,7 @@ from runner.validator.types import BaselineResult, CandidateResult
 logger = logging.getLogger(__name__)
 
 # Default maximum patch attempts per run (overridden by Settings.max_candidates_per_run)
-DEFAULT_MAX_CANDIDATES = 12
+DEFAULT_MAX_CANDIDATES = 20
 
 # Maximum approach variants to try per opportunity
 MAX_PATCH_APPROACHES = 3
@@ -134,6 +134,7 @@ async def run_agent_cycle(
         config=llm_config,
         seen_signatures=seen_signatures,
         on_event=on_event,
+        max_opportunities=max_candidates,
     )
     agent_run.opportunities = opportunities
 

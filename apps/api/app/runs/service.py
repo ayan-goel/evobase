@@ -172,7 +172,7 @@ class RunService:
                 llm_provider = settings.llm_provider if settings else "openai"
                 llm_model = settings.llm_model if settings else "gpt-4.1"
                 max_candidates = (
-                    settings.max_candidates_per_run if settings else 12
+                    settings.max_candidates_per_run if settings else 20
                 )
                 max_proposals = (
                     settings.max_proposals_per_run if settings else 10
@@ -512,10 +512,6 @@ class RunService:
                 "Run %s: agent cycle done — %d attempted, %d accepted",
                 run_id, cycle_result.total_attempted, cycle_result.accepted_count,
             )
-
-            emit("discovery.completed", "discovery", {
-                "count": len(cycle_result.opportunity_for_candidate),
-            })
 
             # ----------------------------------------------------------------
             # Step 9: Write proposals + opportunities + attempts to DB

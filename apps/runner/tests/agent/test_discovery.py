@@ -635,7 +635,7 @@ class TestDiscoverOpportunitiesCallback:
         assert analysed[2]["opportunities"] == []
 
     async def test_callback_event_order(self, tmp_path: Path) -> None:
-        """files.selected → file.analysing → file.analysed (per file)."""
+        """files.selected → file.analysing → file.analysed (per file) → discovery.completed."""
         (tmp_path / "a.ts").write_text("code")
         (tmp_path / "b.ts").write_text("code")
 
@@ -665,6 +665,7 @@ class TestDiscoverOpportunitiesCallback:
         assert emitted[2] == "discovery.file.analysed"
         assert emitted[3] == "discovery.file.analysing"
         assert emitted[4] == "discovery.file.analysed"
+        assert emitted[5] == "discovery.completed"
 
     async def test_callback_is_optional(self, tmp_path: Path) -> None:
         """Omitting on_event should not raise any errors."""
@@ -714,6 +715,126 @@ class TestDiscoverOpportunitiesCallback:
             on_event=bad_callback,
         )
         assert len(result) == 1
+
+
+class TestDiscoverOpportunitiesBudget:
+    """Tests for the max_opportunities budget cap in discover_opportunities()."""
+
+    def _opp_json(self, file: str, idx: int) -> dict:
+        return {
+            "type": "performance",
+            "location": f"{file}:{idx}",
+            "rationale": "slow",
+            "approach": "fix",
+            "risk_level": "low",
+            "affected_lines": 1,
+        }
+
+    async def test_stops_analysing_files_when_budget_reached(self, tmp_path: Path) -> None:
+        """With 3 files selected and max_opportunities=2, should stop after finding enough."""
+        for name in ("a.ts", "b.ts", "c.ts"):
+            (tmp_path / name).write_text("code")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["a.ts", "b.ts", "c.ts"]}),
+            _make_response({"opportunities": [self._opp_json("a.ts", 1), self._opp_json("a.ts", 2)]}),
+            # b.ts and c.ts should NOT be analysed
+        ])
+
+        result = await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            max_opportunities=2,
+        )
+
+        assert len(result) == 2
+        # Only 2 LLM calls: file selection + a.ts analysis (b.ts/c.ts skipped)
+        assert mock_provider.complete.call_count == 2
+
+    async def test_zero_budget_means_no_cap(self, tmp_path: Path) -> None:
+        """max_opportunities=0 should analyse all files."""
+        for name in ("a.ts", "b.ts"):
+            (tmp_path / name).write_text("code")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["a.ts", "b.ts"]}),
+            _make_response({"opportunities": [self._opp_json("a.ts", 1)]}),
+            _make_response({"opportunities": [self._opp_json("b.ts", 1)]}),
+        ])
+
+        result = await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            max_opportunities=0,
+        )
+
+        assert len(result) == 2
+        assert mock_provider.complete.call_count == 3
+
+    async def test_completed_event_includes_file_stats(self, tmp_path: Path) -> None:
+        """discovery.completed event should report files_analysed and files_selected."""
+        for name in ("a.ts", "b.ts", "c.ts"):
+            (tmp_path / name).write_text("code")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["a.ts", "b.ts", "c.ts"]}),
+            _make_response({"opportunities": [
+                self._opp_json("a.ts", 1),
+                self._opp_json("a.ts", 2),
+                self._opp_json("a.ts", 3),
+            ]}),
+            # b.ts and c.ts skipped because budget is 2
+        ])
+
+        emitted: list[tuple[str, str, dict]] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            max_opportunities=2,
+            on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+        )
+
+        completed = next(e for e in emitted if e[0] == "discovery.completed")
+        assert completed[2]["files_analysed"] == 1
+        assert completed[2]["files_selected"] == 3
+
+    async def test_all_files_analysed_when_budget_not_reached(self, tmp_path: Path) -> None:
+        """When opportunities < budget, all files are analysed."""
+        for name in ("a.ts", "b.ts"):
+            (tmp_path / name).write_text("code")
+
+        mock_provider = MagicMock()
+        mock_provider.complete = AsyncMock(side_effect=[
+            _make_response({"files": ["a.ts", "b.ts"]}),
+            _make_response({"opportunities": [self._opp_json("a.ts", 1)]}),
+            _make_response({"opportunities": [self._opp_json("b.ts", 1)]}),
+        ])
+
+        emitted: list[tuple[str, str, dict]] = []
+
+        await discover_opportunities(
+            repo_dir=tmp_path,
+            detection=_make_detection(),
+            provider=mock_provider,
+            config=_make_config(),
+            max_opportunities=10,
+            on_event=lambda et, ph, data: emitted.append((et, ph, data)),
+        )
+
+        completed = next(e for e in emitted if e[0] == "discovery.completed")
+        assert completed[2]["files_analysed"] == 2
+        assert completed[2]["files_selected"] == 2
+        assert completed[2]["count"] == 2
 
 
 class TestDiscoverOpportunitiesDeduplication:

@@ -79,6 +79,7 @@ async def discover_opportunities(
     config: LLMConfig,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
     on_event: Optional[EventCallback] = None,
+    max_opportunities: int = 0,
 ) -> list[AgentOpportunity]:
     """Run the two-stage discovery pipeline and return all opportunities.
 
@@ -93,6 +94,9 @@ async def discover_opportunities(
             so the same suggestion is never re-proposed.
         on_event: Optional callback invoked as on_event(event_type, phase, data)
             for each significant discovery step. Used for real-time streaming.
+        max_opportunities: When positive, stop analyzing files once this many
+            opportunities have been collected. Avoids paying discovery cost for
+            opportunities that would exceed the candidate budget. 0 means no cap.
 
     Returns:
         List of `AgentOpportunity` objects sorted by risk score ascending
@@ -122,11 +126,19 @@ async def discover_opportunities(
         "files": selected_files,
     })
 
-    # Stage 2: per-file analysis
+    # Stage 2: per-file analysis — stop early once we have enough opportunities
     all_opportunities: list[AgentOpportunity] = []
     capped_files = selected_files[:MAX_FILES_TO_ANALYSE]
+    files_analysed = 0
 
     for file_index, rel_path in enumerate(capped_files):
+        if max_opportunities > 0 and len(all_opportunities) >= max_opportunities:
+            logger.info(
+                "Reached opportunity budget (%d); skipping remaining %d file(s)",
+                max_opportunities, len(capped_files) - file_index,
+            )
+            break
+
         file_path = repo_dir / rel_path
         if not file_path.is_file():
             logger.warning("Selected file not found: %s", rel_path)
@@ -141,6 +153,7 @@ async def discover_opportunities(
             rel_path, file_path, system_prompt, provider, config,
             seen_signatures=seen_signatures,
         )
+        files_analysed += 1
         _emit("discovery.file.analysed", {
             "file": rel_path,
             "file_index": file_index,
@@ -172,9 +185,14 @@ async def discover_opportunities(
     deduped.sort(key=lambda o: o.risk_score)
 
     logger.info(
-        "Discovery complete: %d opportunities found across %d files",
-        len(deduped), len(selected_files),
+        "Discovery complete: %d opportunities across %d/%d files analysed",
+        len(deduped), files_analysed, len(capped_files),
     )
+    _emit("discovery.completed", {
+        "count": len(deduped),
+        "files_analysed": files_analysed,
+        "files_selected": len(capped_files),
+    })
     return deduped
 
 
