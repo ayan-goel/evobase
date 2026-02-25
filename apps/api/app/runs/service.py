@@ -171,11 +171,8 @@ class RunService:
                 # LLM settings — prefer per-repo, fall back to env vars
                 llm_provider = settings.llm_provider if settings else "openai"
                 llm_model = settings.llm_model if settings else "gpt-4.1"
-                max_candidates = (
-                    settings.max_candidates_per_run if settings else 20
-                )
                 max_proposals = (
-                    settings.max_proposals_per_run if settings else 10
+                    settings.max_proposals_per_run if settings else 20
                 )
                 execution_mode = settings.execution_mode if settings else "adaptive"
                 max_strategy_attempts = (
@@ -489,7 +486,7 @@ class RunService:
             emit("discovery.started", "discovery", {
                 "llm_provider": llm_provider,
                 "llm_model": llm_model,
-                "max_candidates": max_candidates,
+                "max_proposals": max_proposals,
             })
 
             if self._check_cancelled(run_id):
@@ -502,7 +499,7 @@ class RunService:
                     detection=detection,
                     llm_config=llm_config,
                     baseline=baseline,
-                    max_candidates=max_candidates,
+                    max_proposals=max_proposals,
                     seen_signatures=seen_signatures,
                     on_event=emit,
                 )
@@ -521,7 +518,6 @@ class RunService:
                 repo_id=repo_id,
                 cycle_result=cycle_result,
                 baseline=baseline,
-                max_proposals=max_proposals,
                 framework=repo_framework,
             )
 
@@ -608,13 +604,13 @@ def _write_proposals_to_db(
     repo_id: str,
     cycle_result,
     baseline,
-    max_proposals: int,
     framework: Optional[str] = None,
 ) -> int:
     """Write accepted proposals (with opportunities + attempts) to the DB.
 
-    Only accepted candidates become Proposals. All candidates (accepted and
-    rejected) are written as Opportunity + Attempt rows for full trace visibility.
+    All accepted candidates become Proposals (the orchestrator already enforces
+    the max_proposals budget). All candidates (accepted and rejected) are
+    written as Opportunity + Attempt rows for full trace visibility.
 
     Returns the number of Proposal rows created.
     """
@@ -655,7 +651,7 @@ def _write_proposals_to_db(
             session.add(attempt_row)
 
             # Only accepted candidates become Proposals
-            if candidate.is_accepted and proposals_created < max_proposals:
+            if candidate.is_accepted:
                 decisive = candidate.attempts[-1] if candidate.attempts else None
                 metrics_after_dict = (
                     decisive.pipeline_result.to_dict()

@@ -126,7 +126,6 @@ export interface RepoSettings {
   compute_budget_minutes: number;
   max_prs_per_day: number;
   max_proposals_per_run: number;
-  max_candidates_per_run: number;
   schedule: string;
   paused: boolean;
   consecutive_setup_failures: number;

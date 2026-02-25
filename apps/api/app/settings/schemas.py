@@ -20,7 +20,6 @@ class SettingsResponse(BaseModel):
     compute_budget_minutes: int
     max_prs_per_day: int
     max_proposals_per_run: int
-    max_candidates_per_run: int
     schedule: str
     paused: bool
     consecutive_setup_failures: int
@@ -48,9 +47,6 @@ class SettingsUpdateRequest(BaseModel):
     )
     max_proposals_per_run: Optional[int] = Field(
         default=None, gt=0, description="Maximum accepted proposals per run"
-    )
-    max_candidates_per_run: Optional[int] = Field(
-        default=None, gt=0, description="Maximum patch validation attempts per run"
     )
     schedule: Optional[str] = Field(
         default=None,
