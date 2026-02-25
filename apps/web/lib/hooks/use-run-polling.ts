@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getRuns } from "@/lib/api";
 import type { Run } from "@/lib/types";
 
@@ -12,9 +12,14 @@ function hasActiveRun(runs: Run[]): boolean {
 
 export function useRunPolling(repoId: string, initialRuns: Run[]): Run[] {
   const [runs, setRuns] = useState<Run[]>(initialRuns);
+  const runsRef = useRef<Run[]>(runs);
 
   useEffect(() => {
-    if (!hasActiveRun(runs)) return;
+    runsRef.current = runs;
+  }, [runs]);
+
+  useEffect(() => {
+    if (!hasActiveRun(runsRef.current)) return;
 
     const interval = setInterval(async () => {
       const updated = await getRuns(repoId);
@@ -25,7 +30,7 @@ export function useRunPolling(repoId: string, initialRuns: Run[]): Run[] {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [repoId, runs]);
+  }, [repoId]);
 
   return runs;
 }

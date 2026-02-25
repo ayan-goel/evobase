@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, memo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   connectRepo,
@@ -20,11 +20,11 @@ interface RepoRowProps {
   installationId: number;
   isSelected: boolean;
   rootDir: string;
-  onToggle: () => void;
-  onRootDirChange: (value: string) => void;
+  onToggle: (repoId: number) => void;
+  onRootDirChange: (repoId: number, value: string) => void;
 }
 
-function RepoRow({
+const RepoRow = memo(function RepoRow({
   repo,
   installationId,
   isSelected,
@@ -44,7 +44,7 @@ function RepoRow({
         <input
           type="checkbox"
           checked={isSelected}
-          onChange={onToggle}
+          onChange={() => onToggle(repo.github_repo_id)}
           className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
         />
         <div className="flex-1 min-w-0">
@@ -67,7 +67,7 @@ function RepoRow({
           <input
             type="text"
             value={rootDir}
-            onChange={(e) => onRootDirChange(e.target.value)}
+            onChange={(e) => onRootDirChange(repo.github_repo_id, e.target.value)}
             placeholder="e.g. apps/web, packages/backend"
             className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
           />
@@ -94,7 +94,7 @@ function RepoRow({
       )}
     </div>
   );
-}
+});
 
 export function RepoPicker({ installationId }: RepoPickerProps) {
   const router = useRouter();
@@ -126,18 +126,18 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
     load();
   }, [installationId]);
 
-  function toggleRepo(repoId: number) {
+  const toggleRepo = useCallback((repoId: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(repoId)) next.delete(repoId);
       else next.add(repoId);
       return next;
     });
-  }
+  }, []);
 
-  function setRootDir(repoId: number, value: string) {
+  const setRootDir = useCallback((repoId: number, value: string) => {
     setRootDirs((prev) => ({ ...prev, [repoId]: value }));
-  }
+  }, []);
 
   async function handleConnect() {
     if (!orgId) {
@@ -151,17 +151,19 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
     try {
       const reposToConnect = repos.filter((r) => selected.has(r.github_repo_id));
 
-      for (const repo of reposToConnect) {
-        const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
-        await connectRepo({
-          github_repo_id: repo.github_repo_id,
-          github_full_name: repo.full_name,
-          org_id: orgId,
-          default_branch: repo.default_branch,
-          installation_id: installationId,
-          root_dir: rawDir || null,
-        });
-      }
+      await Promise.all(
+        reposToConnect.map((repo) => {
+          const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
+          return connectRepo({
+            github_repo_id: repo.github_repo_id,
+            github_full_name: repo.full_name,
+            org_id: orgId,
+            default_branch: repo.default_branch,
+            installation_id: installationId,
+            root_dir: rawDir || null,
+          });
+        }),
+      );
 
       setSuccess(true);
       setTimeout(() => router.push("/dashboard"), 1500);
@@ -222,8 +224,8 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
             installationId={installationId}
             isSelected={selected.has(repo.github_repo_id)}
             rootDir={rootDirs[repo.github_repo_id] ?? ""}
-            onToggle={() => toggleRepo(repo.github_repo_id)}
-            onRootDirChange={(value) => setRootDir(repo.github_repo_id, value)}
+            onToggle={toggleRepo}
+            onRootDirChange={setRootDir}
           />
         ))}
       </div>

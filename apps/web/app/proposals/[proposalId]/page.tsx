@@ -61,13 +61,13 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
             {proposal.selection_reason && (
               <p className="mt-2 text-xs text-white/35">
                 <span className="text-white/25">Selected: </span>
-                {proposal.selection_reason}
-              </p>
-            )}
           </div>
 
           <CreatePRButton
-            repoId={_extractRepoId(proposal)}
+            repoId={proposal.repo_id}
+            proposalId={proposal.id}
+            existingPrUrl={proposal.pr_url}
+          />
             proposalId={proposal.id}
             existingPrUrl={proposal.pr_url}
           />
@@ -191,25 +191,22 @@ function MetricsCard({
             <span className="text-white/40">{step.duration_seconds.toFixed(2)}s</span>
           </div>
         ))}
-        {metrics.bench_result && (
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-white/[0.04]">
-            <span className="text-white/50 font-mono">bench</span>
-            <span className="text-white/40">
-              {metrics.bench_result.duration_seconds.toFixed(3)}s
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
-function _extractTraceAttempts(proposal: Proposal): TraceAttempt[] {
-  // The trace timeline is stored as an artifact (trace.json).
-  // For MVP, we reconstruct attempts from the proposal's metrics as a
-  // single-attempt summary. The full trace is available via the evidence link.
-  return [];
+const ARTIFACT_LABELS: Record<string, string> = {
+  proposal: "proposal.json",
+  diff: "diff.patch",
+  trace: "trace.json",
+  log: "logs.txt",
+  baseline: "baseline.json",
+};
+
+function _artifactLabel(type: string): string {
+  return ARTIFACT_LABELS[type] ?? type;
 }
+
+function _hasAgentReasoning(proposal: Proposal): boolean {
 
 function _extractRepoId(proposal: Proposal): string {
   return proposal.repo_id;

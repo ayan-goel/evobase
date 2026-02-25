@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getRepo, getRuns, getProposalsByRun } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { RepoRunList } from "@/components/repo-run-list";
@@ -21,6 +22,7 @@ interface RepoPageData {
 
 /** Presentational view — tested in isolation with mock data. */
 export function RepoView({ repo, runs }: RepoPageData) {
+  const displayName = repoDisplayName(repo);
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -30,14 +32,14 @@ export function RepoView({ repo, runs }: RepoPageData) {
             Dashboard
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-white/70">{repoDisplayName(repo)}</span>
+          <span className="text-white/70">{displayName}</span>
         </nav>
 
         {/* Repo header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
-              {repoDisplayName(repo)}
+              {displayName}
             </h1>
             <div className="mt-1.5 flex items-center gap-3 text-sm text-white/50">
               <span>{repo.default_branch}</span>
@@ -77,11 +79,11 @@ export default async function RepoPage({
   const { repoId } = await params;
 
   let repo: Repository | null = null;
+  let runs: Run[] = [];
   let runsWithProposals: Array<Run & { proposals: Proposal[] }> = [];
 
   try {
-    [repo] = await Promise.all([getRepo(repoId)]);
-    const runs = await getRuns(repoId);
+    [repo, runs] = await Promise.all([getRepo(repoId), getRuns(repoId)]);
 
     runsWithProposals = await Promise.all(
       runs.map(async (run) => {
@@ -89,8 +91,22 @@ export default async function RepoPage({
         return { ...run, proposals };
       }),
     );
-  } catch {
-    // API not reachable — show fallback
+  } catch (err: unknown) {
+    const status =
+      (err as { status?: number; statusCode?: number })?.status ??
+      (err as { status?: number; statusCode?: number })?.statusCode;
+
+    if (status === 404) {
+      // Repo genuinely does not exist — return a proper 404 response.
+      notFound();
+    }
+
+    // For all other errors (401, 5xx, network failures) log and re-throw so
+    // the Next.js error boundary (error.tsx) handles them. This prevents a
+    // transient infrastructure failure from silently masquerading as a missing
+    // repo and makes each failure class independently observable.
+    console.error(`[RepoPage] Failed to load repo "${repoId}":`, err);
+    throw err;
   }
 
   if (!repo) {
