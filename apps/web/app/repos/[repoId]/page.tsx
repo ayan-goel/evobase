@@ -77,11 +77,11 @@ export default async function RepoPage({
   const { repoId } = await params;
 
   let repo: Repository | null = null;
+  let runs: Run[] = [];
   let runsWithProposals: Array<Run & { proposals: Proposal[] }> = [];
 
   try {
-    const [repo_resolved, runs] = await Promise.all([getRepo(repoId), getRuns(repoId)]);
-    repo = repo_resolved;
+    [repo, runs] = await Promise.all([getRepo(repoId), getRuns(repoId)]);
 
     runsWithProposals = await Promise.all(
       runs.map(async (run) => {
