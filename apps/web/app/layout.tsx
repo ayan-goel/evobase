@@ -9,8 +9,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Coreloop",
-  description: "Autonomous code optimization system",
+  title: "Coreloop — Autonomous Code Optimization",
+  description:
+    "AI agent that connects to your repo, discovers optimization opportunities, validates patches against your test suite, and opens pull requests — fully autonomously.",
 };
 
 export default function RootLayout({
