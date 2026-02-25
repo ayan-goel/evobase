@@ -3,10 +3,11 @@ import { getProposal, getArtifactSignedUrl } from "@/lib/api-server";
 import { NavWithUser } from "@/components/nav-server";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { DiffViewer } from "@/components/diff-viewer";
+import { TraceTimeline } from "@/components/trace-timeline";
 import { CreatePRButton } from "@/components/create-pr-button";
 import { AgentReasoning } from "@/components/agent-reasoning";
 import { PatchVariants } from "@/components/patch-variants";
-import type { Artifact, Metrics, Proposal, ThinkingTrace } from "@/lib/types";
+import type { Artifact, Metrics, Proposal, ThinkingTrace, TraceAttempt } from "@/lib/types";
 
 export const metadata = { title: "Proposal — Coreloop" };
 
@@ -17,6 +18,8 @@ interface ProposalPageData {
 
 /** Presentational view — tested in isolation with mock data. */
 export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
+  const traceAttempts = _extractTraceAttempts(proposal);
+
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="mx-auto w-full max-w-4xl px-4">
@@ -103,6 +106,13 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
             </Section>
           )}
 
+          {/* Trace timeline */}
+          {traceAttempts.length > 0 && (
+            <Section title="Validation trace">
+              <TraceTimeline attempts={traceAttempts} />
+            </Section>
+          )}
+
           {/* Evidence links */}
           {artifactLinks.length > 0 && (
             <Section title="Evidence files">
@@ -181,18 +191,26 @@ function MetricsCard({
             <span className="text-white/40">{step.duration_seconds.toFixed(2)}s</span>
           </div>
         ))}
-        {metrics.bench_result && (
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-white/[0.04]">
-            <span className="text-white/50 font-mono">bench</span>
-            <span className="text-white/40">
-              {metrics.bench_result.duration_seconds.toFixed(3)}s
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
+
+const ARTIFACT_LABELS: Record<string, string> = {
+  proposal: "proposal.json",
+  diff: "diff.patch",
+  trace: "trace.json",
+  log: "logs.txt",
+  baseline: "baseline.json",
+};
+
+function _extractRepoId(proposal: Proposal): string {
+  return proposal.repo_id;
+}
+
+function _artifactLabel(type: string): string {
+  return ARTIFACT_LABELS[type] ?? type;
+}
+
+function _hasAgentReasoning(proposal: Proposal): boolean {
 
 function _extractRepoId(proposal: Proposal): string {
   return proposal.repo_id;
