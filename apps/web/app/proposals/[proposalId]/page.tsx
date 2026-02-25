@@ -61,13 +61,13 @@ export function ProposalView({ proposal, artifactLinks }: ProposalPageData) {
             {proposal.selection_reason && (
               <p className="mt-2 text-xs text-white/35">
                 <span className="text-white/25">Selected: </span>
-                {proposal.selection_reason}
-              </p>
-            )}
           </div>
 
           <CreatePRButton
-            repoId={_extractRepoId(proposal)}
+            repoId={proposal.repo_id}
+            proposalId={proposal.id}
+            existingPrUrl={proposal.pr_url}
+          />
             proposalId={proposal.id}
             existingPrUrl={proposal.pr_url}
           />
@@ -201,10 +201,6 @@ const ARTIFACT_LABELS: Record<string, string> = {
   log: "logs.txt",
   baseline: "baseline.json",
 };
-
-function _extractRepoId(proposal: Proposal): string {
-  return proposal.repo_id;
-}
 
 function _artifactLabel(type: string): string {
   return ARTIFACT_LABELS[type] ?? type;
