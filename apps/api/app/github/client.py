@@ -202,6 +202,100 @@ async def delete_file(
         response.raise_for_status()
 
 
+# ---------------------------------------------------------------------------
+# Git Data API — atomic multi-file commits
+# ---------------------------------------------------------------------------
+
+async def get_git_commit(
+    token: str, owner: str, repo: str, commit_sha: str,
+) -> dict:
+    """GET /repos/{owner}/{repo}/git/commits/{sha} — returns tree SHA etc."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/commits/{commit_sha}",
+            headers=_auth_headers(token),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def create_git_blob(
+    token: str, owner: str, repo: str, content: str,
+) -> str:
+    """POST /repos/{owner}/{repo}/git/blobs — returns the blob SHA."""
+    import base64
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/blobs",
+            headers=_auth_headers(token),
+            json={
+                "content": base64.b64encode(content.encode()).decode(),
+                "encoding": "base64",
+            },
+        )
+        response.raise_for_status()
+        return response.json()["sha"]
+
+
+async def create_git_tree(
+    token: str,
+    owner: str,
+    repo: str,
+    tree_entries: list[dict],
+    base_tree_sha: str,
+) -> str:
+    """POST /repos/{owner}/{repo}/git/trees — returns the new tree SHA.
+
+    Each entry in *tree_entries* should have keys: path, mode, type, sha.
+    Uses *base_tree_sha* so unmentioned files are preserved.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees",
+            headers=_auth_headers(token),
+            json={"base_tree": base_tree_sha, "tree": tree_entries},
+        )
+        response.raise_for_status()
+        return response.json()["sha"]
+
+
+async def create_git_commit(
+    token: str,
+    owner: str,
+    repo: str,
+    message: str,
+    tree_sha: str,
+    parent_shas: list[str],
+) -> str:
+    """POST /repos/{owner}/{repo}/git/commits — returns the new commit SHA."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/commits",
+            headers=_auth_headers(token),
+            json={
+                "message": message,
+                "tree": tree_sha,
+                "parents": parent_shas,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["sha"]
+
+
+async def update_branch_ref(
+    token: str, owner: str, repo: str, branch: str, commit_sha: str,
+) -> None:
+    """PATCH /repos/{owner}/{repo}/git/refs/heads/{branch} — fast-forward."""
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/refs/heads/{branch}",
+            headers=_auth_headers(token),
+            json={"sha": commit_sha, "force": False},
+        )
+        response.raise_for_status()
+
+
 def _auth_headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",

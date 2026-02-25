@@ -175,40 +175,41 @@ async def _commit_diff_to_branch(
     commit_message: str,
     root_dir: str | None = None,
 ) -> None:
-    """Parse the unified diff and commit each changed file to the branch.
+    """Parse the unified diff and commit all changed files atomically.
+
+    Uses the Git Data API (blobs → tree → commit → ref update) to create
+    a single commit containing every file change in the diff. This avoids
+    the 409 Conflict errors that occur when using the Contents API for
+    sequential per-file commits (GitHub eventual consistency issue).
+
+    File deletions are handled via the Contents API after the atomic commit
+    since the Git Tree API with ``base_tree`` cannot remove files.
 
     Args:
         root_dir: Monorepo subdirectory the diff paths are relative to
             (e.g. ``"apps/web"``). When set, each path extracted from the
-            diff is prefixed with this value before calling the GitHub
-            Contents API, producing the full repo-relative path.
+            diff is prefixed with this value before calling the GitHub API,
+            producing the full repo-relative path.
     """
     patch_set = PatchSet(diff)
+
+    # Separate deletions (handled via Contents API) from adds/modifications
+    # (handled atomically via Git Data API).
+    files_to_delete: list[str] = []
+    tree_entries: list[dict] = []
+
     for pf in patch_set:
-        # unidiff strips the a/ b/ prefixes, giving a work_dir-relative path.
-        # Prepend root_dir so the GitHub API receives the full repo-relative path.
         rel_path = pf.path
         full_path = f"{root_dir.strip('/')}/{rel_path}" if root_dir else rel_path
 
         if pf.is_removed_file:
-            file_data = await github_client.get_file_content(
-                token, owner, repo_name, full_path, branch
-            )
-            if file_data:
-                await github_client.delete_file(
-                    token, owner, repo_name, full_path,
-                    commit_message, file_data["sha"], branch,
-                )
+            files_to_delete.append(full_path)
+            continue
 
-        elif pf.is_added_file:
+        if pf.is_added_file:
             new_content = "".join(
                 line.value for hunk in pf for line in hunk if line.line_type != "-"
             )
-            await github_client.put_file_content(
-                token, owner, repo_name, full_path,
-                commit_message, new_content, branch,
-            )
-
         else:
             file_data = await github_client.get_file_content(
                 token, owner, repo_name, full_path, branch
@@ -222,10 +223,48 @@ async def _commit_diff_to_branch(
                 )
             original = file_data["content"] if file_data else ""
             new_content = _apply_patch_to_content(original, pf)
-            await github_client.put_file_content(
-                token, owner, repo_name, full_path,
-                commit_message, new_content, branch,
-                current_sha=file_data["sha"] if file_data else None,
+
+        blob_sha = await github_client.create_git_blob(
+            token, owner, repo_name, new_content,
+        )
+        tree_entries.append({
+            "path": full_path,
+            "mode": "100644",
+            "type": "blob",
+            "sha": blob_sha,
+        })
+
+    # Create the atomic commit if there are any adds/modifications
+    if tree_entries:
+        # Resolve current branch HEAD → commit → base tree
+        branch_head_sha = await github_client.get_default_branch_sha(
+            token, owner, repo_name, branch,
+        )
+        commit_data = await github_client.get_git_commit(
+            token, owner, repo_name, branch_head_sha,
+        )
+        base_tree_sha = commit_data["tree"]["sha"]
+
+        new_tree_sha = await github_client.create_git_tree(
+            token, owner, repo_name, tree_entries, base_tree_sha,
+        )
+        new_commit_sha = await github_client.create_git_commit(
+            token, owner, repo_name, commit_message,
+            new_tree_sha, [branch_head_sha],
+        )
+        await github_client.update_branch_ref(
+            token, owner, repo_name, branch, new_commit_sha,
+        )
+
+    # Handle deletions separately via the Contents API (rare case)
+    for del_path in files_to_delete:
+        file_data = await github_client.get_file_content(
+            token, owner, repo_name, del_path, branch,
+        )
+        if file_data:
+            await github_client.delete_file(
+                token, owner, repo_name, del_path,
+                commit_message, file_data["sha"], branch,
             )
 
 

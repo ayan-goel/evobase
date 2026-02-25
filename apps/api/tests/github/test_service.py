@@ -130,6 +130,14 @@ def _all_client_mocks():
         "app.github.client.create_pull_request": AsyncMock(
             return_value={"html_url": "https://github.com/acme/api/pull/7"}
         ),
+        # Git Data API mocks for atomic commits
+        "app.github.client.create_git_blob": AsyncMock(return_value="newblobsha"),
+        "app.github.client.get_git_commit": AsyncMock(
+            return_value={"tree": {"sha": "basetreesha"}}
+        ),
+        "app.github.client.create_git_tree": AsyncMock(return_value="newtreesha"),
+        "app.github.client.create_git_commit": AsyncMock(return_value="newcommitsha"),
+        "app.github.client.update_branch_ref": AsyncMock(return_value=None),
     }
 
 
@@ -148,6 +156,11 @@ class TestCreatePrForProposal:
             patch("app.github.client.get_file_content", mocks["app.github.client.get_file_content"]),
             patch("app.github.client.put_file_content", mocks["app.github.client.put_file_content"]),
             patch("app.github.client.create_pull_request", mocks["app.github.client.create_pull_request"]),
+            patch("app.github.client.create_git_blob", mocks["app.github.client.create_git_blob"]),
+            patch("app.github.client.get_git_commit", mocks["app.github.client.get_git_commit"]),
+            patch("app.github.client.create_git_tree", mocks["app.github.client.create_git_tree"]),
+            patch("app.github.client.create_git_commit", mocks["app.github.client.create_git_commit"]),
+            patch("app.github.client.update_branch_ref", mocks["app.github.client.update_branch_ref"]),
         ):
             result = await create_pr_for_proposal(repo, proposal)
         return result, mocks
@@ -250,8 +263,8 @@ class TestCreatePrForProposal:
             call_order.append("get_file_content")
             return {"content": "context\nold line\n", "sha": "filesha"}
 
-        async def _fake_put_file(*a, **kw):
-            call_order.append("put_file_content")
+        async def _fake_update_ref(*a, **kw):
+            call_order.append("update_branch_ref")
 
         async def _fake_create_pr(*a, **kw):
             call_order.append("create_pull_request")
@@ -262,17 +275,23 @@ class TestCreatePrForProposal:
             patch("app.github.client.get_default_branch_sha", AsyncMock(return_value="sha")),
             patch("app.github.client.create_branch", _fake_create_branch),
             patch("app.github.client.get_file_content", _fake_get_file),
-            patch("app.github.client.put_file_content", _fake_put_file),
+            patch("app.github.client.put_file_content", AsyncMock()),
+            patch("app.github.client.create_git_blob", AsyncMock(return_value="blobsha")),
+            patch("app.github.client.get_git_commit", AsyncMock(return_value={"tree": {"sha": "treesha"}})),
+            patch("app.github.client.create_git_tree", AsyncMock(return_value="newtreesha")),
+            patch("app.github.client.create_git_commit", AsyncMock(return_value="newcommitsha")),
+            patch("app.github.client.update_branch_ref", _fake_update_ref),
             patch("app.github.client.create_pull_request", _fake_create_pr),
         ):
             await create_pr_for_proposal(repo, proposal)
 
         assert "create_branch" in call_order
         assert "create_pull_request" in call_order
-        # Both file ops must complete before create_pull_request
+        assert "update_branch_ref" in call_order
         branch_idx = call_order.index("create_branch")
+        ref_idx = call_order.index("update_branch_ref")
         pr_idx = call_order.index("create_pull_request")
-        assert branch_idx < pr_idx
+        assert branch_idx < ref_idx < pr_idx
 
     @pytest.mark.asyncio
     async def test_empty_diff_skips_commit_step(self):
@@ -291,6 +310,11 @@ class TestCreatePrForProposal:
             patch("app.github.client.create_branch", AsyncMock()),
             patch("app.github.client.get_file_content", _noop_file),
             patch("app.github.client.put_file_content", _noop_file),
+            patch("app.github.client.create_git_blob", _noop_file),
+            patch("app.github.client.get_git_commit", _noop_file),
+            patch("app.github.client.create_git_tree", _noop_file),
+            patch("app.github.client.create_git_commit", _noop_file),
+            patch("app.github.client.update_branch_ref", _noop_file),
             patch("app.github.client.create_pull_request", AsyncMock(
                 return_value={"html_url": "https://github.com/acme/api/pull/1"}
             )),
@@ -406,6 +430,14 @@ class TestCommitDiffToBranchRootDir:
             ),
             "app.github.client.put_file_content": AsyncMock(return_value=None),
             "app.github.client.delete_file": AsyncMock(return_value=None),
+            "app.github.client.create_git_blob": AsyncMock(return_value="blobsha"),
+            "app.github.client.get_default_branch_sha": AsyncMock(return_value="headsha"),
+            "app.github.client.get_git_commit": AsyncMock(
+                return_value={"tree": {"sha": "basetreesha"}}
+            ),
+            "app.github.client.create_git_tree": AsyncMock(return_value="newtreesha"),
+            "app.github.client.create_git_commit": AsyncMock(return_value="newcommitsha"),
+            "app.github.client.update_branch_ref": AsyncMock(return_value=None),
         }
         if client_overrides:
             defaults.update(client_overrides)
@@ -414,6 +446,12 @@ class TestCommitDiffToBranchRootDir:
             patch("app.github.client.get_file_content", defaults["app.github.client.get_file_content"]),
             patch("app.github.client.put_file_content", defaults["app.github.client.put_file_content"]),
             patch("app.github.client.delete_file", defaults["app.github.client.delete_file"]),
+            patch("app.github.client.create_git_blob", defaults["app.github.client.create_git_blob"]),
+            patch("app.github.client.get_default_branch_sha", defaults["app.github.client.get_default_branch_sha"]),
+            patch("app.github.client.get_git_commit", defaults["app.github.client.get_git_commit"]),
+            patch("app.github.client.create_git_tree", defaults["app.github.client.create_git_tree"]),
+            patch("app.github.client.create_git_commit", defaults["app.github.client.create_git_commit"]),
+            patch("app.github.client.update_branch_ref", defaults["app.github.client.update_branch_ref"]),
         ):
             await _commit_diff_to_branch(
                 token="tok",
@@ -428,15 +466,15 @@ class TestCommitDiffToBranchRootDir:
 
     @pytest.mark.asyncio
     async def test_modified_file_path_prefixed_with_root_dir(self):
-        """get_file_content and put_file_content receive the root_dir-prefixed path."""
+        """get_file_content and create_git_tree receive the root_dir-prefixed path."""
         mocks = await self._run(_MODIFY_DIFF, root_dir="apps/web")
 
         get_call = mocks["app.github.client.get_file_content"].call_args
-        put_call = mocks["app.github.client.put_file_content"].call_args
+        tree_call = mocks["app.github.client.create_git_tree"].call_args
 
-        # path is the 3rd positional arg (token, owner, repo, path, ref)
         assert get_call.args[3] == "apps/web/src/utils.ts"
-        assert put_call.args[3] == "apps/web/src/utils.ts"
+        tree_entries = tree_call.args[3]
+        assert tree_entries[0]["path"] == "apps/web/src/utils.ts"
 
     @pytest.mark.asyncio
     async def test_modified_file_path_unchanged_without_root_dir(self):
@@ -460,8 +498,9 @@ class TestCommitDiffToBranchRootDir:
         """New-file commits also receive the prefixed path."""
         mocks = await self._run(_ADD_DIFF, root_dir="apps/web")
 
-        put_call = mocks["app.github.client.put_file_content"].call_args
-        assert put_call.args[3] == "apps/web/src/added.ts"
+        tree_call = mocks["app.github.client.create_git_tree"].call_args
+        tree_entries = tree_call.args[3]
+        assert tree_entries[0]["path"] == "apps/web/src/added.ts"
 
     @pytest.mark.asyncio
     async def test_removed_file_path_prefixed_with_root_dir(self):
@@ -481,7 +520,6 @@ class TestCommitDiffToBranchRootDir:
                 root_dir="apps/web",
                 client_overrides={
                     "app.github.client.get_file_content": AsyncMock(return_value=None),
-                    "app.github.client.put_file_content": AsyncMock(return_value=None),
                 },
             )
         assert any("apps/web/src/utils.ts" in r.message for r in caplog.records)
@@ -500,6 +538,11 @@ class TestCommitDiffToBranchRootDir:
             patch("app.github.client.create_branch", AsyncMock()),
             patch("app.github.client.get_file_content", get_file_mock),
             patch("app.github.client.put_file_content", AsyncMock()),
+            patch("app.github.client.create_git_blob", AsyncMock(return_value="blobsha")),
+            patch("app.github.client.get_git_commit", AsyncMock(return_value={"tree": {"sha": "treesha"}})),
+            patch("app.github.client.create_git_tree", AsyncMock(return_value="newtreesha")),
+            patch("app.github.client.create_git_commit", AsyncMock(return_value="newcommitsha")),
+            patch("app.github.client.update_branch_ref", AsyncMock()),
             patch("app.github.client.create_pull_request", AsyncMock(
                 return_value={"html_url": "https://github.com/acme/api/pull/1"}
             )),
@@ -508,3 +551,34 @@ class TestCommitDiffToBranchRootDir:
 
         get_call = get_file_mock.call_args
         assert get_call.args[3] == "apps/web/src/utils.ts"
+
+    @pytest.mark.asyncio
+    async def test_atomic_commit_creates_single_tree(self):
+        """Multi-file diffs produce a single tree/commit, not one per file."""
+        multi_diff = (
+            "--- a/src/a.ts\n+++ b/src/a.ts\n"
+            "@@ -1 +1 @@\n-old_a\n+new_a\n"
+            "--- a/src/b.ts\n+++ b/src/b.ts\n"
+            "@@ -1 +1 @@\n-old_b\n+new_b\n"
+        )
+        get_file_mock = AsyncMock(side_effect=[
+            {"content": "old_a\n", "sha": "sha_a"},
+            {"content": "old_b\n", "sha": "sha_b"},
+        ])
+        mocks = await self._run(
+            multi_diff,
+            root_dir=None,
+            client_overrides={"app.github.client.get_file_content": get_file_mock},
+        )
+
+        blob_mock = mocks["app.github.client.create_git_blob"]
+        tree_mock = mocks["app.github.client.create_git_tree"]
+        commit_mock = mocks["app.github.client.create_git_commit"]
+
+        assert blob_mock.call_count == 2
+        assert tree_mock.call_count == 1
+        assert commit_mock.call_count == 1
+
+        tree_entries = tree_mock.call_args.args[3]
+        paths = {e["path"] for e in tree_entries}
+        assert paths == {"src/a.ts", "src/b.ts"}

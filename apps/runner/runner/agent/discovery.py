@@ -312,18 +312,63 @@ def _strip_markdown_fences(raw: str) -> str:
     return text.strip()
 
 
+def _try_parse_json(text: str) -> dict | None:
+    """Robustly parse JSON, handling common LLM quirks.
+
+    Tries in order:
+    1. Direct parse
+    2. Strip trailing commas (common Gemini/GPT mistake)
+    3. Extract outermost { ... } brace pair (ignore surrounding prose)
+    """
+    import re
+
+    for candidate in (text, re.sub(r",\s*([}\]])", r"\1", text)):
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    brace_start = text.find("{")
+    if brace_start >= 0:
+        depth = 0
+        for i, ch in enumerate(text[brace_start:], start=brace_start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    json_slice = text[brace_start:i + 1]
+                    for candidate in (json_slice, re.sub(r",\s*([}\]])", r"\1", json_slice)):
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, dict):
+                                return data
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    break
+
+    return None
+
+
 def _parse_file_list(raw: str) -> list[str]:
-    """Parse the file selection JSON response into a list of paths."""
+    """Parse the file selection JSON response into a list of paths.
+
+    Handles common LLM quirks: markdown fences, trailing prose after the JSON
+    object, trailing commas, and embedded JSON in surrounding text.
+    """
     if not raw:
         return []
+
     cleaned = _strip_markdown_fences(raw)
-    try:
-        data = json.loads(cleaned)
+    data = _try_parse_json(cleaned)
+    if data is not None:
         files = data.get("files", [])
         if isinstance(files, list):
             return [str(f) for f in files if f]
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning("Could not parse file selection response: %r", raw[:200])
+
+    logger.warning("Could not parse file selection response: %r", raw[:200])
     return []
 
 
@@ -335,37 +380,35 @@ def _parse_opportunities(
     if not raw:
         return []
     cleaned = _strip_markdown_fences(raw)
-    try:
-        data = json.loads(cleaned)
-        raw_opps = data.get("opportunities", [])
-        if not isinstance(raw_opps, list):
-            return []
+    data = _try_parse_json(cleaned)
+    if data is None:
+        logger.warning("Could not parse opportunity response (raw: %r)", raw[:200])
+        return []
 
-        result = []
-        for item in raw_opps:
-            if not isinstance(item, dict):
-                continue
-            # Support both new `approaches` list and legacy `approach` string
-            approaches_raw = item.get("approaches")
-            if isinstance(approaches_raw, list):
-                approaches = [str(a) for a in approaches_raw if a]
-            else:
-                # Fall back to legacy single-string field
-                legacy = item.get("approach", "")
-                approaches = [str(legacy)] if legacy else []
-            opp = AgentOpportunity(
-                type=str(item.get("type", "performance")),
-                location=str(item.get("location", "")),
-                rationale=str(item.get("rationale", "")),
-                risk_level=str(item.get("risk_level", "medium")),
-                approaches=approaches,
-                affected_lines=int(item.get("affected_lines", 0)),
-                thinking_trace=thinking_trace,
-            )
-            if opp.location:  # Skip opportunities without a location
-                result.append(opp)
-        return result
+    raw_opps = data.get("opportunities", [])
+    if not isinstance(raw_opps, list):
+        return []
 
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
-        logger.warning("Could not parse opportunity response: %s (raw: %r)", exc, raw[:200])
-    return []
+    result = []
+    for item in raw_opps:
+        if not isinstance(item, dict):
+            continue
+        # Support both new `approaches` list and legacy `approach` string
+        approaches_raw = item.get("approaches")
+        if isinstance(approaches_raw, list):
+            approaches = [str(a) for a in approaches_raw if a]
+        else:
+            legacy = item.get("approach", "")
+            approaches = [str(legacy)] if legacy else []
+        opp = AgentOpportunity(
+            type=str(item.get("type", "performance")),
+            location=str(item.get("location", "")),
+            rationale=str(item.get("rationale", "")),
+            risk_level=str(item.get("risk_level", "medium")),
+            approaches=approaches,
+            affected_lines=int(item.get("affected_lines", 0)),
+            thinking_trace=thinking_trace,
+        )
+        if opp.location:
+            result.append(opp)
+    return result
