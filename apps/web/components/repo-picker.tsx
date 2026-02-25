@@ -151,17 +151,19 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
     try {
       const reposToConnect = repos.filter((r) => selected.has(r.github_repo_id));
 
-      for (const repo of reposToConnect) {
-        const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
-        await connectRepo({
-          github_repo_id: repo.github_repo_id,
-          github_full_name: repo.full_name,
-          org_id: orgId,
-          default_branch: repo.default_branch,
-          installation_id: installationId,
-          root_dir: rawDir || null,
-        });
-      }
+      await Promise.all(
+        reposToConnect.map((repo) => {
+          const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
+          return connectRepo({
+            github_repo_id: repo.github_repo_id,
+            github_full_name: repo.full_name,
+            org_id: orgId,
+            default_branch: repo.default_branch,
+            installation_id: installationId,
+            root_dir: rawDir || null,
+          });
+        }),
+      );
 
       setSuccess(true);
       setTimeout(() => router.push("/dashboard"), 1500);
