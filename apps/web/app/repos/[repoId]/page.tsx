@@ -80,8 +80,8 @@ export default async function RepoPage({
   let runsWithProposals: Array<Run & { proposals: Proposal[] }> = [];
 
   try {
-    [repo] = await Promise.all([getRepo(repoId)]);
-    const runs = await getRuns(repoId);
+    const [repo_resolved, runs] = await Promise.all([getRepo(repoId), getRuns(repoId)]);
+    repo = repo_resolved;
 
     runsWithProposals = await Promise.all(
       runs.map(async (run) => {
