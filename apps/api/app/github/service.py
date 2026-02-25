@@ -79,6 +79,7 @@ async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
             diff=proposal.diff,
             commit_message=commit_message,
             root_dir=repo.root_dir,
+            parent_sha=head_sha,
         )
 
     pr_title = f"[Coreloop] {proposal.title or proposal.summary or 'Code optimization'}"
@@ -136,11 +137,14 @@ async def create_pr_for_run(
 
     await github_client.create_branch(token, owner, repo_name, branch_name, head_sha)
 
+    # Thread the parent SHA through sequential commits so we never re-query
+    # the branch ref (avoids GitHub eventual-consistency race conditions).
+    current_sha = head_sha
     for proposal in proposals:
         if not proposal.diff:
             continue
         commit_message = f"[Coreloop] {proposal.title or proposal.summary or 'Code optimization'}"
-        await _commit_diff_to_branch(
+        current_sha = await _commit_diff_to_branch(
             token=token,
             owner=owner,
             repo_name=repo_name,
@@ -148,6 +152,7 @@ async def create_pr_for_run(
             diff=proposal.diff,
             commit_message=commit_message,
             root_dir=repo.root_dir,
+            parent_sha=current_sha,
         )
 
     pr_title = f"[Coreloop] {len(proposals)} optimization{'s' if len(proposals) != 1 else ''}"
@@ -174,10 +179,11 @@ async def _commit_diff_to_branch(
     diff: str,
     commit_message: str,
     root_dir: str | None = None,
-) -> None:
+    parent_sha: str | None = None,
+) -> str:
     """Parse the unified diff and commit all changed files atomically.
 
-    Uses the Git Data API (blobs → tree → commit → ref update) to create
+    Uses the Git Data API (blobs -> tree -> commit -> ref update) to create
     a single commit containing every file change in the diff. This avoids
     the 409 Conflict errors that occur when using the Contents API for
     sequential per-file commits (GitHub eventual consistency issue).
@@ -190,11 +196,16 @@ async def _commit_diff_to_branch(
             (e.g. ``"apps/web"``). When set, each path extracted from the
             diff is prefixed with this value before calling the GitHub API,
             producing the full repo-relative path.
+        parent_sha: The commit SHA to use as the parent for the new commit.
+            When provided, the branch HEAD is NOT re-queried — this avoids
+            GitHub eventual-consistency races when chaining multiple commits.
+
+    Returns:
+        The SHA of the new commit (or *parent_sha* unchanged when the diff
+        had no add/modify entries).
     """
     patch_set = PatchSet(diff)
 
-    # Separate deletions (handled via Contents API) from adds/modifications
-    # (handled atomically via Git Data API).
     files_to_delete: list[str] = []
     tree_entries: list[dict] = []
 
@@ -234,14 +245,15 @@ async def _commit_diff_to_branch(
             "sha": blob_sha,
         })
 
+    # Resolve parent commit SHA (prefer caller-supplied to avoid re-querying)
+    head_sha = parent_sha or await github_client.get_default_branch_sha(
+        token, owner, repo_name, branch,
+    )
+
     # Create the atomic commit if there are any adds/modifications
     if tree_entries:
-        # Resolve current branch HEAD → commit → base tree
-        branch_head_sha = await github_client.get_default_branch_sha(
-            token, owner, repo_name, branch,
-        )
         commit_data = await github_client.get_git_commit(
-            token, owner, repo_name, branch_head_sha,
+            token, owner, repo_name, head_sha,
         )
         base_tree_sha = commit_data["tree"]["sha"]
 
@@ -250,11 +262,12 @@ async def _commit_diff_to_branch(
         )
         new_commit_sha = await github_client.create_git_commit(
             token, owner, repo_name, commit_message,
-            new_tree_sha, [branch_head_sha],
+            new_tree_sha, [head_sha],
         )
         await github_client.update_branch_ref(
             token, owner, repo_name, branch, new_commit_sha,
         )
+        head_sha = new_commit_sha
 
     # Handle deletions separately via the Contents API (rare case)
     for del_path in files_to_delete:
@@ -266,6 +279,8 @@ async def _commit_diff_to_branch(
                 token, owner, repo_name, del_path,
                 commit_message, file_data["sha"], branch,
             )
+
+    return head_sha
 
 
 def _apply_patch_to_content(original: str, patched_file) -> str:
