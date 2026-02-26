@@ -51,7 +51,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
+      "Content-Type": "application/json",
       ...authHeaders,
       ...(init?.headers as Record<string, string> | undefined),
     },
@@ -159,7 +159,6 @@ export async function createRunPR(
 ): Promise<{ pr_url: string }> {
   return apiFetch(`/github/repos/${repoId}/runs/${runId}/create-pr`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ proposal_ids: proposalIds }),
   });
 }
