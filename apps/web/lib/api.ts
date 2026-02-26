@@ -51,7 +51,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
       ...authHeaders,
       ...(init?.headers as Record<string, string> | undefined),
     },
