@@ -94,6 +94,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
       ? run.commit_message.slice(0, 72) + "…"
       : run.commit_message
     : null;
+  const formattedDate = useMemo(() => _fmtDate(run.created_at), [run.created_at]);
 
   const currentPhaseIdx =
     currentPhase != null
@@ -135,7 +136,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
             <span className="font-mono">{sha}</span>
             {msg && <span className="text-white/30">— {msg}</span>}
             <span>·</span>
-            <span>{_fmtDate(run.created_at)}</span>
+            <span>{formattedDate}</span>
           </div>
         </div>
 
