@@ -71,7 +71,7 @@ export function RunPRDialog({
     });
   }, []);
 
-  async function handleCreate() {
+  const handleCreate = useCallback(async () => {
     if (selectedIds.size === 0) return;
     setLoading(true);
     setError(null);
@@ -93,7 +93,7 @@ export function RunPRDialog({
     } finally {
       setLoading(false);
     }
-  }
+  }, [repoId, runId, selectedIds, onPRCreated, onClose]);
 
   if (!isOpen || !mounted) return null;
 
