@@ -54,9 +54,8 @@ export function RunPRDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  const isBrowser = typeof document !== 'undefined';
 
   // Pre-select all proposals when dialog opens
   useEffect(() => {
@@ -119,7 +118,7 @@ export function RunPRDialog({
     }
   }, [repoId, runId, selectedIds, onPRCreated, onClose]);
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || !isBrowser) return null;
 
   return createPortal(
     <>
