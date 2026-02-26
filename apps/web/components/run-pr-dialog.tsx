@@ -1,9 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, memo } from "react";
 import { createPortal } from "react-dom";
 import { createRunPR } from "@/lib/api";
 import type { Proposal } from "@/lib/types";
+
+interface ProposalRowProps {
+  proposal: Proposal;
+  isChecked: boolean;
+  onToggle: (id: string) => void;
+}
+
+const ProposalRow = memo(function ProposalRow({ proposal, isChecked, onToggle }: ProposalRowProps) {
+  return (
+    <label
+      className="flex items-start gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors"
+    >
+      <input
+        type="checkbox"
+        checked={isChecked}
+        onChange={() => onToggle(proposal.id)}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-emerald-400"
+      />
+      <span className="text-sm text-white/75 leading-snug">
+        {proposal.title ?? proposal.summary ?? "Optimization proposal"}
+      </span>
+    </label>
+  );
+});
 
 interface RunPRDialogProps {
   isOpen: boolean;
@@ -138,20 +162,12 @@ export function RunPRDialog({
 
             <div className="space-y-2">
               {proposals.map((proposal) => (
-                <label
+                <ProposalRow
                   key={proposal.id}
-                  className="flex items-start gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(proposal.id)}
-                    onChange={() => toggleId(proposal.id)}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-emerald-400"
-                  />
-                  <span className="text-sm text-white/75 leading-snug">
-                    {proposal.title ?? proposal.summary ?? "Optimization proposal"}
-                  </span>
-                </label>
+                  proposal={proposal}
+                  isChecked={selectedIds.has(proposal.id)}
+                  onToggle={toggleId}
+                />
               ))}
             </div>
           </div>
