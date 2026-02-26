@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRun } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { CancelRunButton } from "@/components/run-detail/cancel-run-button";
@@ -52,6 +52,11 @@ const PHASE_LABELS: Record<string, string> = {
 export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
   const [run, setRun] = useState(initialRun);
   const isActive = run.status === "queued" || run.status === "running";
+
+  const handleCancelled = useCallback(
+    () => setRun((prev) => ({ ...prev, status: "failed" as RunStatus })),
+    [],
+  );
   const { events, currentPhase, isConnected, isDone } = useRunEvents(
     run.id,
     isActive,
@@ -89,6 +94,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
       ? run.commit_message.slice(0, 72) + "…"
       : run.commit_message
     : null;
+  const formattedDate = useMemo(() => _fmtDate(run.created_at), [run.created_at]);
 
   const currentPhaseIdx =
     currentPhase != null
@@ -130,16 +136,14 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
             <span className="font-mono">{sha}</span>
             {msg && <span className="text-white/30">— {msg}</span>}
             <span>·</span>
-            <span>{_fmtDate(run.created_at)}</span>
+            <span>{formattedDate}</span>
           </div>
         </div>
 
         {isActive && (
           <CancelRunButton
             runId={run.id}
-            onCancelled={() =>
-              setRun((prev) => ({ ...prev, status: "failed" as RunStatus }))
-            }
+            onCancelled={handleCancelled}
           />
         )}
       </div>
@@ -268,7 +272,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
 // Grouped timeline — inserts phase section headers at phase transitions
 // ---------------------------------------------------------------------------
 
-function GroupedTimeline({
+const GroupedTimeline = memo(function GroupedTimeline({
   events,
   isActive,
 }: {
@@ -350,7 +354,7 @@ function GroupedTimeline({
       )}
     </div>
   );
-}
+});
 
 function PhaseGroupHeader({ phase }: { phase: string }) {
   return (
@@ -367,7 +371,7 @@ function PhaseGroupHeader({ phase }: { phase: string }) {
 // Sidebar sub-components
 // ---------------------------------------------------------------------------
 
-function PhaseIcon({
+const PhaseIcon = memo(function PhaseIcon({
   done,
   active,
   pending,
@@ -402,7 +406,7 @@ function PhaseIcon({
   return (
     <span className="h-4 w-4 shrink-0 rounded-full border border-white/[0.15] bg-transparent" />
   );
-}
+});
 
 function StatRow({
   label,

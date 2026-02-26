@@ -9,10 +9,9 @@
  * is paused, shows a prominent warning and an "Unpause" button.
  */
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback } from "react";
 import { updateRepoSettings, updateRepoConfig } from "@/lib/api";
-import type { LLMProvider } from "@/lib/types";
-import type { Repository, RepoSettings } from "@/lib/types";
+import type { LLMProvider, Repository, RepoSettings } from "@/lib/types";
 
 interface SettingsFormProps {
   repoId: string;
@@ -36,7 +35,7 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
   const [configError, setConfigError] = useState<string | null>(null);
   const [isConfigPending, startConfigTransition] = useTransition();
 
-  function handleSaveConfig() {
+  const handleSaveConfig = useCallback(() => {
     startConfigTransition(async () => {
       try {
         await updateRepoConfig(repoId, {
@@ -52,15 +51,15 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         setConfigSaved(false);
       }
     });
-  }
+  }, [repoId, rootDir, installCmd, buildCmd, testCmd, startConfigTransition]);
 
-  function handleChange(field: keyof RepoSettings, value: string | number | boolean) {
+  const handleChange = useCallback((field: keyof RepoSettings, value: string | number | boolean) => {
     setSaved(false);
     setError(null);
     setSettings((prev) => ({ ...prev, [field]: value }));
-  }
+  }, []);
 
-  function handleSave() {
+  const handleSave = useCallback(() => {
     startTransition(async () => {
       try {
         const updated = await updateRepoSettings(repoId, {
@@ -81,9 +80,9 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         setSaved(false);
       }
     });
-  }
+  }, [repoId, settings, startTransition]);
 
-  function handleUnpause() {
+  const handleUnpause = useCallback(() => {
     startTransition(async () => {
       try {
         const updated = await updateRepoSettings(repoId, { paused: false });
@@ -94,7 +93,9 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
         setError(err instanceof Error ? err.message : "Failed to unpause repo.");
       }
     });
-  }
+  }, [repoId, startTransition]);
+
+  const chosenProvider = llmProviders.find((p) => p.id === settings.llm_provider) ?? null;
 
   return (
     <div className="space-y-6">
@@ -335,9 +336,13 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    const firstModel = p.models[0]?.id ?? "";
-                    handleChange("llm_provider", p.id);
-                    handleChange("llm_model", firstModel);
+                    setSaved(false);
+                    setError(null);
+                    setSettings((prev) => ({
+                      ...prev,
+                      llm_provider: p.id,
+                      llm_model: p.models[0]?.id ?? "",
+                    }));
                   }}
                   className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
                     settings.llm_provider === p.id
@@ -352,28 +357,24 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
           </div>
 
           {/* Model selector for chosen provider */}
-          {(() => {
-            const chosenProvider = llmProviders.find((p) => p.id === settings.llm_provider);
-            if (!chosenProvider) return null;
-            return (
-              <div>
-                <label className="block text-xs font-medium text-white/60 uppercase tracking-wider mb-1.5">
-                  Model
-                </label>
-                <select
-                  value={settings.llm_model}
-                  onChange={(e) => handleChange("llm_model", e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-white/25 focus:outline-none"
-                >
-                  {chosenProvider.models.map((m) => (
-                    <option key={m.id} value={m.id} className="bg-neutral-900">
-                      {m.label} — {m.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })()}
+          {chosenProvider && (
+            <div>
+              <label className="block text-xs font-medium text-white/60 uppercase tracking-wider mb-1.5">
+                Model
+              </label>
+              <select
+                value={settings.llm_model}
+                onChange={(e) => handleChange("llm_model", e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-white/25 focus:outline-none"
+              >
+                {chosenProvider.models.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-neutral-900">
+                    {m.label} — {m.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 

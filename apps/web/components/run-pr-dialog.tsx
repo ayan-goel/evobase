@@ -1,9 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, memo } from "react";
 import { createPortal } from "react-dom";
 import { createRunPR } from "@/lib/api";
 import type { Proposal } from "@/lib/types";
+
+interface ProposalRowProps {
+  proposal: Proposal;
+  isChecked: boolean;
+  onToggle: (id: string) => void;
+}
+
+const ProposalRow = memo(function ProposalRow({ proposal, isChecked, onToggle }: ProposalRowProps) {
+  return (
+    <label
+      className="flex items-start gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors"
+    >
+      <input
+        type="checkbox"
+        checked={isChecked}
+        onChange={() => onToggle(proposal.id)}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-emerald-400"
+      />
+      <span className="text-sm text-white/75 leading-snug">
+        {proposal.title ?? proposal.summary ?? "Optimization proposal"}
+      </span>
+    </label>
+  );
+});
 
 interface RunPRDialogProps {
   isOpen: boolean;
@@ -30,9 +54,8 @@ export function RunPRDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  const isBrowser = typeof document !== 'undefined';
 
   // Pre-select all proposals when dialog opens
   useEffect(() => {
@@ -62,16 +85,16 @@ export function RunPRDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  function toggleId(id: string) {
+  const toggleId = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  async function handleCreate() {
+  const handleCreate = useCallback(async () => {
     if (selectedIds.size === 0) return;
     setLoading(true);
     setError(null);
@@ -93,9 +116,9 @@ export function RunPRDialog({
     } finally {
       setLoading(false);
     }
-  }
+  }, [repoId, runId, selectedIds, onPRCreated, onClose]);
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || !isBrowser) return null;
 
   return createPortal(
     <>
@@ -138,20 +161,12 @@ export function RunPRDialog({
 
             <div className="space-y-2">
               {proposals.map((proposal) => (
-                <label
+                <ProposalRow
                   key={proposal.id}
-                  className="flex items-start gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(proposal.id)}
-                    onChange={() => toggleId(proposal.id)}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-emerald-400"
-                  />
-                  <span className="text-sm text-white/75 leading-snug">
-                    {proposal.title ?? proposal.summary ?? "Optimization proposal"}
-                  </span>
-                </label>
+                  proposal={proposal}
+                  isChecked={selectedIds.has(proposal.id)}
+                  onToggle={toggleId}
+                />
               ))}
             </div>
           </div>

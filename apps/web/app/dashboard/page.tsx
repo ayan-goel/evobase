@@ -4,6 +4,8 @@ import { NavWithUser } from "@/components/nav-server";
 import { FrameworkBadge } from "@/components/framework-badge";
 import type { Installation, Repository } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Dashboard — Coreloop" };
 
 /** Returns the most human-readable label for a repo. */
@@ -204,19 +206,13 @@ function EmptyRepos() {
         Connect Repository
       </Link>
     </div>
-  );
-}
 
 /** RSC page — fetches data then delegates to DashboardView. */
 export default async function DashboardPage() {
-  let repos: Repository[] = [];
-  let installations: Installation[] = [];
+  const [repos, installations] = await Promise.all([getRepos(), getInstallations()]);
 
-  await Promise.allSettled([
-    getRepos().then((r) => { repos = r; }),
-    getInstallations().then((i) => { installations = i; }),
-  ]);
-
+  return (
+    <>
   return (
     <>
       <NavWithUser />
