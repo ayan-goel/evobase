@@ -334,9 +334,13 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    const firstModel = p.models[0]?.id ?? "";
-                    handleChange("llm_provider", p.id);
-                    handleChange("llm_model", firstModel);
+                    setSaved(false);
+                    setError(null);
+                    setSettings((prev) => ({
+                      ...prev,
+                      llm_provider: p.id,
+                      llm_model: p.models[0]?.id ?? "",
+                    }));
                   }}
                   className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
                     settings.llm_provider === p.id
