@@ -105,7 +105,6 @@ function renderDetectionCompleted(event: RunEvent) {
 
 function renderBaselineAttemptStarted(event: RunEvent) {
   const attempt = event.data.attempt as number | undefined;
-  const mode = event.data.mode as string | undefined;
   return (
     <TimelineRow icon="▶" phase="Baseline" ts={event.ts}>
       Starting baseline attempt {attempt}
