@@ -112,8 +112,6 @@ function setupFailureMessage(latestFailureStep?: string | null): string {
 }
 
 function RepoCard({ repo }: { repo: Repository }) {
-  const failureMessage = setupFailureMessage(repo.latest_failure_step);
-
   return (
     <Link
       href={`/repos/${repo.id}`}
@@ -147,7 +145,7 @@ function RepoCard({ repo }: { repo: Repository }) {
         repo.latest_run_status !== "running" &&
         repo.latest_run_status !== "queued" && (
           <p className="mt-2 text-xs text-amber-400/70">
-            {failureMessage} Update the project directory in Settings →
+            {setupFailureMessage(repo.latest_failure_step)} Update the project directory in Settings →
           </p>
         )}
 
