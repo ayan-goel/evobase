@@ -371,7 +371,7 @@ function PhaseGroupHeader({ phase }: { phase: string }) {
 // Sidebar sub-components
 // ---------------------------------------------------------------------------
 
-function PhaseIcon({
+const PhaseIcon = memo(function PhaseIcon({
   done,
   active,
   pending,
@@ -406,7 +406,7 @@ function PhaseIcon({
   return (
     <span className="h-4 w-4 shrink-0 rounded-full border border-white/[0.15] bg-transparent" />
   );
-}
+});
 
 function StatRow({
   label,
