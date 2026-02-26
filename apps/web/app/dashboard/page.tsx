@@ -206,19 +206,13 @@ function EmptyRepos() {
         Connect Repository
       </Link>
     </div>
-  );
-}
 
 /** RSC page — fetches data then delegates to DashboardView. */
 export default async function DashboardPage() {
-  let repos: Repository[] = [];
-  let installations: Installation[] = [];
+  const [repos, installations] = await Promise.all([getRepos(), getInstallations()]);
 
-  await Promise.allSettled([
-    getRepos().then((r) => { repos = r; }),
-    getInstallations().then((i) => { installations = i; }),
-  ]);
-
+  return (
+    <>
   return (
     <>
       <NavWithUser />
