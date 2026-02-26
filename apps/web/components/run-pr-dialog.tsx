@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRunPR } from "@/lib/api";
 import type { Proposal } from "@/lib/types";
@@ -62,14 +62,14 @@ export function RunPRDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  function toggleId(id: string) {
+  const toggleId = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   async function handleCreate() {
     if (selectedIds.size === 0) return;
