@@ -11,8 +11,7 @@
 
 import { useState, useTransition } from "react";
 import { updateRepoSettings, updateRepoConfig } from "@/lib/api";
-import type { LLMProvider } from "@/lib/types";
-import type { Repository, RepoSettings } from "@/lib/types";
+import type { LLMProvider, Repository, RepoSettings } from "@/lib/types";
 
 interface SettingsFormProps {
   repoId: string;
