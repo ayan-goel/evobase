@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRun } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { CancelRunButton } from "@/components/run-detail/cancel-run-button";
@@ -52,6 +52,11 @@ const PHASE_LABELS: Record<string, string> = {
 export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
   const [run, setRun] = useState(initialRun);
   const isActive = run.status === "queued" || run.status === "running";
+
+  const handleCancelled = useCallback(
+    () => setRun((prev) => ({ ...prev, status: "failed" as RunStatus })),
+    [],
+  );
   const { events, currentPhase, isConnected, isDone } = useRunEvents(
     run.id,
     isActive,
@@ -137,9 +142,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
         {isActive && (
           <CancelRunButton
             runId={run.id}
-            onCancelled={() =>
-              setRun((prev) => ({ ...prev, status: "failed" as RunStatus }))
-            }
+            onCancelled={handleCancelled}
           />
         )}
       </div>
