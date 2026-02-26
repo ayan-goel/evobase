@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRun } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
 import { CancelRunButton } from "@/components/run-detail/cancel-run-button";
@@ -271,7 +271,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
 // Grouped timeline — inserts phase section headers at phase transitions
 // ---------------------------------------------------------------------------
 
-function GroupedTimeline({
+const GroupedTimeline = memo(function GroupedTimeline({
   events,
   isActive,
 }: {
@@ -353,7 +353,7 @@ function GroupedTimeline({
       )}
     </div>
   );
-}
+});
 
 function PhaseGroupHeader({ phase }: { phase: string }) {
   return (
