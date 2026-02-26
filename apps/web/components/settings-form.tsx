@@ -95,6 +95,8 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
     });
   }
 
+  const chosenProvider = llmProviders.find((p) => p.id === settings.llm_provider) ?? null;
+
   return (
     <div className="space-y-6">
       {/* Auto-pause warning */}
@@ -355,28 +357,24 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
           </div>
 
           {/* Model selector for chosen provider */}
-          {(() => {
-            const chosenProvider = llmProviders.find((p) => p.id === settings.llm_provider);
-            if (!chosenProvider) return null;
-            return (
-              <div>
-                <label className="block text-xs font-medium text-white/60 uppercase tracking-wider mb-1.5">
-                  Model
-                </label>
-                <select
-                  value={settings.llm_model}
-                  onChange={(e) => handleChange("llm_model", e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-white/25 focus:outline-none"
-                >
-                  {chosenProvider.models.map((m) => (
-                    <option key={m.id} value={m.id} className="bg-neutral-900">
-                      {m.label} — {m.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })()}
+          {chosenProvider && (
+            <div>
+              <label className="block text-xs font-medium text-white/60 uppercase tracking-wider mb-1.5">
+                Model
+              </label>
+              <select
+                value={settings.llm_model}
+                onChange={(e) => handleChange("llm_model", e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-white/25 focus:outline-none"
+              >
+                {chosenProvider.models.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-neutral-900">
+                    {m.label} — {m.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
