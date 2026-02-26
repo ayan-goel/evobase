@@ -159,7 +159,6 @@ function renderBaselineCompleted(event: RunEvent) {
   const isOk = Boolean(d.success);
   const failureReason = d.failure_reason as string | undefined;
   const attempts = d.attempts as number | undefined;
-  const mode = d.mode as string | undefined;
   return (
     <TimelineRow
       icon={isOk ? "✓" : "✗"}
@@ -176,7 +175,7 @@ function renderBaselineCompleted(event: RunEvent) {
       ) : null}
       {attempts != null && attempts > 1 ? (
         <span className="text-white/20 text-xs ml-2">
-          after {attempts} attempts ({mode})
+          after {attempts} attempts
         </span>
       ) : null}
     </TimelineRow>
