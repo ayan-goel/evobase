@@ -165,6 +165,7 @@ async def stream_run_events(
     await _get_run_for_user(run_id, user_id, db)
 
     last_event_id = request.headers.get("Last-Event-ID", "0")
+    run_status = run.status  # snapshot; may be "queued"/"running"/"completed"/"failed"
 
     async def _generate():
         from app.runs.events import event_stream
@@ -172,14 +173,17 @@ async def stream_run_events(
         terminal_seen = False
         heartbeat_count = 0
 
-        async for event in event_stream(str(run_id), last_id=last_event_id):
+        async for event in event_stream(
+            str(run_id), last_id=last_event_id, run_status=run_status
+        ):
             if await request.is_disconnected():
                 break
 
             if event["type"] == "heartbeat":
                 heartbeat_count += 1
                 yield f": heartbeat {heartbeat_count}\n\n"
-                # Check DB for terminal status after heartbeats
+                # Periodically re-check DB for terminal status so we send the
+                # "done" event as soon as the run finishes.
                 if heartbeat_count % 3 == 0 and not terminal_seen:
                     from sqlalchemy import select as sa_select
                     from app.db.session import async_session_factory
@@ -196,6 +200,9 @@ async def stream_run_events(
                 continue
 
             event_data = json.dumps(event)
+            # Use the Postgres UUID (event["id"]) as the SSE event ID so the
+            # browser's automatic Last-Event-ID reconnection works against our
+            # Postgres replay cursor.
             entry_id = event["id"]
             yield f"id: {entry_id}\nevent: run_event\ndata: {event_data}\n\n"
 
@@ -203,6 +210,11 @@ async def stream_run_events(
                 terminal_seen = True
                 yield f"event: done\ndata: {{}}\n\n"
                 break
+
+        # For terminal runs event_stream exits after the Postgres replay;
+        # emit the "done" sentinel so the client closes the connection cleanly.
+        if run_status in ("completed", "failed") and not terminal_seen:
+            yield f"event: done\ndata: {{}}\n\n"
 
     return StreamingResponse(
         _generate(),

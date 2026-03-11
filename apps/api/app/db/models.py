@@ -180,6 +180,9 @@ class Run(Base):
     )
 
     repository: Mapped["Repository"] = relationship(back_populates="runs")
+    events: Mapped[list["RunEvent"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
     opportunities: Mapped[list["Opportunity"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
@@ -323,6 +326,34 @@ class Artifact(Base):
     )
 
     proposal: Mapped[Optional["Proposal"]] = relationship(back_populates="artifacts")
+
+
+class RunEvent(Base):
+    """Persisted pipeline event for a run.
+
+    Written by publish_event() in the Celery worker and replayed by the SSE
+    endpoint so that event history is always available, even after Redis TTL
+    expiry.  stream_id stores the Redis Stream entry ID so the SSE endpoint
+    can resume from the correct Redis cursor after a Postgres replay.
+    """
+
+    __tablename__ = "run_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    stream_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ts: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+
+    run: Mapped["Run"] = relationship(back_populates="events")
 
 
 class Settings(Base):
