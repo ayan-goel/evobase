@@ -106,3 +106,41 @@ export async function getInstallations(): Promise<Installation[]> {
   );
   return data.installations;
 }
+
+export interface BillingSubscription {
+  tier: string;
+  status: string;
+  current_period_start: string;
+  current_period_end: string;
+  usage_pct: number;
+  overage_active: boolean;
+  monthly_spend_limit_microdollars: number | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+}
+
+export interface UsageRunRow {
+  run_id: string;
+  created_at: string;
+  api_cost_microdollars: number;
+  billed_microdollars: number;
+  call_count: number;
+}
+
+export interface BillingUsage {
+  period_start: string;
+  period_end: string;
+  total_api_cost_microdollars: number;
+  total_billed_microdollars: number;
+  included_api_budget_microdollars: number;
+  usage_pct: number;
+  runs: UsageRunRow[];
+}
+
+export async function getBillingSubscription(): Promise<BillingSubscription> {
+  return apiFetch<BillingSubscription>("/billing/subscription");
+}
+
+export async function getBillingUsage(): Promise<BillingUsage> {
+  return apiFetch<BillingUsage>("/billing/usage");
+}

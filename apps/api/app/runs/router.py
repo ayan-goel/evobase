@@ -19,10 +19,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import decode_token, get_current_user
+from app.billing.token_pricing import TIER_API_BUDGETS
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.middleware import get_request_id
-from app.db.models import Organization, Repository, Run
+from app.db.models import Organization, Repository, Run, Subscription, TokenUsageEvent
 from app.db.session import get_db
 from app.runs.schemas import (
     RunCancelResponse,
@@ -82,6 +83,31 @@ async def enqueue_run(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Repository not found",
         )
+
+    # Pre-run subscription budget gate.
+    # Free-tier orgs with no remaining included budget are hard-blocked.
+    # Paid orgs in overage are allowed to proceed (charged at 2× rate).
+    sub_result = await db.execute(
+        select(Subscription).where(Subscription.org_id == repo.org_id)
+    )
+    sub = sub_result.scalar_one_or_none()
+
+    if sub and sub.tier == "free" and not sub.overage_allowed:
+        from sqlalchemy import func as sa_func
+        period_spent = await db.scalar(
+            select(sa_func.coalesce(sa_func.sum(TokenUsageEvent.api_cost_microdollars), 0))
+            .where(TokenUsageEvent.org_id == repo.org_id)
+            .where(TokenUsageEvent.created_at >= sub.current_period_start)
+        )
+        if (period_spent or 0) >= sub.included_api_budget_microdollars:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "plan_limit_reached",
+                    "tier": sub.tier,
+                    "message": "Free plan usage limit reached. Upgrade to continue.",
+                },
+            )
 
     trace_id = get_request_id() or str(uuid.uuid4())
 

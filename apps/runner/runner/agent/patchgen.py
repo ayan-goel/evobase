@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from runner.agent.types import AgentOpportunity, AgentPatch
+from runner.billing.accumulator import UsageAccumulator
 from runner.llm.prompts.patch_prompts import patch_generation_prompt
 from runner.llm.prompts.system_prompts import build_system_prompt
 from runner.llm.provider import LLMProvider, LLMProviderError
@@ -80,6 +81,7 @@ async def generate_agent_patch(
     provider: LLMProvider,
     config: LLMConfig,
     approach_override: Optional[str] = None,
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> Optional[AgentPatch]:
     """Generate a patch for an `AgentOpportunity` using the LLM.
 
@@ -91,6 +93,7 @@ async def generate_agent_patch(
         approach_override: When set, replaces `opportunity.approach` in the
             patch prompt. Used by the multi-approach loop to try different
             implementation strategies for the same opportunity.
+        accumulator: Optional usage accumulator for cost tracking.
 
     Returns:
         An `AgentPatch` if the LLM produced a valid, constraint-compliant
@@ -102,6 +105,7 @@ async def generate_agent_patch(
         provider=provider,
         config=config,
         approach_override=approach_override,
+        accumulator=accumulator,
     )
     return outcome.patch
 
@@ -112,6 +116,7 @@ async def generate_agent_patch_with_diagnostics(
     provider: LLMProvider,
     config: LLMConfig,
     approach_override: Optional[str] = None,
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> PatchGenerationOutcome:
     """Generate a patch and return detailed diagnostics for live event streaming."""
     repo_dir = Path(repo_dir)
@@ -157,6 +162,7 @@ async def generate_agent_patch_with_diagnostics(
     tries: list[PatchGenTryRecord] = []
 
     for attempt in range(1 + MAX_SELF_CORRECTION_ATTEMPTS):
+        call_type = "patch_gen" if attempt == 0 else "self_correction"
         try_record = await _call_patch_agent_with_diagnostics(
             attempt_number=attempt + 1,
             file_rel_path=file_rel_path,
@@ -165,6 +171,8 @@ async def generate_agent_patch_with_diagnostics(
             approach=effective_approach,
             provider=provider,
             config=config,
+            accumulator=accumulator,
+            call_type=call_type,
         )
         tries.append(try_record)
 
@@ -274,6 +282,8 @@ async def _call_patch_agent_with_diagnostics(
     approach: str,
     provider: LLMProvider,
     config: LLMConfig,
+    accumulator: Optional[UsageAccumulator] = None,
+    call_type: str = "patch_gen",
 ) -> PatchGenTryRecord:
     """Make one patch generation LLM call and capture parse diagnostics."""
     from runner.detector.types import DetectionResult
@@ -305,6 +315,9 @@ async def _call_patch_agent_with_diagnostics(
             patch=None,
             patch_trace=None,
         )
+
+    if accumulator is not None:
+        accumulator.record(response.thinking_trace, call_type)
 
     patch, failure_stage, failure_reason = _parse_patch_response_detailed(
         response.content,

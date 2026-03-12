@@ -24,6 +24,7 @@ from typing import Callable, Optional
 
 from runner.agent.repo_map import build_repo_map
 from runner.agent.types import AgentOpportunity
+from runner.billing.accumulator import UsageAccumulator
 from runner.detector.types import DetectionResult
 from runner.llm.prompts.discovery_prompts import analysis_prompt, file_selection_prompt
 from runner.llm.prompts.system_prompts import build_system_prompt
@@ -80,6 +81,7 @@ async def discover_opportunities(
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
     on_event: Optional[EventCallback] = None,
     max_opportunities: int = 0,
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> list[AgentOpportunity]:
     """Run the two-stage discovery pipeline and return all opportunities.
 
@@ -114,7 +116,9 @@ async def discover_opportunities(
 
     # Stage 1: file selection (seen_signatures inform the LLM to explore new files)
     selected_files = await _select_files(
-        repo_dir, system_prompt, provider, config, seen_signatures=seen_signatures,
+        repo_dir, system_prompt, provider, config,
+        seen_signatures=seen_signatures,
+        accumulator=accumulator,
     )
     if not selected_files:
         logger.warning("LLM returned no files to analyse; skipping discovery")
@@ -152,6 +156,7 @@ async def discover_opportunities(
         opps = await _analyse_file(
             rel_path, file_path, system_prompt, provider, config,
             seen_signatures=seen_signatures,
+            accumulator=accumulator,
         )
         files_analysed += 1
         _emit("discovery.file.analysed", {
@@ -252,6 +257,7 @@ async def _select_files(
     provider: LLMProvider,
     config: LLMConfig,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> list[str]:
     """Stage 1: ask the LLM to pick which files to analyse."""
     repo_map = build_repo_map(repo_dir)
@@ -268,6 +274,9 @@ async def _select_files(
     except LLMProviderError as exc:
         logger.error("File selection LLM call failed: %s", exc)
         return []
+
+    if accumulator is not None:
+        accumulator.record(response.thinking_trace, "file_selection")
 
     logger.info(
         "File selection LLM response length=%d, first 300 chars: %r",
@@ -286,6 +295,7 @@ async def _analyse_file(
     provider: LLMProvider,
     config: LLMConfig,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> list[AgentOpportunity]:
     """Stage 2: analyse a single file for opportunities."""
     try:
@@ -309,6 +319,9 @@ async def _analyse_file(
     except LLMProviderError as exc:
         logger.error("Analysis LLM call failed for %s: %s", rel_path, exc)
         return []
+
+    if accumulator is not None:
+        accumulator.record(response.thinking_trace, "file_analysis")
 
     opps = _parse_opportunities(response.content, response.thinking_trace)
     logger.info(

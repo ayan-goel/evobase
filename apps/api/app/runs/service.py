@@ -30,8 +30,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.billing.token_pricing import TIER_API_BUDGETS, TIER_OVERAGE_ALLOWED
 from app.core.config import get_settings
-from app.db.models import Attempt, Opportunity, Proposal, Repository, Run, Settings
+from app.db.models import Attempt, Opportunity, Proposal, Repository, Run, Settings, Subscription, TokenUsageEvent
 from app.db.sync_session import get_sync_db
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,37 @@ class RunService:
                 max_strategy_attempts = (
                     settings.max_strategy_attempts if settings else 2
                 )
+
+                org_id = str(repo.org_id)
+
+                # Load subscription for this org (fall back to free tier if missing)
+                from sqlalchemy import select as sa_select, func as sa_func
+                sub = session.execute(
+                    sa_select(Subscription).where(Subscription.org_id == repo.org_id)
+                ).scalar_one_or_none()
+                if sub:
+                    sub_tier = sub.tier
+                    sub_api_budget = sub.included_api_budget_microdollars
+                    sub_overage = sub.overage_allowed
+                    sub_spend_limit = sub.monthly_spend_limit_microdollars
+                    sub_period_start = sub.current_period_start
+                else:
+                    sub_tier = "free"
+                    sub_api_budget = TIER_API_BUDGETS["free"]
+                    sub_overage = TIER_OVERAGE_ALLOWED["free"]
+                    sub_spend_limit = None
+                    sub_period_start = None
+
+                # Compute how much API cost has been spent in the current period already
+                if sub_period_start:
+                    period_spent_row = session.execute(
+                        sa_select(sa_func.coalesce(sa_func.sum(TokenUsageEvent.api_cost_microdollars), 0))
+                        .where(TokenUsageEvent.org_id == repo.org_id)
+                        .where(TokenUsageEvent.created_at >= sub_period_start)
+                    ).scalar_one()
+                    already_spent = int(period_spent_row)
+                else:
+                    already_spent = 0
 
             # ----------------------------------------------------------------
             # Step 2: Resolve repo URL
@@ -470,6 +502,7 @@ class RunService:
                 }
 
             from runner.agent.orchestrator import run_agent_cycle
+            from runner.billing.accumulator import BudgetExceeded, UsageAccumulator
             from runner.llm.types import LLMConfig
 
             llm_config = LLMConfig(
@@ -483,6 +516,13 @@ class RunService:
 
             seen_signatures = _build_seen_signatures(uuid.UUID(repo_id))
 
+            accumulator = UsageAccumulator(
+                org_api_budget_microdollars=sub_api_budget,
+                overage_allowed=sub_overage,
+                monthly_spend_limit_microdollars=sub_spend_limit,
+                already_spent_microdollars=already_spent,
+            )
+
             emit("discovery.started", "discovery", {
                 "llm_provider": llm_provider,
                 "llm_model": llm_model,
@@ -493,17 +533,39 @@ class RunService:
                 emit("run.cancelled", "run", {"reason": "User cancelled"})
                 return _cancelled_result(run_id)
 
-            cycle_result = asyncio.run(
-                run_agent_cycle(
-                    repo_dir=work_dir,
-                    detection=detection,
-                    llm_config=llm_config,
-                    baseline=baseline,
-                    max_proposals=max_proposals,
-                    seen_signatures=seen_signatures,
-                    on_event=emit,
+            budget_exceeded = False
+            try:
+                cycle_result = asyncio.run(
+                    run_agent_cycle(
+                        repo_dir=work_dir,
+                        detection=detection,
+                        llm_config=llm_config,
+                        baseline=baseline,
+                        max_proposals=max_proposals,
+                        seen_signatures=seen_signatures,
+                        on_event=emit,
+                        accumulator=accumulator,
+                    )
                 )
-            )
+            except BudgetExceeded as exc:
+                logger.warning(
+                    "Run %s: stopped mid-run due to budget exhaustion (%s)", run_id, exc
+                )
+                budget_exceeded = True
+                # cycle_result is unavailable; write whatever events were captured
+                _write_token_usage_events(run_id, org_id, accumulator)
+                emit("run.failed", "run", {
+                    "reason": "budget_exhausted",
+                    "tier": sub_tier,
+                })
+                return {
+                    "baseline_completed": True,
+                    "agent_completed": False,
+                    "reason": "budget_exhausted",
+                    "tier": sub_tier,
+                    "run_id": run_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
 
             logger.info(
                 "Run %s: agent cycle done — %d attempted, %d accepted",
@@ -520,6 +582,11 @@ class RunService:
                 baseline=baseline,
                 framework=repo_framework,
             )
+
+            # ----------------------------------------------------------------
+            # Step 9b: Write token_usage_events in a batch
+            # ----------------------------------------------------------------
+            _write_token_usage_events(run_id, org_id, accumulator)
 
             # ----------------------------------------------------------------
             # Step 10: Update settings counters
@@ -954,6 +1021,42 @@ def _cancelled_result(run_id: str) -> dict:
     }
 
 
+def _write_token_usage_events(run_id: str, org_id: str, accumulator) -> None:
+    """Batch-insert all UsageEvent records from the accumulator into token_usage_events.
+
+    Best-effort: failures are logged and never propagate — we must not abort
+    the run over a billing write error.
+    """
+    if not accumulator or not accumulator.events:
+        return
+    try:
+        with get_sync_db() as session:
+            for event in accumulator.events:
+                row = TokenUsageEvent(
+                    org_id=uuid.UUID(org_id),
+                    run_id=uuid.UUID(run_id),
+                    call_type=event.call_type,
+                    provider=event.provider,
+                    model=event.model,
+                    input_tokens=event.input_tokens,
+                    output_tokens=event.output_tokens,
+                    api_cost_microdollars=event.api_cost_microdollars,
+                    billed_microdollars=event.billed_microdollars,
+                    rate_type=event.rate_type,
+                )
+                session.add(row)
+            session.commit()
+        logger.info(
+            "Wrote %d token_usage_events for run %s (api_cost=%dµ$ billed=%dµ$)",
+            len(accumulator.events),
+            run_id,
+            accumulator.total_api_cost_microdollars,
+            accumulator.total_billed_microdollars,
+        )
+    except Exception as exc:
+        logger.warning("Failed to write token_usage_events for run %s: %s", run_id, exc)
+
+
 def _resolve_llm_credentials() -> tuple[str, str, str]:
     """Resolve which LLM provider to use based on available API keys.
 
@@ -964,8 +1067,8 @@ def _resolve_llm_credentials() -> tuple[str, str, str]:
 
     candidates = [
         ("anthropic", "claude-sonnet-4-6", os.environ.get("ANTHROPIC_API_KEY", "")),
-        ("openai", "gpt-5.2", os.environ.get("OPENAI_API_KEY", "")),
-        ("google", "gemini-2.5-pro", os.environ.get("GOOGLE_API_KEY", "")),
+        ("openai", "gpt-5.3", os.environ.get("OPENAI_API_KEY", "")),
+        ("google", "gemini-3-pro", os.environ.get("GOOGLE_API_KEY", "")),
     ]
     for provider, model, key in candidates:
         if key:

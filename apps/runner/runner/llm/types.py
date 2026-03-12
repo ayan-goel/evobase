@@ -100,8 +100,8 @@ class LLMResponse:
 
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "anthropic": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
-    "openai": ["gpt-5.2", "gpt-5-mini"],
-    "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    "openai": ["gpt-4.1", "gpt-5.3", "gpt-5-mini"],
+    "google": ["gemini-3-pro", "gemini-3-flash", "gemini-3-flash-lite"],
 }
 
 DEFAULT_PROVIDER = "anthropic"
@@ -114,7 +114,7 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 _SELECTION_MODEL: dict[str, str] = {
     "anthropic": "claude-haiku-4-5",
     "openai": "gpt-5-mini",
-    "google": "gemini-2.5-flash",
+    "google": "gemini-3-flash",
 }
 
 

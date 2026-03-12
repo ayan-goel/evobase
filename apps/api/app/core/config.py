@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # Storage
     storage_bucket: str = "artifacts"
 
+    # Stripe — leave blank to disable billing features.
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    # Publishable key is exposed to the frontend via GET /billing/config.
+    stripe_publishable_key: str = ""
+
     # App
     debug: bool = True
 

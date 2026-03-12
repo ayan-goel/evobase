@@ -1,7 +1,7 @@
 """Tests for SQLAlchemy model definitions and table metadata.
 
-Verifies that all 10 models are correctly defined, table names match
-the SQL migration, and relationships are properly configured.
+Verifies that all persisted models are correctly defined, table names match
+the migration-backed schema, and relationships are properly configured.
 """
 
 from app.db.models import (
@@ -15,7 +15,10 @@ from app.db.models import (
     Proposal,
     Repository,
     Run,
+    RunEvent,
     Settings,
+    Subscription,
+    TokenUsageEvent,
     User,
 )
 
@@ -24,7 +27,7 @@ class TestModelMetadata:
     """Verify model table names and column definitions match the schema."""
 
     def test_all_tables_registered(self):
-        """All 11 tables must be registered in Base metadata."""
+        """All persisted tables must be registered in Base metadata."""
         table_names = set(Base.metadata.tables.keys())
         expected = {
             "users",
@@ -38,6 +41,9 @@ class TestModelMetadata:
             "proposals",
             "artifacts",
             "settings",
+            "run_events",
+            "subscriptions",
+            "token_usage_events",
         }
         assert table_names == expected
 
@@ -165,6 +171,59 @@ class TestModelMetadata:
         pk_columns = [c.name for c in table.primary_key.columns]
         assert pk_columns == ["repo_id"]
 
+    def test_subscription_table_columns(self):
+        table = Subscription.__table__
+        column_names = {c.name for c in table.columns}
+        expected = {
+            "id",
+            "org_id",
+            "tier",
+            "status",
+            "stripe_customer_id",
+            "stripe_subscription_id",
+            "current_period_start",
+            "current_period_end",
+            "included_api_budget_microdollars",
+            "overage_allowed",
+            "monthly_spend_limit_microdollars",
+            "created_at",
+            "updated_at",
+        }
+        assert column_names == expected
+
+    def test_token_usage_event_table_columns(self):
+        table = TokenUsageEvent.__table__
+        column_names = {c.name for c in table.columns}
+        expected = {
+            "id",
+            "org_id",
+            "run_id",
+            "call_type",
+            "provider",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "api_cost_microdollars",
+            "billed_microdollars",
+            "rate_type",
+            "created_at",
+        }
+        assert column_names == expected
+
+    def test_run_event_table_columns(self):
+        table = RunEvent.__table__
+        column_names = {c.name for c in table.columns}
+        expected = {
+            "id",
+            "run_id",
+            "event_type",
+            "phase",
+            "data",
+            "stream_id",
+            "ts",
+        }
+        assert column_names == expected
+
 
 class TestModelRelationships:
     """Verify ORM relationships are configured correctly."""
@@ -175,6 +234,7 @@ class TestModelRelationships:
     def test_organization_has_owner_and_repositories(self):
         assert hasattr(Organization, "owner")
         assert hasattr(Organization, "repositories")
+        assert hasattr(Organization, "subscription")
 
     def test_repository_has_baselines_runs_settings(self):
         assert hasattr(Repository, "baselines")
@@ -184,6 +244,8 @@ class TestModelRelationships:
     def test_run_has_opportunities_and_proposals(self):
         assert hasattr(Run, "opportunities")
         assert hasattr(Run, "proposals")
+        assert hasattr(Run, "events")
+        assert hasattr(Run, "token_usage_events")
 
     def test_opportunity_has_attempts(self):
         assert hasattr(Opportunity, "attempts")

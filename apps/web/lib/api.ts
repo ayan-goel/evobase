@@ -288,3 +288,41 @@ export async function cancelRun(runId: string): Promise<RunCancelResult> {
 export function getRunEventsUrl(runId: string): string {
   return `${API_BASE}/runs/${runId}/events`;
 }
+
+/** Create a Stripe checkout session for upgrading to a paid tier. */
+export async function createCheckoutSession(
+  tier: string,
+): Promise<{ client_secret: string; publishable_key: string }> {
+  return apiFetch("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ tier }),
+  });
+}
+
+/** Upgrade an existing subscription to a new tier. */
+export async function upgradePlan(tier: string): Promise<{ tier: string; status: string }> {
+  return apiFetch("/billing/subscription/upgrade", {
+    method: "POST",
+    body: JSON.stringify({ tier }),
+  });
+}
+
+/** Cancel the current subscription at period end. */
+export async function cancelPlan(): Promise<{ status: string; tier: string }> {
+  return apiFetch("/billing/subscription/cancel", { method: "POST" });
+}
+
+/** Set or clear the monthly overage spend cap (in microdollars). */
+export async function updateSpendLimit(
+  monthly_spend_limit_microdollars: number | null,
+): Promise<{ monthly_spend_limit_microdollars: number | null }> {
+  return apiFetch("/billing/spend-limit", {
+    method: "PATCH",
+    body: JSON.stringify({ monthly_spend_limit_microdollars }),
+  });
+}
+
+/** Fetch the Stripe publishable key. */
+export async function getBillingConfig(): Promise<{ publishable_key: string }> {
+  return apiFetch("/billing/config");
+}

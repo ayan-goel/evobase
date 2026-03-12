@@ -5,14 +5,23 @@ SQLAlchemy adapts UUID and JSON column types to SQLite-compatible equivalents.
 Each test gets a fresh database for isolation.
 """
 
+import os
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+os.environ.setdefault("EVOBASE_SKIP_SCHEDULER", "1")
+
+RUNNER_SRC = Path(__file__).resolve().parents[2] / "runner"
+if str(RUNNER_SRC) not in sys.path:
+    sys.path.insert(0, str(RUNNER_SRC))
 
 from app.db.models import Base, Organization, Repository, Run, User
 from app.db.session import get_db
@@ -112,7 +121,7 @@ def app(async_engine):
     except Exception:
         pass
 
-    test_app = create_app()
+    test_app = create_app(skip_scheduler=True)
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         session_factory = async_sessionmaker(

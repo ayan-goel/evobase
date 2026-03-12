@@ -45,10 +45,13 @@ class TestListModels:
         openai = next(p for p in res.json()["providers"] if p["id"] == "openai")
         model_ids = [m["id"] for m in openai["models"]]
         assert "gpt-4.1" in model_ids
-        assert "gpt-5.2" in model_ids
+        assert "gpt-5.3" in model_ids
+        assert "gpt-5-mini" in model_ids
 
-    async def test_google_has_gemini_25(self, client: AsyncClient) -> None:
+    async def test_google_has_gemini_3(self, client: AsyncClient) -> None:
         res = await client.get("/llm/models")
         google = next(p for p in res.json()["providers"] if p["id"] == "google")
         model_ids = [m["id"] for m in google["models"]]
-        assert "gemini-2.5-pro" in model_ids
+        assert "gemini-3-pro" in model_ids
+        assert "gemini-3-flash" in model_ids
+        assert "gemini-3-flash-lite" in model_ids

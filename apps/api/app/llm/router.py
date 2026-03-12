@@ -34,24 +34,24 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
         },
     ],
     "openai": [
-        {"id": "gpt-4.1", "label": "GPT-4.1", "description": "Best reasoning-to-cost ratio (recommended)"},
-        {"id": "gpt-5.2", "label": "GPT-5.2", "description": "Flagship model, best quality"},
+        {"id": "gpt-4.1",    "label": "GPT-4.1",    "description": "Best reasoning-to-cost ratio"},
+        {"id": "gpt-5.3",    "label": "GPT-5.3",    "description": "Latest flagship model"},
         {"id": "gpt-5-mini", "label": "GPT-5 Mini", "description": "Fast and cost-efficient"},
     ],
     "google": [
         {
-            "id": "gemini-2.5-pro",
-            "label": "Gemini 2.5 Pro",
+            "id": "gemini-3-pro",
+            "label": "Gemini 3 Pro",
             "description": "Highest capability (recommended)",
         },
         {
-            "id": "gemini-2.5-flash",
-            "label": "Gemini 2.5 Flash",
+            "id": "gemini-3-flash",
+            "label": "Gemini 3 Flash",
             "description": "Fast and cost-efficient",
         },
         {
-            "id": "gemini-2.5-flash-lite",
-            "label": "Gemini 2.5 Flash Lite",
+            "id": "gemini-3-flash-lite",
+            "label": "Gemini 3 Flash Lite",
             "description": "Lowest cost",
         },
     ],

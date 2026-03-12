@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -8,6 +10,7 @@ from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.middleware import RequestIdMiddleware, SecurityHeadersMiddleware
 from app.auth.router import router as auth_router
+from app.billing.router import router as billing_router
 from app.repos.router import router as repos_router
 from app.runs.router import router as runs_router
 from app.proposals.router import router as proposals_router
@@ -16,11 +19,8 @@ from app.github.router import router as github_router
 from app.settings.router import router as settings_router
 from app.llm.router import router as llm_router
 
-# Import scheduler so Celery beat_schedule is registered when the app starts
-import app.scheduling.scheduler  # noqa: F401
 
-
-def create_app() -> FastAPI:
+def create_app(*, skip_scheduler: bool = False) -> FastAPI:
     settings = get_settings()
 
     _app = FastAPI(
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     _app.include_router(auth_router)
+    _app.include_router(billing_router)
     _app.include_router(repos_router)
     _app.include_router(runs_router)
     _app.include_router(proposals_router)
@@ -92,7 +93,10 @@ def create_app() -> FastAPI:
     _app.include_router(settings_router)
     _app.include_router(llm_router)
 
+    if not skip_scheduler:
+        import app.scheduling.scheduler  # noqa: F401
+
     return _app
 
 
-app = create_app()
+app = create_app(skip_scheduler=os.getenv("EVOBASE_SKIP_SCHEDULER") == "1")

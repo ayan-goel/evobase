@@ -40,6 +40,7 @@ from runner.agent.patchgen import (
     generate_agent_patch_with_diagnostics,
 )
 from runner.agent.types import AgentOpportunity, AgentPatch, AgentRun, PatchVariantResult
+from runner.billing.accumulator import UsageAccumulator
 from runner.detector.types import DetectionResult
 from runner.llm.factory import get_provider, validate_model
 from runner.llm.types import LLMConfig
@@ -69,6 +70,8 @@ class AgentCycleResult:
     patch_variants_for_candidate: list[list[PatchVariantResult]] = field(default_factory=list)
     # Human-readable reason why the winning variant was chosen
     selection_reasons: list[str] = field(default_factory=list)
+    # Token usage accumulator — populated when a UsageAccumulator is passed in
+    accumulator: Optional[UsageAccumulator] = None
 
     @property
     def accepted_count(self) -> int:
@@ -90,6 +93,7 @@ async def run_agent_cycle(
     max_proposals: int = DEFAULT_MAX_PROPOSALS,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
     on_event: Optional[EventCallback] = None,
+    accumulator: Optional[UsageAccumulator] = None,
 ) -> AgentCycleResult:
     """Run the full LLM agent cycle: discover → patch variants → validate → select.
 
@@ -120,7 +124,7 @@ async def run_agent_cycle(
     provider = get_provider(llm_config.provider)
 
     agent_run = AgentRun(model=llm_config.model, provider=llm_config.provider)
-    result = AgentCycleResult(agent_run=agent_run)
+    result = AgentCycleResult(agent_run=agent_run, accumulator=accumulator)
 
     # Step 1: Discovery
     logger.info(
@@ -135,6 +139,7 @@ async def run_agent_cycle(
         seen_signatures=seen_signatures,
         on_event=on_event,
         max_opportunities=max_proposals,
+        accumulator=accumulator,
     )
     agent_run.opportunities = opportunities
 
@@ -187,6 +192,7 @@ async def run_agent_cycle(
                 provider=provider,
                 config=llm_config,
                 approach_override=approach_desc,
+                accumulator=accumulator,
             )
             patch = patch_outcome.patch
 

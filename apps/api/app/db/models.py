@@ -58,6 +58,9 @@ class Organization(Base):
     repositories: Mapped[list["Repository"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
+    subscription: Mapped[Optional["Subscription"]] = relationship(
+        back_populates="organization", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class GitHubInstallation(Base):
@@ -187,6 +190,9 @@ class Run(Base):
         back_populates="run", cascade="all, delete-orphan"
     )
     proposals: Mapped[list["Proposal"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    token_usage_events: Mapped[list["TokenUsageEvent"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
 
@@ -354,6 +360,79 @@ class RunEvent(Base):
     )
 
     run: Mapped["Run"] = relationship(back_populates="events")
+
+
+class Subscription(Base):
+    """Per-org billing subscription.
+
+    One row per organization. Free tier rows are auto-created on org creation.
+    Stripe fields are populated when the org upgrades to a paid plan.
+    All monetary values are in microdollars (1 µ$ = $0.000001).
+    """
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    tier: Mapped[str] = mapped_column(Text, nullable=False, default="free")
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(Text, unique=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(Text, unique=True)
+    current_period_start: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+    current_period_end: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+    # Free: 3333333 ($3.33), Hobby: 13333333 ($13.33), Premium: 40000000 ($40), Pro: 133000000 ($133)
+    included_api_budget_microdollars: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=3333333
+    )
+    overage_allowed: Mapped[bool] = mapped_column(nullable=False, default=False)
+    monthly_spend_limit_microdollars: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+
+    organization: Mapped["Organization"] = relationship(back_populates="subscription")
+
+
+class TokenUsageEvent(Base):
+    """Per-LLM-call token usage ledger.
+
+    One row per provider.complete() call, batch-inserted at run completion.
+    api_cost_microdollars = raw provider cost; billed_microdollars = after markup.
+    """
+
+    __tablename__ = "token_usage_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
+    )
+    call_type: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    api_cost_microdollars: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    billed_microdollars: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    rate_type: Mapped[str] = mapped_column(Text, nullable=False, default="included")
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), nullable=False
+    )
+
+    run: Mapped["Run"] = relationship(back_populates="token_usage_events")
 
 
 class Settings(Base):

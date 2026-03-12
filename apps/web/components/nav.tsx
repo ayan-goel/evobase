@@ -63,6 +63,12 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
                     {user.github_login}
                   </span>
                 )}
+                <Link
+                  href="/account"
+                  className="text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
+                >
+                  Account
+                </Link>
                 <button
                   onClick={handleSignOut}
                   className="text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
@@ -114,6 +120,13 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
                 {user.github_login && (
                   <span className="text-xs text-white/40">{user.github_login}</span>
                 )}
+                <Link
+                  href="/account"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-sm font-medium text-white/70 hover:text-white transition-colors"
+                >
+                  Account
+                </Link>
                 <button
                   onClick={() => { setMobileOpen(false); handleSignOut(); }}
                   className="text-left text-sm font-medium text-white/50 hover:text-white/80 transition-colors"

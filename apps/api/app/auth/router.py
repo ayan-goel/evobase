@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import GitHubCallbackRequest, GitHubCallbackResponse, MeResponse
-from app.db.models import GitHubInstallation, Organization, User
+from app.billing.token_pricing import TIER_API_BUDGETS, TIER_OVERAGE_ALLOWED
+from app.db.models import GitHubInstallation, Organization, Subscription, User
 from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,22 @@ async def github_callback(
         org = Organization(name=body.github_login, owner_id=user.id)
         db.add(org)
         await db.flush()
+
+        # Auto-provision a free-tier subscription for every new organization.
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        free_sub = Subscription(
+            org_id=org.id,
+            tier="free",
+            status="active",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+            included_api_budget_microdollars=TIER_API_BUDGETS["free"],
+            overage_allowed=TIER_OVERAGE_ALLOWED["free"],
+        )
+        db.add(free_sub)
+        await db.flush()
+        logger.info("Provisioned free-tier subscription for new org %s", org.id)
 
     logger.info("GitHub callback: user=%s org=%s", user.id, org.id)
 

@@ -5,6 +5,7 @@ Covers: response parsing, reasoning extraction, error mapping per provider.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,11 +47,16 @@ class TestOpenAIProvider:
             usage=mock_usage,
         )
 
-        with patch("openai.AsyncOpenAI") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-            mock_client_cls.return_value = mock_client
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        fake_openai = SimpleNamespace(
+            AsyncOpenAI=MagicMock(return_value=mock_client),
+            AuthenticationError=type("AuthenticationError", (Exception,), {}),
+            RateLimitError=type("RateLimitError", (Exception,), {}),
+            APIError=type("APIError", (Exception,), {}),
+        )
 
+        with patch.dict("sys.modules", {"openai": fake_openai}):
             provider = OpenAIProvider()
             response = await provider.complete(_make_messages(), _make_config("openai", "gpt-4o"))
 
@@ -74,17 +80,22 @@ class TestOpenAIProvider:
 
     async def test_auth_error_raises_provider_error(self) -> None:
         from runner.llm.openai_provider import OpenAIProvider
-        import openai
 
-        with patch("openai.AsyncOpenAI") as mock_cls:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(
-                side_effect=openai.AuthenticationError(
-                    "invalid key", response=MagicMock(), body={}
-                )
-            )
-            mock_cls.return_value = mock_client
+        authentication_error = type("AuthenticationError", (Exception,), {})
+        rate_limit_error = type("RateLimitError", (Exception,), {})
+        api_error = type("APIError", (Exception,), {})
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=authentication_error("invalid key")
+        )
+        fake_openai = SimpleNamespace(
+            AsyncOpenAI=MagicMock(return_value=mock_client),
+            AuthenticationError=authentication_error,
+            RateLimitError=rate_limit_error,
+            APIError=api_error,
+        )
 
+        with patch.dict("sys.modules", {"openai": fake_openai}):
             provider = OpenAIProvider()
             with pytest.raises(LLMProviderError) as exc_info:
                 await provider.complete(_make_messages(), _make_config("openai", "gpt-4o"))
@@ -115,11 +126,13 @@ class TestAnthropicProvider:
             usage=mock_usage,
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_client.messages.create = AsyncMock(return_value=mock_response)
-            mock_cls.return_value = mock_client
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        fake_anthropic = SimpleNamespace(
+            AsyncAnthropic=MagicMock(return_value=mock_client)
+        )
 
+        with patch.dict("sys.modules", {"anthropic": fake_anthropic}):
             provider = AnthropicProvider()
             cfg = _make_config("anthropic", "claude-haiku-3-5")  # non-thinking model
             cfg.enable_thinking = False
@@ -161,18 +174,28 @@ class TestGoogleProvider:
             candidates_token_count=60,
         )
 
-        with patch("google.generativeai.configure"):
-            with patch("google.generativeai.GenerativeModel") as mock_model_cls:
-                mock_model = MagicMock()
-                mock_chat = MagicMock()
-                mock_chat.send_message_async = AsyncMock(return_value=mock_response)
-                mock_model.start_chat.return_value = mock_chat
-                mock_model_cls.return_value = mock_model
+        mock_model = MagicMock()
+        mock_chat = MagicMock()
+        mock_chat.send_message_async = AsyncMock(return_value=mock_response)
+        mock_model.start_chat.return_value = mock_chat
+        fake_genai = SimpleNamespace(
+            configure=MagicMock(),
+            GenerationConfig=MagicMock(return_value=MagicMock()),
+            GenerativeModel=MagicMock(return_value=mock_model),
+        )
+        fake_google = SimpleNamespace(generativeai=fake_genai)
 
-                provider = GoogleProvider()
-                response = await provider.complete(
-                    _make_messages(), _make_config("google", "gemini-2.0-flash")
-                )
+        with patch.dict(
+            "sys.modules",
+            {
+                "google": fake_google,
+                "google.generativeai": fake_genai,
+            },
+        ):
+            provider = GoogleProvider()
+            response = await provider.complete(
+                _make_messages(), _make_config("google", "gemini-2.0-flash")
+            )
 
         assert response.thinking_trace.provider == "google"
         assert "Gemini reasoning" in response.thinking_trace.reasoning

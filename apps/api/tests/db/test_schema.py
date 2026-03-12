@@ -13,7 +13,7 @@ from app.db.models import Base
 
 
 async def test_all_tables_created_successfully():
-    """Verify Base.metadata.create_all produces all 10 expected tables.
+    """Verify Base.metadata.create_all produces all expected tables.
 
     This is a lightweight proxy for the migration apply test.
     It confirms that the SQLAlchemy model definitions are internally
@@ -40,6 +40,9 @@ async def test_all_tables_created_successfully():
         "proposals",
         "artifacts",
         "settings",
+        "run_events",
+        "subscriptions",
+        "token_usage_events",
     }
     assert set(table_names) == expected_tables
     await engine.dispose()

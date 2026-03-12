@@ -1,10 +1,13 @@
 """Integration tests for run endpoints."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.conftest import STUB_REPO_ID
+from app.billing.token_pricing import TIER_API_BUDGETS
+from app.db.models import Subscription, TokenUsageEvent
+from tests.conftest import STUB_ORG_ID, STUB_REPO_ID
 
 
 class TestEnqueueRun:
@@ -176,6 +179,109 @@ class TestDeleteRun:
 
         response = await seeded_client.delete(f"/runs/{run_id}")
         assert response.status_code == 204
+
+
+class TestBudgetGate:
+    """Tests for the HTTP 402 budget gate on POST /repos/:id/run."""
+
+    async def _seed_subscription(self, db_session, tier: str, already_spent: int = 0) -> Subscription:
+        now = datetime.now(timezone.utc)
+        sub = Subscription(
+            org_id=STUB_ORG_ID,
+            tier=tier,
+            status="active",
+            current_period_start=now - timedelta(days=5),
+            current_period_end=now + timedelta(days=25),
+            included_api_budget_microdollars=TIER_API_BUDGETS[tier],
+            overage_allowed=(tier != "free"),
+        )
+        db_session.add(sub)
+        await db_session.flush()
+
+        if already_spent > 0:
+            run_id = uuid.uuid4()
+            from app.db.models import Run, Repository
+            repo = await db_session.get(Repository, STUB_REPO_ID)
+            if repo:
+                run = Run(id=run_id, repo_id=STUB_REPO_ID, status="completed")
+                db_session.add(run)
+                await db_session.flush()
+
+                event = TokenUsageEvent(
+                    org_id=STUB_ORG_ID,
+                    run_id=run_id,
+                    call_type="patch_gen",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=1000,
+                    output_tokens=500,
+                    api_cost_microdollars=already_spent,
+                    billed_microdollars=round(already_spent * 1.5),
+                    rate_type="included",
+                )
+                db_session.add(event)
+                await db_session.flush()
+
+        await db_session.commit()
+        return sub
+
+    async def test_free_tier_with_budget_remaining_allows_run(self, app, seeded_db, jwt_token):
+        from httpx import ASGITransport, AsyncClient
+
+        await self._seed_subscription(seeded_db, "free", already_spent=0)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        ) as client:
+            response = await client.post(f"/repos/{STUB_REPO_ID}/run", json={})
+
+        assert response.status_code == 201
+
+    async def test_free_tier_budget_exhausted_returns_402(self, app, seeded_db, jwt_token):
+        from httpx import ASGITransport, AsyncClient
+
+        # Spend the entire free budget
+        budget = TIER_API_BUDGETS["free"]
+        await self._seed_subscription(seeded_db, "free", already_spent=budget)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        ) as client:
+            response = await client.post(f"/repos/{STUB_REPO_ID}/run", json={})
+
+        assert response.status_code == 402
+        assert (
+            "limit reached"
+            in response.json()["detail"]["message"].lower()
+        )
+
+    async def test_paid_tier_budget_exhausted_allows_run(self, app, seeded_db, jwt_token):
+        """Paid tiers allow overage — budget exhaustion does not block the run."""
+        from httpx import ASGITransport, AsyncClient
+
+        budget = TIER_API_BUDGETS["hobby"]
+        await self._seed_subscription(seeded_db, "hobby", already_spent=budget)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        ) as client:
+            response = await client.post(f"/repos/{STUB_REPO_ID}/run", json={})
+
+        assert response.status_code == 201
+
+    async def test_no_subscription_auto_creates_and_allows_run(self, seeded_client):
+        """No subscription row yet — auto-created free tier should allow the first run."""
+        response = await seeded_client.post(f"/repos/{STUB_REPO_ID}/run", json={})
+        assert response.status_code == 201
 
 
 class _FakeRedis:
