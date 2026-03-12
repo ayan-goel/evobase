@@ -17,7 +17,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center">
       <main className="mx-auto w-full max-w-md px-4 text-center">
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 sm:p-12">
-          <h1 className="text-3xl font-semibold tracking-tight">Coreloop</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Evobase</h1>
           <p className="mt-3 text-sm text-white/60">
             Autonomous code optimization. Sign in to get started.
           </p>

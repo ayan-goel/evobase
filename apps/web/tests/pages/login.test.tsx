@@ -26,7 +26,7 @@ describe("LoginPage", () => {
 
   it("renders app branding", () => {
     render(<LoginPage />);
-    expect(screen.getByText("Coreloop")).toBeInTheDocument();
+    expect(screen.getByText("Evobase")).toBeInTheDocument();
   });
 
   it("does not show authenticated content", () => {

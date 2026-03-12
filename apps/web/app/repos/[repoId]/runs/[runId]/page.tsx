@@ -4,7 +4,7 @@ import { NavWithUser } from "@/components/nav-server";
 import { RunDetailView } from "@/components/run-detail/run-detail-view";
 import type { Repository, Run } from "@/lib/types";
 
-export const metadata = { title: "Run Detail — Coreloop" };
+export const metadata = { title: "Run Detail — Evobase" };
 
 export default async function RunDetailPage({
   params,

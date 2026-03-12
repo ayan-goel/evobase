@@ -147,7 +147,7 @@ async def test_emits_enriched_patch_and_validation_event_payloads(monkeypatch, t
         detection=DetectionResult(build_cmd="npm run build", test_cmd="npm run test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=1,
+        max_proposals=1,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -228,7 +228,7 @@ async def test_emits_patch_failure_diagnostics_when_patchgen_returns_none(monkey
         detection=DetectionResult(test_cmd="npm run test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=1,
+        max_proposals=1,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -309,7 +309,7 @@ async def test_high_confidence_stops_after_first_approach(monkeypatch, tmp_path)
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -357,7 +357,7 @@ async def test_medium_confidence_continues_to_next_approach(monkeypatch, tmp_pat
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -406,7 +406,7 @@ async def test_accepted_patch_is_applied_permanently(monkeypatch, tmp_path):
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -453,7 +453,7 @@ async def test_rejected_patch_is_not_applied(monkeypatch, tmp_path):
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
     )
 
     assert result.accepted_count == 0
@@ -495,7 +495,7 @@ async def test_apply_failure_downgrades_to_rejected(monkeypatch, tmp_path):
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
         on_event=lambda et, ph, data: emitted.append((et, ph, data)),
     )
 
@@ -574,7 +574,7 @@ async def test_second_patch_sees_repo_with_first_patch_applied(monkeypatch, tmp_
         detection=DetectionResult(test_cmd="npm test"),
         llm_config=_make_llm_config(),
         baseline=BaselineResult(is_success=True),
-        max_candidates=5,
+        max_proposals=5,
     )
 
     assert result.accepted_count == 2

@@ -3,10 +3,9 @@
 Checks are applied before a run starts and during execution to prevent
 runaway compute costs. All limits come from the per-repo Settings record.
 
-Three hard limits:
+Two hard limits:
   1. compute_budget_minutes — total CPU-minutes used today vs daily cap
   2. max_proposals_per_run  — accepted proposals already in this run
-  3. max_candidates_per_run — patch validation attempts already in this run
 
 Exceeding any limit raises BudgetExceeded so the caller can stop gracefully.
 """
@@ -29,8 +28,7 @@ COMPUTE_MINUTES_PER_RUN_ESTIMATE = 5
 
 # Thresholds are read from Settings; these are fallback defaults.
 DEFAULT_BUDGET_MINUTES = 60
-DEFAULT_MAX_PROPOSALS = 10
-DEFAULT_MAX_CANDIDATES = 20
+DEFAULT_MAX_PROPOSALS = 20
 
 
 class BudgetExceeded(Exception):
@@ -70,7 +68,6 @@ async def get_or_create_settings(
         compute_budget_minutes=DEFAULT_BUDGET_MINUTES,
         max_prs_per_day=5,
         max_proposals_per_run=DEFAULT_MAX_PROPOSALS,
-        max_candidates_per_run=DEFAULT_MAX_CANDIDATES,
         schedule="0 2 * * *",
         paused=False,
         consecutive_setup_failures=0,
@@ -147,27 +144,3 @@ async def check_max_proposals(
         raise BudgetExceeded("max_proposals_per_run", current, max_proposals)
 
 
-async def check_max_candidates(
-    db: AsyncSession,
-    run_id: uuid.UUID,
-    candidate_count: int,
-) -> None:
-    """Check whether this run has reached its candidate validation cap.
-
-    candidate_count is the number of patch validation attempts so far.
-    Raises BudgetExceeded if the max_candidates_per_run limit is hit.
-    """
-    run_result = await db.execute(select(Run).where(Run.id == run_id))
-    run = run_result.scalar_one_or_none()
-    if not run:
-        return
-
-    settings = await get_or_create_settings(db, run.repo_id)
-    max_candidates = settings.max_candidates_per_run
-
-    if candidate_count >= max_candidates:
-        logger.info(
-            "Max candidates reached for run %s: %d / %d",
-            run_id, candidate_count, max_candidates,
-        )
-        raise BudgetExceeded("max_candidates_per_run", candidate_count, max_candidates)

@@ -49,7 +49,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RESOURCE_PROFILE": "js"}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RESOURCE_PROFILE": "js"}, clear=False):
                     apply_resource_limits()
 
         # RLIMIT_AS must NOT be set for the JS profile.
@@ -67,7 +67,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RESOURCE_PROFILE": "jvm"}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RESOURCE_PROFILE": "jvm"}, clear=False):
                     apply_resource_limits()
 
         mock_resource.setrlimit.assert_any_call(
@@ -84,7 +84,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RESOURCE_PROFILE": "native"}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RESOURCE_PROFILE": "native"}, clear=False):
                     apply_resource_limits()
 
         mock_resource.setrlimit.assert_any_call(
@@ -101,7 +101,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RLIMIT_AS_BYTES": str(8 * 1024 * 1024 * 1024)}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RLIMIT_AS_BYTES": str(8 * 1024 * 1024 * 1024)}, clear=False):
                     apply_resource_limits()
 
         mock_resource.setrlimit.assert_any_call(
@@ -121,8 +121,8 @@ class TestApplyResourceLimits:
                 with patch.dict(
                     "os.environ",
                     {
-                        "CORELOOP_RESOURCE_PROFILE": "jvm",
-                        "CORELOOP_RLIMIT_AS_BYTES_JVM": str(10 * 1024 * 1024 * 1024),
+                        "EVOBASE_RESOURCE_PROFILE": "jvm",
+                        "EVOBASE_RLIMIT_AS_BYTES_JVM": str(10 * 1024 * 1024 * 1024),
                     },
                     clear=False,
                 ):
@@ -145,8 +145,8 @@ class TestApplyResourceLimits:
                 with patch.dict(
                     "os.environ",
                     {
-                        "CORELOOP_RESOURCE_PROFILE": "native",
-                        "CORELOOP_RLIMIT_AS_BYTES_NATIVE": str(14 * 1024 * 1024 * 1024),
+                        "EVOBASE_RESOURCE_PROFILE": "native",
+                        "EVOBASE_RLIMIT_AS_BYTES_NATIVE": str(14 * 1024 * 1024 * 1024),
                     },
                     clear=False,
                 ):
@@ -158,7 +158,7 @@ class TestApplyResourceLimits:
         )
 
     def test_memory_limit_can_be_disabled_with_zero_override(self) -> None:
-        """Setting CORELOOP_RLIMIT_AS_BYTES=0 disables RLIMIT_AS."""
+        """Setting EVOBASE_RLIMIT_AS_BYTES=0 disables RLIMIT_AS."""
         mock_resource = MagicMock()
         mock_resource.RLIMIT_AS = 5
         mock_resource.RLIMIT_CPU = 0
@@ -166,7 +166,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RLIMIT_AS_BYTES": "0"}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RLIMIT_AS_BYTES": "0"}, clear=False):
                     apply_resource_limits()
 
         as_calls = [
@@ -203,7 +203,7 @@ class TestApplyResourceLimits:
 
         with patch.dict("sys.modules", {"resource": mock_resource}):
             with patch("sys.platform", "linux"):
-                with patch.dict("os.environ", {"CORELOOP_RLIMIT_CPU_SECONDS": "450"}, clear=False):
+                with patch.dict("os.environ", {"EVOBASE_RLIMIT_CPU_SECONDS": "450"}, clear=False):
                     apply_resource_limits()
 
         mock_resource.setrlimit.assert_any_call(

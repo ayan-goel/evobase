@@ -88,7 +88,7 @@ async def create_pull_request(
     """Open a pull request. Returns the PR data including html_url.
 
     PR creation is always a user-initiated action in MVP.
-    Coreloop does not auto-merge.
+    Evobase does not auto-merge.
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(

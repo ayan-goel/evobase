@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(
-    name="coreloop.execute_run",
+    name="evobase.execute_run",
     bind=True,
     max_retries=0,
     # An agentic run involves: baseline (up to 2 attempts) + 10 LLM file

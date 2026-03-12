@@ -38,7 +38,7 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
             href="/dashboard"
             className="text-sm font-semibold tracking-tight text-white hover:text-white/80 transition-colors"
           >
-            Coreloop
+            Evobase
           </Link>
 
           <div className="flex items-center gap-4">

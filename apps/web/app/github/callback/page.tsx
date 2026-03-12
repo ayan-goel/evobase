@@ -51,7 +51,7 @@ function GitHubCallbackContent() {
             Select Repositories
           </h1>
           <p className="text-sm text-white/50 mb-8">
-            Choose which repositories to connect to Coreloop.
+            Choose which repositories to connect to Evobase.
           </p>
           <RepoPicker installationId={installationId} />
         </div>

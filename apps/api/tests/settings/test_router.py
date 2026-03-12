@@ -34,8 +34,7 @@ class TestGetSettings:
         data = res.json()
         assert data["repo_id"] == str(STUB_REPO_ID)
         assert data["compute_budget_minutes"] == 60
-        assert data["max_proposals_per_run"] == 10
-        assert data["max_candidates_per_run"] == 20
+        assert data["max_proposals_per_run"] == 20
         assert data["paused"] is False
         assert data["consecutive_setup_failures"] == 0
         assert data["consecutive_flaky_runs"] == 0
@@ -78,7 +77,7 @@ class TestGetSettings:
         data = res.json()
         expected_keys = {
             "repo_id", "compute_budget_minutes", "max_prs_per_day",
-            "max_proposals_per_run", "max_candidates_per_run", "schedule", "paused",
+            "max_proposals_per_run", "schedule", "paused",
             "consecutive_setup_failures", "consecutive_flaky_runs", "last_run_at",
             "execution_mode", "max_strategy_attempts",
         }
@@ -106,14 +105,6 @@ class TestUpdateSettings:
         )
         assert res.status_code == 200
         assert res.json()["max_proposals_per_run"] == 3
-
-    async def test_updates_max_candidates(self, seeded_client: AsyncClient) -> None:
-        res = await seeded_client.put(
-            f"/repos/{STUB_REPO_ID}/settings",
-            json={"max_candidates_per_run": 5},
-        )
-        assert res.status_code == 200
-        assert res.json()["max_candidates_per_run"] == 5
 
     async def test_updates_max_prs_per_day(self, seeded_client: AsyncClient) -> None:
         res = await seeded_client.put(

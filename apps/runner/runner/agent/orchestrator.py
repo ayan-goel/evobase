@@ -16,7 +16,7 @@ Cumulative validation:
   are mutually compatible and will not conflict when combined into a PR.
 
 Budget enforcement:
-  - Stops generating patches once max_candidates is reached.
+  - Stops generating patches once max_proposals accepted candidates is reached.
   - Each opportunity counts as one candidate regardless of how many
     approach variants were tried.
   - Approach variants use smart lazy stopping: high-confidence acceptance
@@ -50,8 +50,8 @@ from runner.validator.types import BaselineResult, CandidateResult
 
 logger = logging.getLogger(__name__)
 
-# Default maximum patch attempts per run (overridden by Settings.max_candidates_per_run)
-DEFAULT_MAX_CANDIDATES = 20
+# Default maximum accepted proposals per run (overridden by Settings.max_proposals_per_run)
+DEFAULT_MAX_PROPOSALS = 20
 
 # Maximum approach variants to try per opportunity
 MAX_PATCH_APPROACHES = 3
@@ -87,7 +87,7 @@ async def run_agent_cycle(
     detection: DetectionResult,
     llm_config: LLMConfig,
     baseline: BaselineResult,
-    max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    max_proposals: int = DEFAULT_MAX_PROPOSALS,
     seen_signatures: frozenset[tuple[str, str]] = frozenset(),
     on_event: Optional[EventCallback] = None,
 ) -> AgentCycleResult:
@@ -98,7 +98,7 @@ async def run_agent_cycle(
         detection: Output from Phase 5 detector.
         llm_config: Provider + model + API key configuration.
         baseline: Phase 6 baseline result for comparison.
-        max_candidates: Budget cap on validation attempts (per opportunity).
+        max_proposals: Budget cap — stop once this many accepted proposals are collected.
         seen_signatures: Set of (type, file_path) pairs already seen for this
             repo; opportunities matching a signature are skipped before patching.
         on_event: Optional callback invoked as on_event(event_type, phase, data)
@@ -134,7 +134,7 @@ async def run_agent_cycle(
         config=llm_config,
         seen_signatures=seen_signatures,
         on_event=on_event,
-        max_opportunities=max_candidates,
+        max_opportunities=max_proposals,
     )
     agent_run.opportunities = opportunities
 
@@ -146,12 +146,13 @@ async def run_agent_cycle(
 
     # Step 2 + 3: Multi-approach patch generation + validation (budget-gated)
     candidates_attempted = 0
+    proposals_accepted = 0
 
     for opp_index, opp in enumerate(opportunities):
-        if candidates_attempted >= max_candidates:
+        if proposals_accepted >= max_proposals:
             logger.info(
-                "Candidate budget exhausted (%d / %d); stopping",
-                candidates_attempted, max_candidates,
+                "Proposal budget reached (%d / %d accepted); stopping",
+                proposals_accepted, max_proposals,
             )
             break
 
@@ -329,6 +330,7 @@ async def run_agent_cycle(
         if winner_candidate.is_accepted and winning_patch:
             try:
                 apply_diff(repo_dir, winning_patch.diff)
+                proposals_accepted += 1
                 _emit("patch.applied_cumulative", "patch", {
                     "index": candidates_attempted,
                     "location": opp.location,
@@ -362,8 +364,8 @@ async def run_agent_cycle(
         candidates_attempted += 1
 
         logger.info(
-            "Candidate %d/%d at %s: accepted=%s variants_tried=%d reason=%s",
-            candidates_attempted, max_candidates,
+            "Candidate %d (accepted %d/%d) at %s: accepted=%s variants_tried=%d reason=%s",
+            candidates_attempted, proposals_accepted, max_proposals,
             opp.location, winner_candidate.is_accepted, len(variants), selection_reason,
         )
 

@@ -37,8 +37,7 @@ const baseSettings: RepoSettings = {
   repo_id: "repo-1",
   compute_budget_minutes: 60,
   max_prs_per_day: 5,
-  max_proposals_per_run: 10,
-  max_candidates_per_run: 20,
+  max_proposals_per_run: 20,
   schedule: "0 2 * * *",
   paused: false,
   consecutive_setup_failures: 0,
@@ -73,11 +72,6 @@ describe("SettingsForm", () => {
   });
 
   it("renders max proposals input", () => {
-    render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
-    expect(screen.getByDisplayValue("10")).toBeDefined();
-  });
-
-  it("renders max candidates input", () => {
     render(<SettingsForm repoId="repo-1" initial={baseSettings} />);
     expect(screen.getByDisplayValue("20")).toBeDefined();
   });

@@ -178,7 +178,6 @@ class TestWriteProposalsToDb:
                 repo_id=repo_id,
                 cycle_result=cycle,
                 baseline=baseline,
-                max_proposals=10,
             )
 
         # 2 accepted + 1 rejected = 3 add() calls for Opportunity
@@ -188,8 +187,8 @@ class TestWriteProposalsToDb:
         assert session.add.call_count == 3 + 3 + 2  # opps + attempts + proposals
         session.commit.assert_called_once()
 
-    def test_respects_max_proposals_limit(self) -> None:
-        """max_proposals caps the number of Proposal rows created."""
+    def test_all_accepted_become_proposals(self) -> None:
+        """All accepted candidates become proposals (no separate cap)."""
         run_id = str(uuid.uuid4())
         repo_id = str(uuid.uuid4())
         cycle = _make_cycle_result(n_accepted=5, n_rejected=0)
@@ -205,10 +204,9 @@ class TestWriteProposalsToDb:
                 repo_id=repo_id,
                 cycle_result=cycle,
                 baseline=baseline,
-                max_proposals=3,
             )
 
-        assert count == 3
+        assert count == 5
 
     def test_no_proposals_for_all_rejected(self) -> None:
         """All-rejected cycle produces 0 proposals but still writes opp+attempt rows."""
@@ -227,7 +225,6 @@ class TestWriteProposalsToDb:
                 repo_id=repo_id,
                 cycle_result=cycle,
                 baseline=baseline,
-                max_proposals=10,
             )
 
         assert count == 0
@@ -685,15 +682,13 @@ class TestExecuteFullPipeline:
 def _make_settings(
     llm_provider="anthropic",
     llm_model="claude-sonnet-4-5",
-    max_candidates_per_run=20,
-    max_proposals_per_run=10,
+    max_proposals_per_run=20,
     execution_mode="adaptive",
     max_strategy_attempts=2,
 ):
     s = MagicMock(spec=Settings)
     s.llm_provider = llm_provider
     s.llm_model = llm_model
-    s.max_candidates_per_run = max_candidates_per_run
     s.max_proposals_per_run = max_proposals_per_run
     s.execution_mode = execution_mode
     s.max_strategy_attempts = max_strategy_attempts
@@ -889,7 +884,6 @@ class TestWriteProposalsFields:
                 repo_id=repo_id,
                 cycle_result=cycle,
                 baseline=baseline,
-                max_proposals=10,
             )
 
         return session._captured
@@ -968,7 +962,6 @@ class TestWriteProposalsFields:
                 repo_id=repo_id,
                 cycle_result=cycle,
                 baseline=_make_baseline(),
-                max_proposals=10,
             )
 
         from app.db.models import Proposal

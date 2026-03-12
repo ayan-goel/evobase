@@ -5,7 +5,7 @@ import Home from "../app/page";
 describe("Home page", () => {
   it("renders the heading", () => {
     render(<Home />);
-    expect(screen.getByText("Coreloop")).toBeInTheDocument();
+    expect(screen.getByText("Evobase")).toBeInTheDocument();
   });
 
   it("renders the primary CTA link to login", () => {

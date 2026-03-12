@@ -67,7 +67,6 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
           compute_budget_minutes: settings.compute_budget_minutes,
           max_prs_per_day: settings.max_prs_per_day,
           max_proposals_per_run: settings.max_proposals_per_run,
-          max_candidates_per_run: settings.max_candidates_per_run,
           execution_mode: settings.execution_mode,
           max_strategy_attempts: settings.max_strategy_attempts,
           paused: settings.paused,
@@ -284,23 +283,6 @@ export function SettingsForm({ repoId, initial, llmProviders = [], repo }: Setti
           onChange={(e) => handleChange("max_proposals_per_run", parseInt(e.target.value, 10) || 1)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-white/25 focus:outline-none focus:ring-0"
         />
-      </div>
-
-      {/* Max candidates */}
-      <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
-          Max candidate validations per run
-        </label>
-        <input
-          type="number"
-          min={1}
-          value={settings.max_candidates_per_run}
-          onChange={(e) => handleChange("max_candidates_per_run", parseInt(e.target.value, 10) || 1)}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-white/25 focus:outline-none focus:ring-0"
-        />
-        <p className="text-xs text-white/35">
-          Total patch validation attempts allowed per run.
-        </p>
       </div>
 
       {/* Execution strategy mode */}

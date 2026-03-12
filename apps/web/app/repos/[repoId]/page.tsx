@@ -5,7 +5,7 @@ import { RepoRunList } from "@/components/repo-run-list";
 import { FrameworkBadge } from "@/components/framework-badge";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
-export const metadata = { title: "Repository — Coreloop" };
+export const metadata = { title: "Repository — Evobase" };
 
 /** Returns the most human-readable label for a repo. */
 function repoDisplayName(repo: Repository): string {

@@ -110,8 +110,6 @@ async def update_settings(
         settings.max_prs_per_day = body.max_prs_per_day
     if body.max_proposals_per_run is not None:
         settings.max_proposals_per_run = body.max_proposals_per_run
-    if body.max_candidates_per_run is not None:
-        settings.max_candidates_per_run = body.max_candidates_per_run
     if body.schedule is not None:
         settings.schedule = body.schedule
     if body.paused is not None:

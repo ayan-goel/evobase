@@ -112,7 +112,7 @@ class TestGetCurrentUserViaAPI:
         payload = {
             "sub": str(STUB_USER_ID),
             "aud": "authenticated",
-            "email": "dev@coreloop.local",
+            "email": "dev@evobase.local",
             "exp": now + timedelta(hours=1),
             "iat": now,
         }

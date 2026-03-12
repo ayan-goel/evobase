@@ -1,4 +1,4 @@
-# Coreloop — Full-Stack Wiring Implementation Plan
+# Evobase — Full-Stack Wiring Implementation Plan
 
 The app has a backend with 15+ endpoints and a frontend with 5 pages, but they are not connected through any real user flow. This plan closes every gap in [GAPS.md](GAPS.md) across 6 phases.
 
@@ -192,7 +192,7 @@ async def get_current_user(
 **Frontend — `tests/pages/login.test.tsx`** (new file):
 
 - `test_renders_sign_in_with_github_button` — button text and presence
-- `test_renders_app_branding` — page shows "Coreloop"
+- `test_renders_app_branding` — page shows "Evobase"
 - `test_no_authenticated_content_visible` — no nav, no dashboard links
 
 **Frontend — `tests/lib/api.test.ts`** (new file):
@@ -212,7 +212,7 @@ async def get_current_user(
 
 ## Phase 2 — GitHub App Installation + Repo Connection Flow
 
-**Goal:** A user can install the Coreloop GitHub App and connect repos from the UI.
+**Goal:** A user can install the Evobase GitHub App and connect repos from the UI.
 
 ```mermaid
 sequenceDiagram
@@ -343,7 +343,7 @@ sequenceDiagram
 **Update `app/repos/[repoId]/page.tsx`:**
 
 - When the page loads and there's exactly 1 run in `queued` or `running` status, show a first-run onboarding banner:
-  - "Coreloop is analyzing your repository for the first time. This usually takes 2-5 minutes."
+  - "Evobase is analyzing your repository for the first time. This usually takes 2-5 minutes."
   - Progress indicator (see Phase 5 for real-time, but use polling here initially)
 
 **Update `app/dashboard/page.tsx`:**
@@ -422,8 +422,8 @@ async def create_pr_for_proposal(repo: Repository, proposal: Proposal) -> str:
 - `test_create_pr_raises_when_no_installation_id` — `installation_id` is None, expect `ValueError`
 - `test_create_pr_gets_installation_token` — mock `get_installation_token`, verify called with correct `installation_id`
 - `test_create_pr_full_flow_with_mocked_github` — mock all httpx calls (get_installation_token, get_default_branch_sha, create_branch, create_pull_request), verify the full chain produces a `pr_url`
-- `test_pr_title_includes_proposal_summary` — verify title format `"[Coreloop] <summary>"`
-- `test_pr_body_includes_coreloop_attribution` — verify attribution link in PR body
+- `test_pr_title_includes_proposal_summary` — verify title format `"[Evobase] <summary>"`
+- `test_pr_body_includes_evobase_attribution` — verify attribution link in PR body
 
 **Backend — `tests/github/test_router.py`** (new file):
 
@@ -530,8 +530,8 @@ export function useRunPolling(repoId: string, initialRuns: Run[]) {
 
 ### Branding cleanup
 
-- Update `mvp.md` and `technical-mvp.md` references from SelfOpt to Coreloop
-- Update `.gitignore` temp dir pattern from `selfopt-*` to `coreloop-*`
+- Update `mvp.md` and `technical-mvp.md` references from SelfOpt to Evobase
+- Update `.gitignore` temp dir pattern from `selfopt-*` to `evobase-*`
 - Update homepage GitHub link to correct repo URL
 - Add favicon / app icon
 

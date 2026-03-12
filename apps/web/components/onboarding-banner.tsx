@@ -29,7 +29,7 @@ export function OnboardingBanner({ runs }: OnboardingBannerProps) {
         </div>
         <div>
           <p className="text-sm font-medium text-blue-300">
-            Coreloop is analyzing your repository for the first time.
+            Evobase is analyzing your repository for the first time.
           </p>
           <p className="mt-1 text-xs text-white/40">
             This usually takes 2–5 minutes. You can leave this page — the run

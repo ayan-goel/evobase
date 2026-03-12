@@ -250,9 +250,7 @@ export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
             </div>
           ) : visibleEvents.length === 0 && !isActive ? (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-10 text-center">
-              <p className="text-sm text-white/40">
-                No events recorded for this run.
-              </p>
+              <p className="text-sm text-white/40">No events recorded for this run.</p>
             </div>
           ) : (
             <GroupedTimeline events={visibleEvents} isActive={isActive} />

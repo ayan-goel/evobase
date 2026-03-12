@@ -98,7 +98,7 @@ export default async function RepoSettingsPage({ params }: PageProps) {
             <div>
               <p className="text-sm text-white/70">Remove this repository</p>
               <p className="mt-0.5 text-xs text-white/35">
-                Deletes all runs, proposals, and settings from Coreloop.
+                Deletes all runs, proposals, and settings from Evobase.
                 Your GitHub repository is not affected.
               </p>
             </div>

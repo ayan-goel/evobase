@@ -69,7 +69,7 @@ def _is_schedule_due(schedule: str, last_run_at: Optional[datetime]) -> bool:
 
 
 @celery_app.task(
-    name="coreloop.trigger_scheduled_runs",
+    name="evobase.trigger_scheduled_runs",
     bind=True,
     max_retries=0,
     ignore_result=True,
@@ -185,7 +185,7 @@ REAPER_INTERVAL_SECONDS = 300  # 5 minutes
 
 
 @celery_app.task(
-    name="coreloop.reap_orphaned_runs",
+    name="evobase.reap_orphaned_runs",
     bind=True,
     max_retries=0,
     ignore_result=True,
@@ -250,11 +250,11 @@ def _reap_orphaned_runs() -> None:
 
 celery_app.conf.beat_schedule = {
     "trigger-scheduled-runs": {
-        "task": "coreloop.trigger_scheduled_runs",
+        "task": "evobase.trigger_scheduled_runs",
         "schedule": TRIGGER_INTERVAL_SECONDS,
     },
     "reap-orphaned-runs": {
-        "task": "coreloop.reap_orphaned_runs",
+        "task": "evobase.reap_orphaned_runs",
         "schedule": REAPER_INTERVAL_SECONDS,
     },
 }

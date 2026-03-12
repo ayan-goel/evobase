@@ -4,7 +4,7 @@ import { NavWithUser } from "@/components/nav-server";
 import { FrameworkBadge } from "@/components/framework-badge";
 import type { Installation, Repository } from "@/lib/types";
 
-export const metadata = { title: "Dashboard — Coreloop" };
+export const metadata = { title: "Dashboard — Evobase" };
 
 /** Returns the most human-readable label for a repo. */
 function repoDisplayName(repo: Repository): string {

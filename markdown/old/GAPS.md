@@ -1,4 +1,4 @@
-# Coreloop — Frontend ↔ Backend Gap Analysis
+# Evobase — Frontend ↔ Backend Gap Analysis
 
 What the MVP spec promises vs. what actually exists today.
 
@@ -192,7 +192,7 @@ There's no UI for a user to:
 
 ### 15. No favicon or app icon
 
-Using default Next.js assets. No Coreloop branding in `public/`.
+Using default Next.js assets. No Evobase branding in `public/`.
 
 ---
 
@@ -204,7 +204,7 @@ No links to: docs, GitHub repo, settings, logout, user profile.
 
 ### 17. No mobile navigation
 
-Nav hides the "Dashboard" link on mobile (`hidden sm:flex`). On small screens the only navigation is the "Coreloop" logo link.
+Nav hides the "Dashboard" link on mobile (`hidden sm:flex`). On small screens the only navigation is the "Evobase" logo link.
 
 ---
 

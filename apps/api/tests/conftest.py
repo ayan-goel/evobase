@@ -1,4 +1,4 @@
-"""Shared test fixtures for the Coreloop API test suite.
+"""Shared test fixtures for the Evobase API test suite.
 
 Uses an in-memory SQLite database for fast, isolated model/CRUD tests.
 SQLAlchemy adapts UUID and JSON column types to SQLite-compatible equivalents.
@@ -36,7 +36,7 @@ def _make_jwt(
     *,
     secret: str = TEST_JWT_SECRET,
     audience: str = "authenticated",
-    email: str = "dev@coreloop.local",
+    email: str = "dev@evobase.local",
     expired: bool = False,
 ) -> str:
     """Mint a HS256 JWT matching Supabase's format."""
@@ -149,7 +149,7 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 @pytest.fixture
 async def seeded_db(db_session) -> AsyncSession:
     """Seed the database with a user, org, and repo for route tests."""
-    user = User(id=STUB_USER_ID, email="dev@coreloop.local")
+    user = User(id=STUB_USER_ID, email="dev@evobase.local")
     db_session.add(user)
     await db_session.flush()
 
