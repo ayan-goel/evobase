@@ -75,28 +75,30 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
   }, [stripeInstance, elements, selectedTier, onSuccess]);
 
   const handleMountElements = useCallback(
-    async (container: HTMLDivElement | null) => {
+    (container: HTMLDivElement | null) => {
       if (!container || !stripeInstance || elements) return;
-      try {
-        const { client_secret } = await createCheckoutSession(selectedTier);
-        const stripe = stripeInstance as {
-          elements: (opts: object) => {
-            create: (type: string, opts: object) => { mount: (el: HTMLDivElement) => void };
+      void (async () => {
+        try {
+          const { client_secret } = await createCheckoutSession(selectedTier);
+          const stripe = stripeInstance as {
+            elements: (opts: object) => {
+              create: (type: string, opts: object) => { mount: (el: HTMLDivElement) => void };
+            };
           };
-        };
-        const elems = stripe.elements({
-          clientSecret: client_secret,
-          appearance: {
-            theme: "night",
-            variables: { colorBackground: "#111", colorText: "#fff" },
-          },
-        });
-        const paymentElement = elems.create("payment", {});
-        paymentElement.mount(container);
-        setElements(elems);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load payment form");
-      }
+          const elems = stripe.elements({
+            clientSecret: client_secret,
+            appearance: {
+              theme: "night",
+              variables: { colorBackground: "#111", colorText: "#fff" },
+            },
+          });
+          const paymentElement = elems.create("payment", {});
+          paymentElement.mount(container);
+          setElements(elems);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not load payment form");
+        }
+      })();
     },
     [stripeInstance, elements, selectedTier],
   );
