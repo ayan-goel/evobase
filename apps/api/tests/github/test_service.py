@@ -56,10 +56,10 @@ class TestBuildPrBody:
         body = _build_pr_body(proposal)
         assert "## Use Set.has for O(1) membership check" in body
 
-    def test_body_includes_coreloop_attribution(self):
+    def test_body_includes_evobase_attribution(self):
         proposal = self._make_proposal()
         body = _build_pr_body(proposal)
-        assert "Coreloop" in body
+        assert "Evobase" in body
 
     def test_body_handles_no_metrics(self):
         proposal = self._make_proposal(
@@ -74,18 +74,18 @@ class TestBuildPrBody:
     def test_body_handles_no_summary(self):
         proposal = self._make_proposal(summary=None)
         body = _build_pr_body(proposal)
-        assert "Coreloop" in body
+        assert "Evobase" in body
 
 
 class TestBranchNaming:
-    def test_branch_prefix_is_coreloop(self):
-        assert BRANCH_PREFIX == "coreloop/proposal-"
+    def test_branch_prefix_is_evobase(self):
+        assert BRANCH_PREFIX == "evobase/proposal-"
 
     def test_branch_name_format(self):
         proposal_id = uuid.UUID("12345678-1234-1234-1234-123456789abc")
         short_id = str(proposal_id)[:8]
         branch_name = f"{BRANCH_PREFIX}{short_id}"
-        assert branch_name == "coreloop/proposal-12345678"
+        assert branch_name == "evobase/proposal-12345678"
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ class TestCreatePrForProposal:
 
     @pytest.mark.asyncio
     async def test_pr_title_includes_proposal_summary(self):
-        """PR title follows the [Coreloop] <summary> format."""
+        """PR title follows the [Evobase] <summary> format."""
         repo = _make_repo()
         proposal = _make_proposal_obj(summary="Reduce p95 latency by 12%")
 
@@ -229,11 +229,11 @@ class TestCreatePrForProposal:
 
         create_pr_call = mocks["app.github.client.create_pull_request"].call_args
         title = create_pr_call.kwargs.get("title") or create_pr_call.args[3]
-        assert title == "[Coreloop] Reduce p95 latency by 12%"
+        assert title == "[Evobase] Reduce p95 latency by 12%"
 
     @pytest.mark.asyncio
-    async def test_pr_body_includes_coreloop_attribution(self):
-        """PR body must contain the Coreloop attribution line."""
+    async def test_pr_body_includes_evobase_attribution(self):
+        """PR body must contain the Evobase attribution line."""
         repo = _make_repo()
         proposal = _make_proposal_obj()
 
@@ -241,7 +241,7 @@ class TestCreatePrForProposal:
 
         create_pr_call = mocks["app.github.client.create_pull_request"].call_args
         body = create_pr_call.kwargs.get("body") or create_pr_call.args[4]
-        assert "Coreloop" in body
+        assert "Evobase" in body
 
     @pytest.mark.asyncio
     async def test_commit_diff_called_before_create_pr(self):
@@ -457,7 +457,7 @@ class TestCommitDiffToBranchRootDir:
                 token="tok",
                 owner="acme",
                 repo_name="api",
-                branch="coreloop/test",
+                branch="evobase/test",
                 diff=diff,
                 commit_message="fix",
                 root_dir=root_dir,

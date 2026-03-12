@@ -9,7 +9,7 @@ import { AgentReasoning } from "@/components/agent-reasoning";
 import { PatchVariants } from "@/components/patch-variants";
 import type { Artifact, Metrics, Proposal, ThinkingTrace, TraceAttempt } from "@/lib/types";
 
-export const metadata = { title: "Proposal — Coreloop" };
+export const metadata = { title: "Proposal — Evobase" };
 
 interface ProposalPageData {
   proposal: Proposal;

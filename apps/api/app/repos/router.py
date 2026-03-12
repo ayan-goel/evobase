@@ -92,7 +92,7 @@ async def connect_repo(
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ) -> RepoConnectResponse:
-    """Connect a GitHub repository to Coreloop.
+    """Connect a GitHub repository to Evobase.
 
     Creates a repository record, default settings, and auto-enqueues
     the first baseline run.  The org must exist and belong to the user.
@@ -223,7 +223,7 @@ async def delete_repo(
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ) -> None:
-    """Remove a repository from Coreloop (does not touch GitHub).
+    """Remove a repository from Evobase (does not touch GitHub).
 
     Cascades to all associated runs, proposals, settings, etc. via the
     ON DELETE CASCADE constraints on the database foreign keys.

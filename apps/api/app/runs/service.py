@@ -215,7 +215,7 @@ class RunService:
             # ----------------------------------------------------------------
             # Step 3: Clone
             # ----------------------------------------------------------------
-            repo_dir = Path(tempfile.mkdtemp(prefix="coreloop-run-"))
+            repo_dir = Path(tempfile.mkdtemp(prefix="evobase-run-"))
 
             clone_repo(repo_url=repo_url, workspace_dir=repo_dir)
             if sha:

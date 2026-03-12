@@ -1,4 +1,4 @@
-"""ASGI middleware for the Coreloop API.
+"""ASGI middleware for the Evobase API.
 
 Three middlewares registered in order (outermost → innermost):
   1. CORSMiddleware     — handled by FastAPI directly (not here)

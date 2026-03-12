@@ -24,8 +24,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     _app = FastAPI(
-        title="Coreloop API",
-        description="Control Plane API for Coreloop autonomous code optimization",
+        title="Evobase API",
+        description="Control Plane API for Evobase autonomous code optimization",
         version="0.1.0",
     )
 

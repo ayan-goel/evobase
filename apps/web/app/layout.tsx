@@ -9,7 +9,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Coreloop",
+  title: "Evobase",
   description: "Autonomous code optimization system",
 };
 

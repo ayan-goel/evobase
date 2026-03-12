@@ -27,12 +27,12 @@ Memory policy:
   - Native profile:  16 GB virtual-address-space cap by default.
 
 Environment overrides:
-  - CORELOOP_RESOURCE_PROFILE: "default" | "js" | "jvm" | "native"
-  - CORELOOP_RLIMIT_AS_BYTES: integer bytes for default profile
-  - CORELOOP_RLIMIT_AS_BYTES_JS: integer bytes for js profile (0 = disabled)
-  - CORELOOP_RLIMIT_AS_BYTES_JVM: integer bytes for jvm profile
-  - CORELOOP_RLIMIT_AS_BYTES_NATIVE: integer bytes for native profile
-  - CORELOOP_RLIMIT_CPU_SECONDS: integer seconds for CPU limit
+  - EVOBASE_RESOURCE_PROFILE: "default" | "js" | "jvm" | "native"
+  - EVOBASE_RLIMIT_AS_BYTES: integer bytes for default profile
+  - EVOBASE_RLIMIT_AS_BYTES_JS: integer bytes for js profile (0 = disabled)
+  - EVOBASE_RLIMIT_AS_BYTES_JVM: integer bytes for jvm profile
+  - EVOBASE_RLIMIT_AS_BYTES_NATIVE: integer bytes for native profile
+  - EVOBASE_RLIMIT_CPU_SECONDS: integer seconds for CPU limit
 
 If a memory env value is set to 0 or negative, RLIMIT_AS is skipped for
 that profile. This is useful on high-memory dedicated workers.
@@ -55,12 +55,12 @@ _DEFAULT_NATIVE_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
 _DEFAULT_CPU_LIMIT_SECONDS = 300
 
 # Environment overrides
-_RESOURCE_PROFILE_ENV = "CORELOOP_RESOURCE_PROFILE"
-_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES"
-_JS_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_JS"
-_JVM_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_JVM"
-_NATIVE_MEM_LIMIT_ENV = "CORELOOP_RLIMIT_AS_BYTES_NATIVE"
-_CPU_LIMIT_ENV = "CORELOOP_RLIMIT_CPU_SECONDS"
+_RESOURCE_PROFILE_ENV = "EVOBASE_RESOURCE_PROFILE"
+_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES"
+_JS_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_JS"
+_JVM_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_JVM"
+_NATIVE_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_NATIVE"
+_CPU_LIMIT_ENV = "EVOBASE_RLIMIT_CPU_SECONDS"
 
 
 def _parse_optional_positive_int(raw: Optional[str]) -> Optional[int]:

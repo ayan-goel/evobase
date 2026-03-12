@@ -1,5 +1,5 @@
 /**
- * Typed API client for the Coreloop control plane.
+ * Typed API client for the Evobase control plane.
  *
  * All functions throw on non-2xx responses.
  * Use NEXT_PUBLIC_API_URL to point at the FastAPI backend.
@@ -209,7 +209,7 @@ export async function linkInstallation(
   });
 }
 
-/** Connect a GitHub repo to Coreloop. */
+/** Connect a GitHub repo to Evobase. */
 export async function connectRepo(
   body: ConnectRepoRequest,
 ): Promise<Repository> {
@@ -219,7 +219,7 @@ export async function connectRepo(
   });
 }
 
-/** Remove a repository from Coreloop (does not delete it from GitHub). */
+/** Remove a repository from Evobase (does not delete it from GitHub). */
 export async function deleteRepo(repoId: string): Promise<void> {
   await apiFetch(`/repos/${repoId}`, { method: "DELETE" });
 }

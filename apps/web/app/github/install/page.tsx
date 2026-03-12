@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const GITHUB_APP_SLUG = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG ?? "coreloop-dev";
+const GITHUB_APP_SLUG = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG ?? "evobase-dev";
 
 export default function GitHubInstallPage() {
   useEffect(() => {

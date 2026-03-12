@@ -1,5 +1,5 @@
 /**
- * Server-side API client for the Coreloop control plane.
+ * Server-side API client for the Evobase control plane.
  *
  * Import ONLY from Server Components and Route Handlers — never from
  * client components. Uses next/headers cookies via the Supabase server

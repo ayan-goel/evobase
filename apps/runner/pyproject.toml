@@ -1,7 +1,7 @@
 [project]
-name = "coreloop-runner"
+name = "evobase-runner"
 version = "0.1.0"
-description = "Coreloop Runner - Sandbox execution engine for code optimization"
+description = "Evobase Runner - Sandbox execution engine for code optimization"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

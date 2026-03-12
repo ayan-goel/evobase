@@ -1,4 +1,4 @@
-"""Sentry SDK integration for Coreloop API.
+"""Sentry SDK integration for Evobase API.
 
 Captures exceptions and performance traces without leaking secrets.
 

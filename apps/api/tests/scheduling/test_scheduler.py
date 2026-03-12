@@ -88,24 +88,24 @@ class TestIsScheduleDue:
 class TestTaskRegistration:
     def test_trigger_task_is_registered(self) -> None:
         registered = celery_app.tasks.keys()
-        assert "coreloop.trigger_scheduled_runs" in registered
+        assert "evobase.trigger_scheduled_runs" in registered
 
     def test_reaper_task_is_registered(self) -> None:
         registered = celery_app.tasks.keys()
-        assert "coreloop.reap_orphaned_runs" in registered
+        assert "evobase.reap_orphaned_runs" in registered
 
     def test_beat_schedule_configured(self) -> None:
         beat = celery_app.conf.beat_schedule
         assert "trigger-scheduled-runs" in beat
         entry = beat["trigger-scheduled-runs"]
-        assert entry["task"] == "coreloop.trigger_scheduled_runs"
+        assert entry["task"] == "evobase.trigger_scheduled_runs"
         assert entry["schedule"] == TRIGGER_INTERVAL_SECONDS
 
     def test_reaper_beat_schedule_configured(self) -> None:
         beat = celery_app.conf.beat_schedule
         assert "reap-orphaned-runs" in beat
         entry = beat["reap-orphaned-runs"]
-        assert entry["task"] == "coreloop.reap_orphaned_runs"
+        assert entry["task"] == "evobase.reap_orphaned_runs"
         assert entry["schedule"] == REAPER_INTERVAL_SECONDS
 
     def test_trigger_interval_is_reasonable(self) -> None:

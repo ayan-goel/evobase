@@ -100,7 +100,7 @@ class TestRunStep:
         run_step("build", "npm run build", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "js"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "js"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_sets_default_resource_profile_for_non_js_commands(self, mock_run, tmp_path):
@@ -109,7 +109,7 @@ class TestRunStep:
         run_step("test", "pytest -q", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "default"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "default"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_sets_jvm_resource_profile_for_gradle_commands(self, mock_run, tmp_path):
@@ -118,7 +118,7 @@ class TestRunStep:
         run_step("build", "./gradlew build", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "jvm"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "jvm"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_sets_native_resource_profile_for_rust_commands(self, mock_run, tmp_path):
@@ -127,7 +127,7 @@ class TestRunStep:
         run_step("build", "cargo build --release", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "native"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "native"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_sets_native_resource_profile_for_cpp_commands(self, mock_run, tmp_path):
@@ -136,7 +136,7 @@ class TestRunStep:
         run_step("build", "cmake --build build", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["CORELOOP_RESOURCE_PROFILE"] == "native"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "native"
 
 
 class TestMakePreexecFn:
@@ -144,25 +144,25 @@ class TestMakePreexecFn:
 
     @patch("runner.validator.executor.apply_resource_limits")
     def test_syncs_resource_profile_into_os_environ(self, mock_apply):
-        """preexec_fn must set CORELOOP_RESOURCE_PROFILE in os.environ so
+        """preexec_fn must set EVOBASE_RESOURCE_PROFILE in os.environ so
         apply_resource_limits (which reads os.environ) sees the correct profile."""
         subprocess_env = {
-            "CORELOOP_RESOURCE_PROFILE": "js",
-            "CORELOOP_RLIMIT_AS_BYTES_JS": "0",
+            "EVOBASE_RESOURCE_PROFILE": "js",
+            "EVOBASE_RLIMIT_AS_BYTES_JS": "0",
             "PATH": "/usr/bin",
         }
 
         preexec = _make_preexec_fn(subprocess_env)
         preexec()
 
-        assert os.environ.get("CORELOOP_RESOURCE_PROFILE") == "js"
-        assert os.environ.get("CORELOOP_RLIMIT_AS_BYTES_JS") == "0"
+        assert os.environ.get("EVOBASE_RESOURCE_PROFILE") == "js"
+        assert os.environ.get("EVOBASE_RLIMIT_AS_BYTES_JS") == "0"
         mock_apply.assert_called_once()
 
     @patch("runner.validator.executor.apply_resource_limits")
     def test_does_not_propagate_non_rlimit_keys(self, mock_apply):
         subprocess_env = {
-            "CORELOOP_RESOURCE_PROFILE": "native",
+            "EVOBASE_RESOURCE_PROFILE": "native",
             "PATH": "/custom/path",
             "NODE_ENV": "development",
         }
@@ -172,7 +172,7 @@ class TestMakePreexecFn:
         preexec()
 
         assert os.environ.get("PATH") == old_path
-        assert os.environ.get("CORELOOP_RESOURCE_PROFILE") == "native"
+        assert os.environ.get("EVOBASE_RESOURCE_PROFILE") == "native"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_run_step_passes_preexec_with_env(self, mock_run, tmp_path):
