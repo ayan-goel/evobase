@@ -52,7 +52,7 @@ export function DiffShowcase() {
   }, []);
 
   return (
-    <section ref={ref} className="px-6 py-16 sm:py-20">
+    <section ref={ref} className="px-6 py-14 sm:py-16">
       <div className="mx-auto max-w-4xl">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           {/* Left: Text */}

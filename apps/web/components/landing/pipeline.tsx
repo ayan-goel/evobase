@@ -77,7 +77,7 @@ export function Pipeline() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="px-6 py-16 sm:py-20">
+    <section ref={sectionRef} className="px-6 py-14 sm:py-16">
       <div className="mx-auto max-w-4xl">
         <div className="mb-10 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-blue-400/80 mb-2">

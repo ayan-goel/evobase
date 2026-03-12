@@ -44,7 +44,7 @@ export function Hero() {
   }, [displayText, isDeleting, phraseIndex]);
 
   return (
-    <section className="relative flex min-h-[80vh] flex-col items-center justify-center px-6 pt-32 pb-16 overflow-hidden">
+    <section className="relative flex min-h-[80vh] flex-col items-center justify-center px-6 pt-36 pb-12 overflow-hidden">
       {/* Subtle radial glow */}
       <div
         className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full opacity-[0.03]"
@@ -56,21 +56,26 @@ export function Hero() {
       />
 
       <div className="mx-auto max-w-4xl w-full text-center">
+        {/* Badge */}
+        <p className="relative text-xs font-medium uppercase tracking-widest text-white/30 mb-5">
+          The optimization infrastructure layer
+        </p>
+
         {/* Headline */}
         <h1 className="relative font-semibold tracking-tight text-balance">
-          <span className="block text-3xl sm:text-4xl md:text-5xl text-white leading-[1.15]">
+          <span className="block text-4xl sm:text-5xl md:text-6xl text-white leading-[1.1]">
             Your codebase,
           </span>
-          <span className="block text-3xl sm:text-4xl md:text-5xl text-blue-400 leading-[1.15] mt-1">
+          <span className="block text-4xl sm:text-5xl md:text-6xl text-blue-400 leading-[1.1] mt-1">
             continuously improved
           </span>
         </h1>
 
         {/* Typing subheadline */}
-        <div className="relative mt-6 h-7 flex items-center justify-center">
-          <p className="text-base sm:text-lg text-white/50 font-medium">
+        <div className="relative mt-6 h-8 flex items-center justify-center">
+          <p className="text-lg sm:text-xl text-white/50 font-medium">
             {displayText}
-            <span className="inline-block w-[2px] h-4 bg-white/50 ml-1 animate-pulse rounded-full" />
+            <span className="inline-block w-[2px] h-5 bg-white/50 ml-1 animate-pulse rounded-full" />
           </p>
         </div>
 
@@ -85,7 +90,7 @@ export function Hero() {
         <div className="relative mt-8">
           <Link
             href="/login"
-            className="group rounded-full bg-white text-black h-11 px-7 text-sm font-semibold transition-all hover:bg-white/90 hover:shadow-[0_0_40px_rgba(255,255,255,0.15)] inline-flex items-center justify-center gap-2"
+            className="group rounded-full bg-white text-black h-12 px-8 text-sm font-semibold transition-all hover:bg-white/90 hover:shadow-[0_0_40px_rgba(255,255,255,0.15)] inline-flex items-center justify-center gap-2"
           >
             Start Optimizing
             <svg
@@ -99,11 +104,6 @@ export function Hero() {
             </svg>
           </Link>
         </div>
-
-        {/* Trust line */}
-        <p className="relative mt-8 text-xs text-white/25">
-          Set it up in 2 minutes. No config files. No maintenance.
-        </p>
       </div>
     </section>
   );

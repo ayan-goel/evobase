@@ -20,7 +20,7 @@ const DOUBLED_FRAMEWORKS = [...FRAMEWORKS, ...FRAMEWORKS];
 
 export function TechStack() {
   return (
-    <section className="py-12 border-y border-white/[0.04]">
+    <section className="py-10 border-y border-white/[0.04]">
       <div className="mx-auto max-w-4xl px-6">
         <p className="text-xs font-medium uppercase tracking-widest text-white/30 text-center mb-6">
           Framework-aware optimizations for

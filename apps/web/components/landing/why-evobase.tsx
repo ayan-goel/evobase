@@ -80,7 +80,7 @@ export function WhyEvobase() {
   }, []);
 
   return (
-    <section ref={ref} className="px-6 py-16 sm:py-20">
+    <section ref={ref} className="px-6 py-14 sm:py-16">
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="text-center mb-10">
