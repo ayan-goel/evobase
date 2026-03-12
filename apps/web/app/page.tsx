@@ -5,7 +5,6 @@ import { WhyEvobase } from "@/components/landing/why-evobase";
 import { Pipeline } from "@/components/landing/pipeline";
 import { Features } from "@/components/landing/features";
 import { DiffShowcase } from "@/components/landing/diff-showcase";
-import { CTA } from "@/components/landing/cta";
 import { Footer } from "@/components/landing/footer";
 
 export default function Home() {
@@ -19,7 +18,6 @@ export default function Home() {
         <Pipeline />
         <DiffShowcase />
         <Features />
-        <CTA />
       </main>
       <Footer />
     </div>
