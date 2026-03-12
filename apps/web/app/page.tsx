@@ -11,7 +11,7 @@ import { Footer } from "@/components/landing/footer";
 export default function Home() {
   return (
     <div className="min-h-screen">
-      <Nav maxWidthClass="max-w-5xl" />
+      <Nav />
       <main>
         <Hero />
         <TechStack />

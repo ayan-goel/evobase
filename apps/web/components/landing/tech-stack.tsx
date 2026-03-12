@@ -20,31 +20,31 @@ const DOUBLED_FRAMEWORKS = [...FRAMEWORKS, ...FRAMEWORKS];
 
 export function TechStack() {
   return (
-    <section className="py-20 overflow-hidden border-y border-white/[0.04]">
-      <div className="mb-10 text-center px-6">
-        <p className="text-sm font-medium uppercase tracking-widest text-white/30">
+    <section className="py-14 overflow-hidden border-y border-white/[0.04]">
+      <div className="mb-8 text-center px-6">
+        <p className="text-xs font-medium uppercase tracking-widest text-white/30">
           Framework-aware optimizations for
         </p>
       </div>
       
       <div className="relative">
         {/* Fade edges */}
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-32 sm:w-48 z-10 bg-gradient-to-r from-black to-transparent" />
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-32 sm:w-48 z-10 bg-gradient-to-l from-black to-transparent" />
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-24 sm:w-40 z-10 bg-gradient-to-r from-black to-transparent" />
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-24 sm:w-40 z-10 bg-gradient-to-l from-black to-transparent" />
         
         {/* Scrolling track */}
         <div className="flex animate-marquee">
           {DOUBLED_FRAMEWORKS.map((framework, i) => (
             <div
               key={`${framework.name}-${i}`}
-              className="flex items-center gap-4 px-8 sm:px-10"
+              className="flex items-center gap-3 px-6 sm:px-8"
             >
               <img
                 src={framework.icon}
                 alt={framework.name}
-                className={`h-10 w-10 sm:h-12 sm:w-12 ${framework.invert ? "invert" : ""}`}
+                className={`h-8 w-8 sm:h-10 sm:w-10 ${framework.invert ? "invert" : ""}`}
               />
-              <span className="text-lg font-medium text-white/50 whitespace-nowrap">
+              <span className="text-sm sm:text-base font-medium text-white/50 whitespace-nowrap">
                 {framework.name}
               </span>
             </div>
