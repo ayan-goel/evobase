@@ -196,8 +196,8 @@ function EnterpriseCard({ tier }: { tier: Tier }) {
         <p className="mt-1.5 text-sm text-white/50">{tier.description}</p>
       </div>
 
-      {/* Middle: features in a wrap grid */}
-      <ul className="flex flex-wrap gap-x-6 gap-y-2 flex-1">
+      {/* Middle: features in two even columns */}
+      <ul className="grid grid-cols-2 gap-x-8 gap-y-2 flex-1">
         {tier.features.map((feature) => (
           <li key={feature} className="flex items-center gap-2">
             <CheckIcon />
@@ -243,7 +243,7 @@ export function Pricing() {
         </div>
 
         <p className="mt-8 text-center text-xs text-white/30">
-          All plans include unlimited AI providers. Usage resets monthly.
+          Usage resets monthly. Pay as you go once your usage limit is met.
         </p>
       </div>
     </section>
