@@ -42,7 +42,7 @@ def create_customer(email: str, metadata: Optional[dict] = None) -> str:
         email=email,
         metadata=metadata or {},
     )
-    return customer["id"]
+    return customer.id
 
 
 def create_subscription(
@@ -69,11 +69,42 @@ def create_subscription(
     return subscription
 
 
-def get_client_secret_from_subscription(subscription: dict) -> Optional[str]:
+def get_client_secret_from_subscription(subscription) -> Optional[str]:
     """Extract the PaymentIntent client_secret from a newly created subscription."""
     try:
-        return subscription["latest_invoice"]["payment_intent"]["client_secret"]
-    except (KeyError, TypeError):
+        invoice = subscription.latest_invoice
+        if not invoice:
+            logger.warning("Stripe subscription %s has no latest_invoice", getattr(subscription, "id", "?"))
+            return None
+        if isinstance(invoice, str):
+            logger.warning(
+                "latest_invoice was not expanded on subscription %s (got ID %s). "
+                "Check expand parameter.",
+                getattr(subscription, "id", "?"),
+                invoice,
+            )
+            return None
+
+        pi = invoice.payment_intent
+        if not pi:
+            logger.warning(
+                "Invoice %s has no payment_intent (status=%s)",
+                getattr(invoice, "id", "?"),
+                getattr(invoice, "status", "?"),
+            )
+            return None
+        if isinstance(pi, str):
+            logger.warning(
+                "payment_intent was not expanded on invoice %s (got ID %s). "
+                "Check expand parameter.",
+                getattr(invoice, "id", "?"),
+                pi,
+            )
+            return None
+
+        return pi.client_secret
+    except Exception as exc:
+        logger.warning("Could not extract client_secret from subscription: %s", exc)
         return None
 
 
@@ -89,7 +120,7 @@ def update_subscription_tier(
         raise ValueError(f"No Stripe price ID configured for tier '{tier}'")
 
     sub = stripe.Subscription.retrieve(stripe_subscription_id)
-    item_id = sub["items"]["data"][0]["id"]
+    item_id = sub.items.data[0].id
 
     return stripe.Subscription.modify(
         stripe_subscription_id,

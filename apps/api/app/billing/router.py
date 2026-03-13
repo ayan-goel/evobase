@@ -271,8 +271,8 @@ async def stripe_webhook(request: Request) -> dict:
         logger.warning("Stripe webhook signature verification failed: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
 
-    event_type = event["type"]
-    data = event["data"]["object"]
+    event_type = event.type
+    data = event.data.object
 
     # Use a new DB session for the webhook handler (no request-scoped session here)
     from app.db.session import async_session_factory
@@ -292,9 +292,9 @@ async def stripe_webhook(request: Request) -> dict:
     return {"received": True}
 
 
-async def _handle_subscription_event(db: AsyncSession, stripe_sub: dict, event_type: str) -> None:
+async def _handle_subscription_event(db: AsyncSession, stripe_sub, event_type: str) -> None:
     """Sync local subscription state from a Stripe subscription event."""
-    stripe_sub_id = stripe_sub.get("id")
+    stripe_sub_id = getattr(stripe_sub, "id", None)
     if not stripe_sub_id:
         return
 
@@ -318,7 +318,7 @@ async def _handle_subscription_event(db: AsyncSession, stripe_sub: dict, event_t
         return
 
     # Map Stripe status to our internal status
-    stripe_status = stripe_sub.get("status", "active")
+    stripe_status = getattr(stripe_sub, "status", "active")
     status_map = {
         "active": "active",
         "past_due": "past_due",
@@ -329,8 +329,8 @@ async def _handle_subscription_event(db: AsyncSession, stripe_sub: dict, event_t
     sub.status = status_map.get(stripe_status, "active")
 
     # Sync period dates
-    period_start = stripe_sub.get("current_period_start")
-    period_end = stripe_sub.get("current_period_end")
+    period_start = getattr(stripe_sub, "current_period_start", None)
+    period_end = getattr(stripe_sub, "current_period_end", None)
     if period_start:
         sub.current_period_start = datetime.fromtimestamp(period_start, tz=timezone.utc)
     if period_end:
@@ -343,9 +343,9 @@ async def _handle_subscription_event(db: AsyncSession, stripe_sub: dict, event_t
     )
 
 
-async def _handle_invoice_paid(db: AsyncSession, invoice: dict) -> None:
+async def _handle_invoice_paid(db: AsyncSession, invoice) -> None:
     """On invoice.paid: reset past_due flag."""
-    customer_id = invoice.get("customer")
+    customer_id = getattr(invoice, "customer", None)
     if not customer_id:
         return
 
@@ -362,9 +362,9 @@ async def _handle_invoice_paid(db: AsyncSession, invoice: dict) -> None:
         logger.info("Invoice paid for customer %s; subscription status reset to active", customer_id)
 
 
-async def _handle_invoice_payment_failed(db: AsyncSession, invoice: dict) -> None:
+async def _handle_invoice_payment_failed(db: AsyncSession, invoice) -> None:
     """On invoice.payment_failed: mark as past_due."""
-    customer_id = invoice.get("customer")
+    customer_id = getattr(invoice, "customer", None)
     if not customer_id:
         return
 
