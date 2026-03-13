@@ -32,7 +32,7 @@ class User(Base):
     github_login: Mapped[Optional[str]] = mapped_column(Text)
     avatar_url: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     organizations: Mapped[list["Organization"]] = relationship(
@@ -51,7 +51,7 @@ class Organization(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     owner: Mapped["User"] = relationship(back_populates="organizations")
@@ -78,7 +78,7 @@ class GitHubInstallation(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -110,7 +110,7 @@ class Repository(Base):
     # Set this for monorepos where only one sub-project should be analysed.
     root_dir: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     organization: Mapped["Organization"] = relationship(back_populates="repositories")
@@ -143,7 +143,7 @@ class Baseline(Base):
     metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     environment_fingerprint: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     repository: Mapped["Repository"] = relationship(back_populates="baselines")
@@ -179,7 +179,7 @@ class Run(Base):
     # pr_url: GitHub PR URL once a run-level PR has been created
     pr_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     repository: Mapped["Repository"] = relationship(back_populates="runs")
@@ -219,7 +219,7 @@ class Opportunity(Base):
     # LLM discovery agent reasoning trace (ThinkingTrace serialised to JSON)
     llm_reasoning: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     run: Mapped["Run"] = relationship(back_populates="opportunities")
@@ -252,7 +252,7 @@ class Attempt(Base):
     # LLM patch-generation agent reasoning trace (ThinkingTrace serialised to JSON)
     llm_reasoning: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     opportunity: Mapped["Opportunity"] = relationship(back_populates="attempts")
@@ -280,7 +280,7 @@ class Proposal(Base):
     metrics_after: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     risk_score: Mapped[Optional[float]] = mapped_column(Numeric, default=0)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     pr_url: Mapped[Optional[str]] = mapped_column(Text)
 
@@ -328,7 +328,7 @@ class Artifact(Base):
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     proposal: Mapped[Optional["Proposal"]] = relationship(back_populates="artifacts")
@@ -356,7 +356,7 @@ class RunEvent(Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     stream_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ts: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     run: Mapped["Run"] = relationship(back_populates="events")
@@ -429,7 +429,7 @@ class TokenUsageEvent(Base):
     billed_microdollars: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     rate_type: Mapped[str] = mapped_column(Text, nullable=False, default="included")
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     run: Mapped["Run"] = relationship(back_populates="token_usage_events")
@@ -461,7 +461,7 @@ class Settings(Base):
     paused: Mapped[bool] = mapped_column(nullable=False, default=False)
     consecutive_setup_failures: Mapped[int] = mapped_column(nullable=False, default=0)
     consecutive_flaky_runs: Mapped[int] = mapped_column(nullable=False, default=0)
-    last_run_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # LLM model selection — user configures which model analyses this repo
     llm_provider: Mapped[str] = mapped_column(Text, nullable=False, default="openai")
