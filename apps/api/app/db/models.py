@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import BigInteger, Integer, JSON, ForeignKey, Numeric, Text, Uuid, func, text
+from sqlalchemy import BigInteger, DateTime, Integer, JSON, ForeignKey, Numeric, Text, Uuid, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -381,10 +381,10 @@ class Subscription(Base):
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(Text, unique=True)
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(Text, unique=True)
     current_period_start: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     current_period_end: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     # Free: 3333333 ($3.33), Hobby: 13333333 ($13.33), Premium: 40000000 ($40), Pro: 133000000 ($133)
     included_api_budget_microdollars: Mapped[int] = mapped_column(
@@ -395,10 +395,10 @@ class Subscription(Base):
         BigInteger, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     organization: Mapped["Organization"] = relationship(back_populates="subscription")
