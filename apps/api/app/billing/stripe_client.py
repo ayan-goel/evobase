@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 # set as environment variables. Set STRIPE_PRICE_<TIER>_ID in your .env.
 # These are placeholder defaults; override in production.
 _PRICE_ID_MAP: dict[str, str] = {
-    "hobby": "price_hobby",
-    "premium": "price_premium",
-    "pro": "price_pro",
+    "hobby": "price_1TALotBTGYNBUsYj2nFWe1UJ",
+    "premium": "price_1TALpABTGYNBUsYjnCqUcjne",
+    "pro": "price_1TALpkBTGYNBUsYjhgh6ZB5V",
 }
 
 

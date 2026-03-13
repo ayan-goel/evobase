@@ -1,9 +1,5 @@
 import Link from "next/link";
 
-interface TierFeature {
-  text: string;
-}
-
 interface Tier {
   id: string;
   name: string;
@@ -90,24 +86,25 @@ const TIERS: Tier[] = [
       "Custom run schedules",
     ],
   },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: null,
-    description: "Custom pricing, SLAs, and dedicated support.",
-    highlight: false,
-    cta: "Contact sales",
-    ctaHref: "mailto:ayan@evobase.dev",
-    features: [
-      "Unlimited repositories",
-      "Negotiated usage budget",
-      "Custom AI model configuration",
-      "Dedicated support & SLA",
-      "Custom integrations",
-      "SSO / audit logs",
-    ],
-  },
 ];
+
+const ENTERPRISE: Tier = {
+  id: "enterprise",
+  name: "Enterprise",
+  price: null,
+  description: "Custom pricing, SLAs, and dedicated support for teams that need more.",
+  highlight: false,
+  cta: "Contact sales",
+  ctaHref: "mailto:ayan@evobase.dev",
+  features: [
+    "Unlimited repositories",
+    "Negotiated usage budget",
+    "Custom AI model configuration",
+    "Dedicated support & SLA",
+    "Custom integrations",
+    "SSO / audit logs",
+  ],
+};
 
 function CheckIcon() {
   return (
@@ -158,8 +155,6 @@ function TierCard({ tier }: { tier: Tier }) {
                 <span className="text-sm text-white/50">{tier.period}</span>
               )}
             </>
-          ) : tier.id === "enterprise" ? (
-            <span className="text-3xl font-bold text-white">Custom</span>
           ) : (
             <span className="text-3xl font-bold text-white">Free</span>
           )}
@@ -176,28 +171,50 @@ function TierCard({ tier }: { tier: Tier }) {
         ))}
       </ul>
 
-      {isHighlighted ? (
-        <Link
-          href={tier.ctaHref}
-          className="rounded-lg bg-white text-black h-10 px-4 text-sm font-semibold transition-colors hover:bg-white/90 inline-flex items-center justify-center"
-        >
-          {tier.cta}
-        </Link>
-      ) : tier.id === "enterprise" ? (
+      <Link
+        href={tier.ctaHref}
+        className={[
+          "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center",
+          isHighlighted
+            ? "bg-white text-black font-semibold hover:bg-white/90"
+            : "border border-white/10 text-white font-medium hover:bg-white/[0.06]",
+        ].join(" ")}
+      >
+        {tier.cta}
+      </Link>
+    </div>
+  );
+}
+
+function EnterpriseCard({ tier }: { tier: Tier }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 flex flex-col sm:flex-row sm:items-center gap-6">
+      {/* Left: name + price + description */}
+      <div className="shrink-0 sm:w-48">
+        <p className="text-sm font-medium text-white/60">{tier.name}</p>
+        <p className="mt-1 text-3xl font-bold text-white">Custom</p>
+        <p className="mt-1.5 text-sm text-white/50">{tier.description}</p>
+      </div>
+
+      {/* Middle: features in a wrap grid */}
+      <ul className="flex flex-wrap gap-x-6 gap-y-2 flex-1">
+        {tier.features.map((feature) => (
+          <li key={feature} className="flex items-center gap-2">
+            <CheckIcon />
+            <span className="text-sm text-white/70">{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Right: CTA */}
+      <div className="shrink-0">
         <a
           href={tier.ctaHref}
-          className="rounded-lg border border-white/10 text-white h-10 px-4 text-sm font-medium transition-colors hover:bg-white/[0.06] inline-flex items-center justify-center"
+          className="rounded-lg border border-white/10 text-white h-10 px-6 text-sm font-medium transition-colors hover:bg-white/[0.06] inline-flex items-center justify-center whitespace-nowrap"
         >
           {tier.cta}
         </a>
-      ) : (
-        <Link
-          href={tier.ctaHref}
-          className="rounded-lg border border-white/10 text-white h-10 px-4 text-sm font-medium transition-colors hover:bg-white/[0.06] inline-flex items-center justify-center"
-        >
-          {tier.cta}
-        </Link>
-      )}
+      </div>
     </div>
   );
 }
@@ -205,7 +222,7 @@ function TierCard({ tier }: { tier: Tier }) {
 export function Pricing() {
   return (
     <section className="w-full py-24">
-      <div className="mx-auto max-w-6xl px-4">
+      <div className="mx-auto max-w-4xl px-4">
         <div className="mb-12 text-center">
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl text-white">
             Simple, usage-based pricing
@@ -215,10 +232,14 @@ export function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {TIERS.map((tier) => (
             <TierCard key={tier.id} tier={tier} />
           ))}
+        </div>
+
+        <div className="mt-4">
+          <EnterpriseCard tier={ENTERPRISE} />
         </div>
 
         <p className="mt-8 text-center text-xs text-white/30">

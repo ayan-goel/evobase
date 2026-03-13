@@ -5,6 +5,14 @@ const nextConfig: NextConfig = {
   // The output lives in .next/standalone and includes only the files needed
   // to run the app (no dev dependencies, no source maps).
   output: "standalone",
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+      },
+    ],
+  },
 };
 
 export default nextConfig;
