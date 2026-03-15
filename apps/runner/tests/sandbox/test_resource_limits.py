@@ -58,6 +58,52 @@ class TestApplyResourceLimits:
                 "RLIMIT_AS should not be set for the JS resource profile"
             )
 
+    def test_python_profile_skips_rlimit_as(self) -> None:
+        """Python profile disables RLIMIT_AS.
+
+        uv and other Python package managers are Rust/C binaries that mmap
+        large blocks for parallel downloads. A 4 GB virtual-address-space cap
+        causes spurious allocation failures even on machines with plenty of RAM.
+        """
+        mock_resource = MagicMock()
+        mock_resource.RLIMIT_AS = 5
+        mock_resource.RLIMIT_CPU = 0
+        mock_resource.RLIM_INFINITY = -1
+
+        with patch.dict("sys.modules", {"resource": mock_resource}):
+            with patch("sys.platform", "linux"):
+                with patch.dict("os.environ", {"EVOBASE_RESOURCE_PROFILE": "python"}, clear=False):
+                    apply_resource_limits()
+
+        for call_args in mock_resource.setrlimit.call_args_list:
+            assert call_args[0][0] != mock_resource.RLIMIT_AS, (
+                "RLIMIT_AS should not be set for the python resource profile"
+            )
+
+    def test_python_memory_limit_can_be_overridden_by_env(self) -> None:
+        """Python profile honors python-specific memory override env."""
+        mock_resource = MagicMock()
+        mock_resource.RLIMIT_AS = 5
+        mock_resource.RLIMIT_CPU = 0
+        mock_resource.RLIM_INFINITY = -1
+
+        with patch.dict("sys.modules", {"resource": mock_resource}):
+            with patch("sys.platform", "linux"):
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "EVOBASE_RESOURCE_PROFILE": "python",
+                        "EVOBASE_RLIMIT_AS_BYTES_PYTHON": str(8 * 1024 * 1024 * 1024),
+                    },
+                    clear=False,
+                ):
+                    apply_resource_limits()
+
+        mock_resource.setrlimit.assert_any_call(
+            mock_resource.RLIMIT_AS,
+            (8 * 1024 * 1024 * 1024, mock_resource.RLIM_INFINITY),
+        )
+
     def test_sets_jvm_memory_limit_when_profile_is_jvm(self) -> None:
         """JVM profile uses a higher RLIMIT_AS default (12 GB)."""
         mock_resource = MagicMock()

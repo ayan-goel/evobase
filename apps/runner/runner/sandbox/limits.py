@@ -21,15 +21,23 @@ Memory policy:
   and rely on NODE_OPTIONS=--max-old-space-size (injected by the strategy
   engine) to bound V8 heap instead.
 
+  Python package managers (uv, pip, poetry, etc.) have the same problem: uv
+  is a Rust binary that mmaps large blocks for parallel downloads and package
+  extraction. The 4 GB default cap is easily exceeded even when physical RAM
+  is plentiful, causing spurious "memory allocation failed" aborts. We disable
+  RLIMIT_AS for Python tools and rely on the wall-clock timeout + cgroup limits.
+
   - JS profile:      RLIMIT_AS disabled by default; heap bounded via NODE_OPTIONS.
+  - Python profile:  RLIMIT_AS disabled by default; bounded by wall-clock + cgroups.
   - Default profile: 4 GB virtual-address-space cap (RLIMIT_AS).
   - JVM profile:     12 GB virtual-address-space cap by default.
   - Native profile:  16 GB virtual-address-space cap by default.
 
 Environment overrides:
-  - EVOBASE_RESOURCE_PROFILE: "default" | "js" | "jvm" | "native"
+  - EVOBASE_RESOURCE_PROFILE: "default" | "js" | "python" | "jvm" | "native"
   - EVOBASE_RLIMIT_AS_BYTES: integer bytes for default profile
   - EVOBASE_RLIMIT_AS_BYTES_JS: integer bytes for js profile (0 = disabled)
+  - EVOBASE_RLIMIT_AS_BYTES_PYTHON: integer bytes for python profile (0 = disabled)
   - EVOBASE_RLIMIT_AS_BYTES_JVM: integer bytes for jvm profile
   - EVOBASE_RLIMIT_AS_BYTES_NATIVE: integer bytes for native profile
   - EVOBASE_RLIMIT_CPU_SECONDS: integer seconds for CPU limit
@@ -50,6 +58,11 @@ _DEFAULT_MEM_LIMIT_BYTES = 4 * 1024 * 1024 * 1024   # 4 GB
 # Heap is bounded via NODE_OPTIONS=--max-old-space-size injected by the
 # strategy engine instead.
 _DEFAULT_JS_MEM_LIMIT_BYTES = 0
+# Python profile: RLIMIT_AS disabled by default because uv (and other Python
+# package managers) are Rust binaries that mmap large blocks for parallel
+# package downloads and extraction. The 4 GB default cap is easily exhausted
+# even on machines with plenty of physical RAM.
+_DEFAULT_PYTHON_MEM_LIMIT_BYTES = 0
 _DEFAULT_JVM_MEM_LIMIT_BYTES = 12 * 1024 * 1024 * 1024  # 12 GB
 _DEFAULT_NATIVE_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
 _DEFAULT_CPU_LIMIT_SECONDS = 300
@@ -58,6 +71,7 @@ _DEFAULT_CPU_LIMIT_SECONDS = 300
 _RESOURCE_PROFILE_ENV = "EVOBASE_RESOURCE_PROFILE"
 _MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES"
 _JS_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_JS"
+_PYTHON_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_PYTHON"
 _JVM_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_JVM"
 _NATIVE_MEM_LIMIT_ENV = "EVOBASE_RLIMIT_AS_BYTES_NATIVE"
 _CPU_LIMIT_ENV = "EVOBASE_RLIMIT_CPU_SECONDS"
@@ -83,6 +97,15 @@ def _resolve_memory_limit_bytes() -> Optional[int]:
         if base_override is not None:
             return base_override
         return _DEFAULT_JS_MEM_LIMIT_BYTES
+
+    if profile == "python":
+        python_override = _parse_optional_positive_int(os.environ.get(_PYTHON_MEM_LIMIT_ENV))
+        if python_override is not None:
+            return python_override
+        base_override = _parse_optional_positive_int(os.environ.get(_MEM_LIMIT_ENV))
+        if base_override is not None:
+            return base_override
+        return _DEFAULT_PYTHON_MEM_LIMIT_BYTES
 
     if profile == "jvm":
         jvm_override = _parse_optional_positive_int(os.environ.get(_JVM_MEM_LIMIT_ENV))

@@ -38,6 +38,7 @@ _RESOURCE_PROFILE_DEFAULT = "default"
 _RESOURCE_PROFILE_JS = "js"
 _RESOURCE_PROFILE_JVM = "jvm"
 _RESOURCE_PROFILE_NATIVE = "native"
+_RESOURCE_PROFILE_PYTHON = "python"
 
 
 def _install_step_env(package_manager: Optional[str]) -> Optional[dict]:
@@ -215,6 +216,31 @@ def _infer_resource_profile(command: str) -> str:
     )
     if any(hint in normalized for hint in native_hints):
         return _RESOURCE_PROFILE_NATIVE
+
+    # uv, pip, poetry, etc. are Rust/C binaries that mmap large blocks during
+    # parallel package downloads — 4 GB RLIMIT_AS is easily exhausted even when
+    # physical RAM is plentiful. Disable RLIMIT_AS and rely on the wall-clock
+    # timeout + cgroup limits instead (same treatment as JS/Wasm).
+    python_hints = (
+        "uv ",
+        "uv\t",
+        "pip ",
+        "pip3 ",
+        "poetry ",
+        "pipenv ",
+        "conda ",
+        "mamba ",
+        "micromamba ",
+        "hatch ",
+        "pdm ",
+        "rye ",
+        "pytest",
+        "python ",
+        "python3 ",
+    )
+    if any(hint in normalized for hint in python_hints):
+        return _RESOURCE_PROFILE_PYTHON
+
     return _RESOURCE_PROFILE_DEFAULT
 
 

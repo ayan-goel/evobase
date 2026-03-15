@@ -106,10 +106,37 @@ class TestRunStep:
     def test_sets_default_resource_profile_for_non_js_commands(self, mock_run, tmp_path):
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
+        run_step("build", "make -j4", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "native"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_python_resource_profile_for_uv_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("install", "uv sync", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "python"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_python_resource_profile_for_pytest_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
         run_step("test", "pytest -q", tmp_path)
 
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "default"
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "python"
+
+    @patch("runner.validator.executor.subprocess.run")
+    def test_sets_python_resource_profile_for_pip_commands(self, mock_run, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_step("install", "pip install -r requirements.txt", tmp_path)
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["env"]["EVOBASE_RESOURCE_PROFILE"] == "python"
 
     @patch("runner.validator.executor.subprocess.run")
     def test_sets_jvm_resource_profile_for_gradle_commands(self, mock_run, tmp_path):
