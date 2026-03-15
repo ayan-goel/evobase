@@ -32,9 +32,9 @@ export default function LoginPage() {
           <Image
             src="/logo-no-background.png"
             alt="Evobase"
-            width={180}
-            height={48}
-            className="h-10 w-auto"
+            width={400}
+            height={100}
+            className="h-20 w-auto"
             priority
           />
         </div>

@@ -42,9 +42,9 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
             <Image
               src="/logo-no-background.png"
               alt="Evobase"
-              width={160}
-              height={40}
-              className="h-9 w-auto"
+              width={200}
+              height={50}
+              className="h-8 w-auto sm:h-9"
               priority
             />
           </Link>
