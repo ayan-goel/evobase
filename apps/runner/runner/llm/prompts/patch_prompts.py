@@ -62,6 +62,9 @@ Search/replace format:
   - If the same block appears more than once, include more context until it is unique.
   - You may provide multiple edits for the same file (they are applied top-to-bottom).
   - An empty "replace" deletes the matched block.
+  - The "replace" block must contain ONLY the new code that replaces the search block.
+    Do NOT include lines that already exist immediately before or after the search block
+    — those lines are preserved automatically. Including them will create duplicate code.
 
 Respond with ONLY this JSON structure:
 {{

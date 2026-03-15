@@ -162,6 +162,11 @@ def _run_candidate_pipeline(
     result = BaselineResult()
 
     try:
+        if not config.build_cmd:
+            logger.warning(
+                "No build_cmd configured — syntax errors in patched files may go undetected"
+            )
+
         # Build (optional — same as baseline)
         # A failing build is reported to the acceptance evaluator, which treats
         # it as a hard rejection gate. We still continue here to collect

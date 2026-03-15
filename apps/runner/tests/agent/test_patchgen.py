@@ -17,6 +17,8 @@ from runner.agent.patchgen import (
     _build_correction_feedback,
     _parse_file_from_location,
     _parse_patch_response,
+    _strip_leading_overlap,
+    _strip_trailing_overlap,
     apply_search_replace,
     edits_to_unified_diff,
     generate_agent_patch,
@@ -120,6 +122,110 @@ class TestApplySearchReplace:
     def test_does_not_apply_second_match_when_ambiguous(self) -> None:
         with pytest.raises(ValueError):
             apply_search_replace("a\na\n", "a\n", "b\n")
+
+    def test_strips_trailing_overlap(self) -> None:
+        """Replace block includes lines already after the search block."""
+        content = "header\nold_code\nreturn 1;\nfooter\n"
+        result = apply_search_replace(
+            content,
+            "old_code\n",
+            "new_code\nreturn 1;\n",
+        )
+        assert result == "header\nnew_code\nreturn 1;\nfooter\n"
+
+    def test_strips_leading_overlap(self) -> None:
+        """Replace block includes lines already before the search block."""
+        content = "header\ncontext\nold_code\nfooter\n"
+        result = apply_search_replace(
+            content,
+            "old_code\n",
+            "context\nnew_code\n",
+        )
+        assert result == "header\ncontext\nnew_code\nfooter\n"
+
+    def test_no_overlap_passthrough(self) -> None:
+        """When there is no overlap, the replace is used as-is."""
+        content = "line1\nline2\nline3\n"
+        result = apply_search_replace(content, "line2\n", "REPLACED\n")
+        assert result == "line1\nREPLACED\nline3\n"
+
+    def test_partial_line_not_stripped(self) -> None:
+        """Partial line matches must NOT be treated as overlap."""
+        content = "header\nold_code\nreturn 1;\nfooter\n"
+        result = apply_search_replace(
+            content,
+            "old_code\n",
+            "new_code\nreturn 1\n",  # no semicolon — partial line match
+        )
+        assert result == "header\nnew_code\nreturn 1\nreturn 1;\nfooter\n"
+
+    def test_strips_multiline_trailing_overlap(self) -> None:
+        """Overlap detection handles multiple trailing lines."""
+        content = "a\nSEARCH\nb\nc\nd\n"
+        result = apply_search_replace(
+            content,
+            "SEARCH\n",
+            "NEW\nb\nc\n",
+        )
+        assert result == "a\nNEW\nb\nc\nd\n"
+
+    def test_strips_multiline_leading_overlap(self) -> None:
+        """Overlap detection handles multiple leading lines."""
+        content = "a\nb\nc\nSEARCH\nd\n"
+        result = apply_search_replace(
+            content,
+            "SEARCH\n",
+            "b\nc\nNEW\n",
+        )
+        assert result == "a\nb\nc\nNEW\nd\n"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _strip_trailing_overlap / _strip_leading_overlap
+# ---------------------------------------------------------------------------
+
+class TestStripTrailingOverlap:
+    def test_strips_matching_suffix(self) -> None:
+        result = _strip_trailing_overlap("new\nreturn 1;\n", "return 1;\nfooter\n")
+        assert result == "new\n"
+
+    def test_returns_unchanged_when_no_overlap(self) -> None:
+        result = _strip_trailing_overlap("new\n", "other\n")
+        assert result == "new\n"
+
+    def test_returns_unchanged_for_empty_after(self) -> None:
+        result = _strip_trailing_overlap("new\n", "")
+        assert result == "new\n"
+
+    def test_returns_unchanged_for_empty_replace(self) -> None:
+        result = _strip_trailing_overlap("", "after\n")
+        assert result == ""
+
+    def test_longest_overlap_wins(self) -> None:
+        result = _strip_trailing_overlap("x\na\nb\n", "a\nb\nc\n")
+        assert result == "x\n"
+
+
+class TestStripLeadingOverlap:
+    def test_strips_matching_prefix(self) -> None:
+        result = _strip_leading_overlap("header\nnew\n", "stuff\nheader\n")
+        assert result == "new\n"
+
+    def test_returns_unchanged_when_no_overlap(self) -> None:
+        result = _strip_leading_overlap("new\n", "other\n")
+        assert result == "new\n"
+
+    def test_returns_unchanged_for_empty_before(self) -> None:
+        result = _strip_leading_overlap("new\n", "")
+        assert result == "new\n"
+
+    def test_returns_unchanged_for_empty_replace(self) -> None:
+        result = _strip_leading_overlap("", "before\n")
+        assert result == ""
+
+    def test_longest_overlap_wins(self) -> None:
+        result = _strip_leading_overlap("a\nb\nx\n", "z\na\nb\n")
+        assert result == "x\n"
 
 
 # ---------------------------------------------------------------------------

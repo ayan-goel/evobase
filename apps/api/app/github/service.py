@@ -290,6 +290,10 @@ def _apply_patch_to_content(original: str, patched_file) -> str:
     ``+`` lines are included in the output, ``-`` lines are omitted.
     Lines outside any hunk (before the first or after the last) are preserved
     by rebuilding from the original via the hunk offset information.
+
+    When two hunks share overlapping context (e.g. adjacent changes merged
+    by difflib with shared context lines), lines already consumed by the
+    previous hunk are skipped to prevent duplication.
     """
     original_lines = original.splitlines(keepends=True)
     result: list[str] = []
@@ -298,18 +302,28 @@ def _apply_patch_to_content(original: str, patched_file) -> str:
     for hunk in patched_file:
         hunk_start = hunk.source_start - 1  # convert to 0-based
 
-        # Preserve lines before this hunk
-        result.extend(original_lines[original_pos:hunk_start])
-        original_pos = hunk_start
+        # Preserve lines between the previous hunk and this one
+        if hunk_start > original_pos:
+            result.extend(original_lines[original_pos:hunk_start])
+
+        hunk_source_pos = hunk_start
+        in_overlap = hunk_source_pos < original_pos
 
         for line in hunk:
             if line.line_type == " ":  # context
-                result.append(line.value)
-                original_pos += 1
+                if hunk_source_pos >= original_pos:
+                    in_overlap = False
+                    result.append(line.value)
+                hunk_source_pos += 1
+                original_pos = max(original_pos, hunk_source_pos)
             elif line.line_type == "+":  # added
-                result.append(line.value)
+                if not in_overlap:
+                    result.append(line.value)
             elif line.line_type == "-":  # removed
-                original_pos += 1
+                if hunk_source_pos >= original_pos:
+                    in_overlap = False
+                hunk_source_pos += 1
+                original_pos = max(original_pos, hunk_source_pos)
 
     # Preserve any remaining lines after the last hunk
     result.extend(original_lines[original_pos:])

@@ -365,7 +365,83 @@ def apply_search_replace(content: str, search: str, replace: str) -> str:
             f"(first 120 chars: {preview!r})"
         )
 
+    pos = content.find(search)
+    before_search = content[:pos]
+    after_search = content[pos + len(search):]
+    replace = _strip_trailing_overlap(replace, after_search)
+    replace = _strip_leading_overlap(replace, before_search)
+
     return content.replace(search, replace, 1)
+
+
+def _strip_trailing_overlap(replace: str, after_search: str) -> str:
+    """Remove trailing lines from *replace* that duplicate the start of *after_search*.
+
+    LLMs sometimes include lines in the replace block that already exist
+    right after the search block in the original file, causing duplicate
+    content in the patched output.  This function detects the longest
+    line-aligned suffix of *replace* that matches a prefix of *after_search*
+    and strips it.
+    """
+    if not replace or not after_search:
+        return replace
+
+    replace_lines = replace.splitlines(keepends=True)
+    after_lines = after_search.splitlines(keepends=True)
+
+    if not replace_lines or not after_lines:
+        return replace
+
+    best_overlap = 0
+    max_check = min(len(replace_lines), len(after_lines))
+
+    for overlap_len in range(1, max_check + 1):
+        if replace_lines[-overlap_len:] == after_lines[:overlap_len]:
+            best_overlap = overlap_len
+
+    if best_overlap > 0:
+        logger.warning(
+            "Stripped %d trailing overlap line(s) from replace block "
+            "that duplicated text after the search block",
+            best_overlap,
+        )
+        return "".join(replace_lines[:-best_overlap])
+
+    return replace
+
+
+def _strip_leading_overlap(replace: str, before_search: str) -> str:
+    """Remove leading lines from *replace* that duplicate the end of *before_search*.
+
+    Symmetric counterpart of :func:`_strip_trailing_overlap` — catches the
+    case where the LLM copies lines from *above* the search block into the
+    start of its replace block.
+    """
+    if not replace or not before_search:
+        return replace
+
+    replace_lines = replace.splitlines(keepends=True)
+    before_lines = before_search.splitlines(keepends=True)
+
+    if not replace_lines or not before_lines:
+        return replace
+
+    best_overlap = 0
+    max_check = min(len(replace_lines), len(before_lines))
+
+    for overlap_len in range(1, max_check + 1):
+        if replace_lines[:overlap_len] == before_lines[-overlap_len:]:
+            best_overlap = overlap_len
+
+    if best_overlap > 0:
+        logger.warning(
+            "Stripped %d leading overlap line(s) from replace block "
+            "that duplicated text before the search block",
+            best_overlap,
+        )
+        return "".join(replace_lines[best_overlap:])
+
+    return replace
 
 
 def edits_to_unified_diff(

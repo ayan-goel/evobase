@@ -390,6 +390,23 @@ class TestApplyPatchToContent:
         result = _apply_patch_to_content(original, pf)
         assert result == original
 
+    def test_hunk_pointer_does_not_regress(self):
+        """When two hunks share overlapping context, lines must not be duplicated.
+
+        Regression test for the bug where setting original_pos = hunk_start
+        (without max()) could move the pointer backward, causing context
+        lines already consumed by the previous hunk to be re-emitted.
+        """
+        original = "a\nb\nc\nd\ne\nf\ng\n"
+        # Hunk 1 starts at source line 2 (0-based: 1) and covers through line 5
+        # Hunk 2 starts at source line 4 (0-based: 3) — overlaps with hunk 1's tail
+        pf = self._make_patched_file([
+            (2, [" b\n", "-c\n", "+C\n", " d\n", " e\n"]),
+            (4, [" d\n", " e\n", "-f\n", "+F\n", " g\n"]),
+        ])
+        result = _apply_patch_to_content(original, pf)
+        assert result == "a\nb\nC\nd\ne\nF\ng\n"
+
 
 # ---------------------------------------------------------------------------
 # Minimal unified diff fixtures for _commit_diff_to_branch tests
