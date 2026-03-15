@@ -34,17 +34,17 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
     >
       <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl">
         {/* Main bar */}
-        <div className="flex items-center justify-between px-4 py-0">
+        <div className="flex items-center justify-between px-0 py-0">
           <Link
             href="/dashboard"
-            className="hover:opacity-80 transition-opacity -my-4"
+            className="hover:opacity-80 transition-opacity -my-6"
           >
             <Image
               src="/logo-no-background.png"
               alt="Evobase"
               width={612}
               height={408}
-              className="h-20 w-auto"
+              className="h-28 w-auto"
               priority
             />
           </Link>

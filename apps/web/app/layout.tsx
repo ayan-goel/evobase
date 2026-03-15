@@ -24,6 +24,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+        <link rel="icon" href="/evobase-icon.png" sizes="192x192" type="image/png" />
+        <link rel="apple-touch-icon" href="/evobase-icon.png" />
+      </head>
       <body className={`${dmSans.variable} antialiased bg-black text-white`}>
         {children}
       </body>

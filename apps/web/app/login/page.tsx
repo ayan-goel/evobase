@@ -26,15 +26,15 @@ export default function LoginPage() {
         aria-hidden="true"
       />
 
-      <main className="relative mx-auto w-full max-w-sm px-4 text-center">
+      <main className="relative mx-auto w-full max-w-lg px-4 text-center">
         {/* Logo above card */}
-        <div className="mb-6 flex justify-center">
+        <div className="-mb-4 flex justify-center">
           <Image
             src="/logo-no-background.png"
             alt="Evobase"
             width={612}
             height={408}
-            className="w-full max-w-md h-auto"
+            className="w-full h-auto"
             priority
           />
         </div>
