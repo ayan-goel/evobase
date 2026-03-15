@@ -79,6 +79,38 @@ class TestGetRun:
         assert response.status_code == 404
 
 
+class TestStreamRunEvents:
+    async def test_stream_run_events_returns_sse_payload(self, seeded_client):
+        create_resp = await seeded_client.post(
+            f"/repos/{STUB_REPO_ID}/run", json={"sha": "abc"}
+        )
+        run_id = create_resp.json()["id"]
+
+        async def fake_event_stream(_run_id: str, last_id: str = "0", run_status: str = "queued"):
+            assert _run_id == run_id
+            assert last_id == "0"
+            assert run_status == "queued"
+            yield {
+                "id": str(uuid.uuid4()),
+                "type": "run.completed",
+                "phase": "done",
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "payload": {},
+            }
+
+        with pytest.MonkeyPatch.context() as mp:
+            async def fake_decode_token(_token, _settings):
+                return {"sub": str(uuid.UUID("00000000-0000-0000-0000-000000000001"))}
+
+            mp.setattr("app.runs.router.decode_token", fake_decode_token)
+            mp.setattr("app.runs.events.event_stream", fake_event_stream)
+            response = await seeded_client.get(f"/runs/{run_id}/events")
+
+        assert response.status_code == 200
+        assert "event: run_event" in response.text
+        assert "event: done" in response.text
+
+
 class TestCancelRun:
     async def test_cancel_queued_run(self, seeded_client):
         create_resp = await seeded_client.post(

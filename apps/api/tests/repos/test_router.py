@@ -41,16 +41,100 @@ class TestConnectRepo:
         data = response.json()
         assert data["github_full_name"] is None
 
-    async def test_connect_repo_duplicate_github_id(self, seeded_client):
-        """Connecting a repo with an already-used github_repo_id should 409."""
+    async def test_connect_repo_duplicate_github_id_same_root_dir_conflicts(self, seeded_client):
+        """Connecting the same github_repo_id with the same root_dir (both None) is a 409."""
         response = await seeded_client.post(
             "/repos/connect",
             json={
-                "github_repo_id": 123456789,  # Already in seed data
+                "github_repo_id": 123456789,  # Already in seed data (root_dir=None)
                 "org_id": str(STUB_ORG_ID),
             },
         )
         assert response.status_code == 409
+
+    async def test_connect_repo_same_github_id_different_root_dir_succeeds(self, seeded_client):
+        """Same github_repo_id but a different root_dir should be allowed."""
+        response = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 123456789,  # Already in seed data at root (None)
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "apps/web",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["github_repo_id"] == 123456789
+        assert data["root_dir"] == "apps/web"
+
+    async def test_connect_repo_two_subdirs_of_same_repo_both_succeed(self, seeded_client):
+        """Connecting apps/web and apps/api from the same repo are independent connections."""
+        r1 = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 777888999,
+                "github_full_name": "org/monorepo",
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "apps/web",
+            },
+        )
+        assert r1.status_code == 201
+
+        r2 = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 777888999,
+                "github_full_name": "org/monorepo",
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "apps/api",
+            },
+        )
+        assert r2.status_code == 201
+        assert r1.json()["id"] != r2.json()["id"]
+
+    async def test_connect_repo_duplicate_subdir_conflicts(self, seeded_client):
+        """Connecting the exact same repo + root_dir combination twice is a 409."""
+        await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 555444333,
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "packages/core",
+            },
+        )
+        response = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 555444333,
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "packages/core",
+            },
+        )
+        assert response.status_code == 409
+
+    async def test_connect_repo_root_dir_whitespace_normalised(self, seeded_client):
+        """root_dir values that are blank after stripping are treated as None (root)."""
+        # Connect with an actual root_dir first
+        r1 = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 666777888,
+                "org_id": str(STUB_ORG_ID),
+                "root_dir": "  ",  # blank after strip → treated as root
+            },
+        )
+        assert r1.status_code == 201
+        assert r1.json()["root_dir"] is None
+
+        # A second request with no root_dir (also root) should conflict
+        r2 = await seeded_client.post(
+            "/repos/connect",
+            json={
+                "github_repo_id": 666777888,
+                "org_id": str(STUB_ORG_ID),
+            },
+        )
+        assert r2.status_code == 409
 
     async def test_connect_repo_nonexistent_org(self, seeded_client):
         response = await seeded_client.post(

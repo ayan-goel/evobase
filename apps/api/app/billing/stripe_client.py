@@ -50,9 +50,11 @@ def create_subscription(
     tier: str,
     price_id_override: Optional[str] = None,
 ) -> dict:
-    """Create a Stripe Subscription with an embedded PaymentIntent.
+    """Create a Stripe Subscription with an expandable invoice confirmation secret.
 
-    Returns the subscription dict (includes latest_invoice.payment_intent.client_secret).
+    Returns the subscription dict with the latest invoice expanded enough for
+    `get_client_secret_from_subscription()` to extract the client secret for
+    Stripe Elements.
     """
     stripe = _get_stripe()
     price_id = price_id_override or _PRICE_ID_MAP.get(tier)
@@ -64,15 +66,30 @@ def create_subscription(
         items=[{"price": price_id}],
         payment_behavior="default_incomplete",
         payment_settings={"save_default_payment_method": "on_subscription"},
-        expand=["latest_invoice.payment_intent"],
+        expand=[
+            "latest_invoice.confirmation_secret",
+            "latest_invoice.payment_intent",
+        ],
     )
     return subscription
 
 
-def get_client_secret_from_subscription(subscription) -> Optional[str]:
-    """Extract the PaymentIntent client_secret from a newly created subscription."""
+def _safe_get_value(obj, key: str):
+    """Read an attribute/key from Stripe objects without surfacing removed fields."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
     try:
-        invoice = subscription.latest_invoice
+        return getattr(obj, key)
+    except Exception:
+        return None
+
+
+def get_client_secret_from_subscription(subscription) -> Optional[str]:
+    """Extract the Stripe Elements client secret from a newly created subscription."""
+    try:
+        invoice = _safe_get_value(subscription, "latest_invoice")
         if not invoice:
             logger.warning("Stripe subscription %s has no latest_invoice", getattr(subscription, "id", "?"))
             return None
@@ -85,10 +102,20 @@ def get_client_secret_from_subscription(subscription) -> Optional[str]:
             )
             return None
 
-        pi = invoice.payment_intent
+        confirmation_secret = _safe_get_value(invoice, "confirmation_secret")
+        if confirmation_secret:
+            client_secret = _safe_get_value(confirmation_secret, "client_secret")
+            if client_secret:
+                return client_secret
+            logger.warning(
+                "Invoice %s confirmation_secret is missing client_secret",
+                getattr(invoice, "id", "?"),
+            )
+
+        pi = _safe_get_value(invoice, "payment_intent")
         if not pi:
             logger.warning(
-                "Invoice %s has no payment_intent (status=%s)",
+                "Invoice %s has neither confirmation_secret nor payment_intent (status=%s)",
                 getattr(invoice, "id", "?"),
                 getattr(invoice, "status", "?"),
             )

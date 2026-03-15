@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { deleteRun, getProposalsByRun, getRuns } from "@/lib/api";
 import { useRunEvents } from "@/lib/hooks/use-run-events";
@@ -44,6 +45,7 @@ async function fetchRunsWithProposals(repoId: string): Promise<RunWithProposals[
 }
 
 export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoRunListProps) {
+  const router = useRouter();
   const [runs, setRuns] = useState<RunWithProposals[]>(initialRuns);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -80,6 +82,7 @@ export function RepoRunList({ repoId, initialRuns, setupFailing = false }: RepoR
       },
       ...prev,
     ]);
+    router.refresh();
   }
 
   function handleEnterSelect() {

@@ -188,7 +188,7 @@ async def stream_run_events(
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    await _get_run_for_user(run_id, user_id, db)
+    run = await _get_run_for_user(run_id, user_id, db)
 
     last_event_id = request.headers.get("Last-Event-ID", "0")
     run_status = run.status  # snapshot; may be "queued"/"running"/"completed"/"failed"

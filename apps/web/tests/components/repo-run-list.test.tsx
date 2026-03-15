@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { RepoRunList } from "@/components/repo-run-list";
 import type { Proposal, Run } from "@/lib/types";
+
+const mockRefresh = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: mockRefresh,
+  }),
+}));
 
 vi.mock("@/lib/api", () => ({
   getRuns: vi.fn(),
   getProposalsByRun: vi.fn(),
+  triggerRun: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/use-run-events", () => ({
@@ -27,9 +36,10 @@ vi.mock("@/components/proposal-card", () => ({
   ),
 }));
 
-import { getRuns, getProposalsByRun } from "@/lib/api";
+import { getRuns, getProposalsByRun, triggerRun } from "@/lib/api";
 const mockGetRuns = getRuns as ReturnType<typeof vi.fn>;
 const mockGetProposalsByRun = getProposalsByRun as ReturnType<typeof vi.fn>;
+const mockTriggerRun = triggerRun as ReturnType<typeof vi.fn>;
 
 function makeRun(
   status: Run["status"],
@@ -54,6 +64,8 @@ describe("RepoRunList", () => {
     vi.useFakeTimers();
     mockGetRuns.mockReset();
     mockGetProposalsByRun.mockReset();
+    mockTriggerRun.mockReset();
+    mockRefresh.mockReset();
   });
 
   afterEach(() => {
@@ -79,6 +91,25 @@ describe("RepoRunList", () => {
     render(<RepoRunList repoId="repo-1" initialRuns={[]} />);
 
     expect(screen.getByRole("button", { name: /Trigger Run/i })).toBeDefined();
+  });
+
+  it("refreshes the router after a run is queued", async () => {
+    vi.useRealTimers();
+    mockTriggerRun.mockResolvedValue({
+      id: "run-new",
+      repo_id: "repo-1",
+      status: "queued",
+      sha: null,
+      compute_minutes: null,
+      created_at: new Date().toISOString(),
+    });
+
+    render(<RepoRunList repoId="repo-1" initialRuns={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Trigger Run/i }));
+
+    await waitFor(() => {
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("updates run status after a poll tick", async () => {

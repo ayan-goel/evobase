@@ -112,7 +112,7 @@ async def connect_repo(
             detail="Not authorized to add repos to this organization",
         )
 
-    normalized_root = body.root_dir.strip() if body.root_dir else None
+    normalized_root = (body.root_dir or "").strip() or None
 
     existing_query = select(Repository).where(
         Repository.github_repo_id == body.github_repo_id,
