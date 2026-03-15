@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -14,17 +15,41 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <main className="mx-auto w-full max-w-md px-4 text-center">
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 sm:p-12">
-          <h1 className="text-3xl font-semibold tracking-tight">Evobase</h1>
-          <p className="mt-3 text-sm text-white/60">
-            Autonomous code optimization. Sign in to get started.
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      {/* Background glow */}
+      <div
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full opacity-[0.04]"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(96,165,250,0.6) 0%, transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
+
+      <main className="relative mx-auto w-full max-w-sm px-4 text-center">
+        {/* Logo above card */}
+        <div className="mb-8 flex justify-center">
+          <Image
+            src="/logo-no-background.png"
+            alt="Evobase"
+            width={180}
+            height={48}
+            className="h-10 w-auto"
+            priority
+          />
+        </div>
+
+        {/* Card */}
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-8 sm:p-10 shadow-[0_0_80px_rgba(96,165,250,0.03)]">
+          <p className="text-sm text-white/50 leading-relaxed">
+            Autonomous code optimization.
+            <br />
+            Sign in to get started.
           </p>
 
           <button
             onClick={handleSignIn}
-            className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white text-black h-11 px-6 text-sm font-semibold transition-colors hover:bg-white/90"
+            className="mt-7 inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-white text-black h-11 px-6 text-sm font-semibold transition-all hover:bg-white/90 hover:shadow-[0_0_30px_rgba(255,255,255,0.1)]"
           >
             <svg
               className="h-5 w-5"
@@ -38,8 +63,14 @@ export default function LoginPage() {
                 clipRule="evenodd"
               />
             </svg>
-            Sign in with GitHub
+            Continue with GitHub
           </button>
+
+          {/* Disclaimer */}
+          <p className="mt-5 text-[11px] leading-relaxed text-white/30">
+            Evobase requires a GitHub connection so we can read your codebase
+            and generate PRs to continuously improve the health of your code.
+          </p>
         </div>
       </main>
     </div>
