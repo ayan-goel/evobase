@@ -17,7 +17,7 @@ interface NavProps {
 }
 
 /** Glassy floating navigation bar shared across dashboard pages. */
-export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
+export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
