@@ -28,13 +28,13 @@ export default function LoginPage() {
 
       <main className="relative mx-auto w-full max-w-lg px-4 text-center">
         {/* Logo above card */}
-        <div className="-mb-4 flex justify-center">
+        <div className="-mb-2 flex justify-center">
           <Image
-            src="/logo-no-background.png"
+            src="/evobase-logo.png"
             alt="Evobase"
-            width={612}
-            height={408}
-            className="w-full h-auto"
+            width={1536}
+            height={1024}
+            className="w-full h-auto rounded-2xl"
             priority
           />
         </div>
