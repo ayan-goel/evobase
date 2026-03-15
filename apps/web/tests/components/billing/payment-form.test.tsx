@@ -66,4 +66,30 @@ describe("PaymentForm", () => {
     expect(upgradePlan).toHaveBeenCalledWith("hobby");
     expect(onSuccess).toHaveBeenCalledTimes(1);
   });
+
+  it("shows a loading state while the payment element is still being prepared", async () => {
+    let resolveCheckoutSession: ((value: { client_secret: string }) => void) | undefined;
+    createCheckoutSession.mockImplementation(
+      () =>
+        new Promise<{ client_secret: string }>((resolve) => {
+          resolveCheckoutSession = resolve;
+        }),
+    );
+
+    render(
+      <PaymentForm
+        selectedTier="hobby"
+        onSuccess={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText("Preparing secure payment form…")).toBeInTheDocument();
+
+    resolveCheckoutSession?.({ client_secret: "cs_test_123" });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Preparing secure payment form…")).not.toBeInTheDocument();
+    });
+  });
 });

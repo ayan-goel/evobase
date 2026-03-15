@@ -18,6 +18,7 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
   const [publishableKey, setPublishableKey] = useState<string>("");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const isPreparingPaymentForm = !error && (!stripeLoaded || !clientSecret || !elements);
 
   useEffect(() => {
     getBillingConfig()
@@ -138,14 +139,17 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
         Enter your payment details to upgrade to <strong className="text-white capitalize">{selectedTier}</strong>.
       </p>
 
-      {!stripeLoaded ? (
-        <div className="flex items-center gap-2 text-sm text-white/40">
+      {isPreparingPaymentForm && (
+        <div className="flex min-h-[120px] items-center gap-2 text-sm text-white/40">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
-          Loading payment form…
+          Preparing secure payment form…
         </div>
-      ) : (
-        <div ref={containerRef} className="min-h-[120px]" />
       )}
+
+      <div
+        ref={containerRef}
+        className={isPreparingPaymentForm ? "hidden min-h-[120px]" : "min-h-[120px]"}
+      />
 
       {error && (
         <p className="mt-3 text-xs text-red-400">{error}</p>
