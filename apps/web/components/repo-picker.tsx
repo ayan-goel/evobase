@@ -11,6 +11,12 @@ import type { GitHubRepo } from "@/lib/types";
 import { useDetectFramework } from "@/hooks/use-detect-framework";
 import { FrameworkBadge } from "@/components/framework-badge";
 
+interface ConnectionEntry {
+  id: string;
+  repoId: number;
+  rootDir: string;
+}
+
 interface RepoPickerProps {
   installationId: number;
 }
@@ -18,35 +24,110 @@ interface RepoPickerProps {
 interface RepoRowProps {
   repo: GitHubRepo;
   installationId: number;
-  isSelected: boolean;
-  rootDir: string;
+  entries: ConnectionEntry[];
   onToggle: () => void;
-  onRootDirChange: (value: string) => void;
+  onAddDir: () => void;
+  onRemoveDir: (id: string) => void;
+  onDirChange: (id: string, value: string) => void;
+}
+
+interface DirSlotProps {
+  entry: ConnectionEntry;
+  repo: GitHubRepo;
+  installationId: number;
+  canRemove: boolean;
+  onRemove: () => void;
+  onChange: (value: string) => void;
+}
+
+function DirSlot({
+  entry,
+  repo,
+  installationId,
+  canRemove,
+  onRemove,
+  onChange,
+}: DirSlotProps) {
+  const { result, isDetecting } = useDetectFramework(
+    installationId,
+    repo.full_name,
+    entry.rootDir,
+  );
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={entry.rootDir}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. apps/web, packages/backend"
+          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
+        />
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="flex items-center justify-center h-6 w-6 rounded text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors shrink-0"
+            aria-label="Remove directory"
+          >
+            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="mt-1 h-5 flex items-center">
+        {isDetecting && (
+          <span className="text-xs text-white/30 animate-pulse">Detecting framework…</span>
+        )}
+        {!isDetecting && result && (result.framework || result.package_manager) && (
+          <FrameworkBadge
+            framework={result.framework}
+            packageManager={result.package_manager}
+            size="sm"
+            showLabel
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 function RepoRow({
   repo,
   installationId,
-  isSelected,
-  rootDir,
+  entries,
   onToggle,
-  onRootDirChange,
+  onAddDir,
+  onRemoveDir,
+  onDirChange,
 }: RepoRowProps) {
-  const { result, isDetecting } = useDetectFramework(
-    installationId,
-    isSelected ? repo.full_name : null,
-    rootDir,
-  );
+  const isSelected = entries.length > 0;
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.05]">
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={onToggle}
-          className="h-4 w-4 rounded border-white/20 bg-white/5 text-white accent-white"
-        />
+      <div
+        className="flex items-center gap-3 cursor-pointer select-none"
+        onClick={onToggle}
+      >
+        <div
+          className={`h-4 w-4 rounded flex items-center justify-center shrink-0 border transition-colors ${
+            isSelected ? "bg-white border-white" : "bg-white/5 border-white/20"
+          }`}
+        >
+          {isSelected && (
+            <svg className="h-2.5 w-2.5 text-black" viewBox="0 0 10 8" fill="none">
+              <path
+                d="M1 4l3 3 5-6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-white truncate">
             {repo.full_name}
@@ -56,40 +137,43 @@ function RepoRow({
             {repo.private && " · private"}
           </p>
         </div>
-      </label>
+      </div>
 
       {isSelected && (
         <div className="mt-3 pl-7">
-          <label className="block text-xs text-white/40 mb-1">
+          <p className="text-xs text-white/40 mb-2">
             Project directory{" "}
             <span className="text-white/25">(optional — leave blank for repo root)</span>
-          </label>
-          <input
-            type="text"
-            value={rootDir}
-            onChange={(e) => onRootDirChange(e.target.value)}
-            placeholder="e.g. apps/web, packages/backend"
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-mono text-white placeholder-white/20 focus:border-white/25 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-white/25">
+          </p>
+
+          {entries.map((entry) => (
+            <DirSlot
+              key={entry.id}
+              entry={entry}
+              repo={repo}
+              installationId={installationId}
+              canRemove={entries.length > 1}
+              onRemove={() => onRemoveDir(entry.id)}
+              onChange={(value) => onDirChange(entry.id, value)}
+            />
+          ))}
+
+          <p className="mt-2 text-xs text-white/25">
             For monorepos: specify the sub-project folder that contains{" "}
             <code className="text-white/35">package.json</code> or{" "}
             <code className="text-white/35">pyproject.toml</code>.
           </p>
 
-          <div className="mt-2 h-6 flex items-center">
-            {isDetecting && (
-              <span className="text-xs text-white/30 animate-pulse">Detecting framework…</span>
-            )}
-            {!isDetecting && result && (result.framework || result.package_manager) && (
-              <FrameworkBadge
-                framework={result.framework}
-                packageManager={result.package_manager}
-                size="sm"
-                showLabel
-              />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddDir();
+            }}
+            className="mt-2 text-xs text-white/35 hover:text-white/60 transition-colors"
+          >
+            + Add another directory
+          </button>
         </div>
       )}
     </div>
@@ -99,9 +183,7 @@ function RepoRow({
 export function RepoPicker({ installationId }: RepoPickerProps) {
   const router = useRouter();
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  // Per-repo root_dir overrides: map of github_repo_id → directory string
-  const [rootDirs, setRootDirs] = useState<Record<number, string>>({});
+  const [connections, setConnections] = useState<ConnectionEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +199,9 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
         ]);
         setRepos(repoList);
         setOrgId(me.org_id);
-      } catch (err: any) {
-        setError(err.message ?? "Failed to load repositories");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to load repositories";
+        setError(message);
       } finally {
         setIsLoading(false);
       }
@@ -127,16 +210,28 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
   }, [installationId]);
 
   function toggleRepo(repoId: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(repoId)) next.delete(repoId);
-      else next.add(repoId);
-      return next;
+    setConnections((prev) => {
+      const hasRepo = prev.some((c) => c.repoId === repoId);
+      if (hasRepo) return prev.filter((c) => c.repoId !== repoId);
+      return [...prev, { id: crypto.randomUUID(), repoId, rootDir: "" }];
     });
   }
 
-  function setRootDir(repoId: number, value: string) {
-    setRootDirs((prev) => ({ ...prev, [repoId]: value }));
+  function addDir(repoId: number) {
+    setConnections((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), repoId, rootDir: "" },
+    ]);
+  }
+
+  function removeDir(id: string) {
+    setConnections((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  function updateDir(id: string, rootDir: string) {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, rootDir } : c)),
+    );
   }
 
   async function handleConnect() {
@@ -148,11 +243,13 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
     setIsConnecting(true);
     setError(null);
 
-    try {
-      const reposToConnect = repos.filter((r) => selected.has(r.github_repo_id));
+    const repoMap = new Map(repos.map((r) => [r.github_repo_id, r]));
 
-      for (const repo of reposToConnect) {
-        const rawDir = rootDirs[repo.github_repo_id]?.trim() ?? "";
+    try {
+      for (const conn of connections) {
+        const repo = repoMap.get(conn.repoId);
+        if (!repo) continue;
+        const rawDir = conn.rootDir.trim();
         await connectRepo({
           github_repo_id: repo.github_repo_id,
           github_full_name: repo.full_name,
@@ -165,8 +262,9 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
 
       setSuccess(true);
       setTimeout(() => router.push("/dashboard"), 1500);
-    } catch (err: any) {
-      setError(err.message ?? "Failed to connect repositories");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to connect repositories";
+      setError(message);
     } finally {
       setIsConnecting(false);
     }
@@ -191,9 +289,7 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
         <p className="text-sm text-emerald-400 font-medium">
           Repositories connected successfully!
         </p>
-        <p className="mt-1 text-xs text-white/40">
-          Redirecting to dashboard...
-        </p>
+        <p className="mt-1 text-xs text-white/40">Redirecting to dashboard...</p>
       </div>
     );
   }
@@ -220,10 +316,11 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
             key={repo.github_repo_id}
             repo={repo}
             installationId={installationId}
-            isSelected={selected.has(repo.github_repo_id)}
-            rootDir={rootDirs[repo.github_repo_id] ?? ""}
+            entries={connections.filter((c) => c.repoId === repo.github_repo_id)}
             onToggle={() => toggleRepo(repo.github_repo_id)}
-            onRootDirChange={(value) => setRootDir(repo.github_repo_id, value)}
+            onAddDir={() => addDir(repo.github_repo_id)}
+            onRemoveDir={removeDir}
+            onDirChange={updateDir}
           />
         ))}
       </div>
@@ -239,12 +336,12 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
       <div className="mt-6 flex justify-end">
         <button
           onClick={handleConnect}
-          disabled={selected.size === 0 || isConnecting}
+          disabled={connections.length === 0 || isConnecting}
           className="rounded-full bg-white text-black h-10 px-6 text-sm font-semibold transition-colors hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isConnecting
             ? "Connecting..."
-            : `Connect ${selected.size} repo${selected.size !== 1 ? "s" : ""}`}
+            : `Connect ${connections.length} project${connections.length !== 1 ? "s" : ""}`}
         </button>
       </div>
     </div>

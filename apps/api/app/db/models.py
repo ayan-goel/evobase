@@ -91,7 +91,7 @@ class Repository(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
-    github_repo_id: Mapped[Optional[int]] = mapped_column(unique=True)
+    github_repo_id: Mapped[Optional[int]] = mapped_column()
     # github_full_name stores "owner/repo" (e.g. "acme/api-service").
     # Used as the HTTPS clone URL: https://github.com/{full_name}.git
     github_full_name: Mapped[Optional[str]] = mapped_column(Text)

@@ -112,13 +112,17 @@ async def connect_repo(
             detail="Not authorized to add repos to this organization",
         )
 
-    existing = await db.execute(
-        select(Repository).where(Repository.github_repo_id == body.github_repo_id)
+    normalized_root = body.root_dir.strip() if body.root_dir else None
+
+    existing_query = select(Repository).where(
+        Repository.github_repo_id == body.github_repo_id,
+        Repository.root_dir.is_(None) if normalized_root is None
+        else Repository.root_dir == normalized_root,
     )
-    if existing.scalar_one_or_none():
+    if (await db.execute(existing_query)).scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Repository already connected",
+            detail="This repository + directory is already connected",
         )
 
     repo = Repository(
@@ -133,7 +137,7 @@ async def connect_repo(
         test_cmd=body.test_cmd,
         typecheck_cmd=body.typecheck_cmd,
         bench_config=body.bench_config,
-        root_dir=body.root_dir or None,
+        root_dir=normalized_root,
     )
     db.add(repo)
     await db.flush()
