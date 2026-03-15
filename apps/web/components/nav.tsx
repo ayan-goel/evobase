@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -36,9 +37,16 @@ export function Nav({ user, maxWidthClass = "max-w-4xl" }: NavProps) {
         <div className="flex items-center justify-between px-5 py-2.5">
           <Link
             href="/dashboard"
-            className="text-sm font-semibold tracking-tight text-white hover:text-white/80 transition-colors"
+            className="hover:opacity-80 transition-opacity"
           >
-            Evobase
+            <Image
+              src="/logo-no-background.png"
+              alt="Evobase"
+              width={120}
+              height={32}
+              className="h-7 w-auto"
+              priority
+            />
           </Link>
 
           <div className="flex items-center gap-4">

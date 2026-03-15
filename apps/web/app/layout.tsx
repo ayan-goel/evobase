@@ -11,6 +11,10 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Evobase",
   description: "Autonomous code optimization system",
+  icons: {
+    icon: "/evobase-icon.png",
+    apple: "/evobase-icon.png",
+  },
 };
 
 export default function RootLayout({
