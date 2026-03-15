@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import AsyncGenerator
 from unittest.mock import patch
 
@@ -351,3 +352,48 @@ class TestCancelSubscription:
         response = await authed_client.post("/billing/subscription/cancel")
         assert response.status_code == 200
         assert response.json()["status"] == "canceled"
+
+
+class TestUpgradeSubscription:
+    async def test_syncs_local_tier_when_stripe_is_already_on_requested_plan(self, authed_client, seeded_db):
+        sub = await _seed_free_subscription(seeded_db)
+        sub.stripe_customer_id = "cus_test"
+        sub.stripe_subscription_id = "sub_test"
+        await seeded_db.commit()
+
+        stripe_sub = SimpleNamespace(
+            items=SimpleNamespace(
+                data=[
+                    SimpleNamespace(
+                        price=SimpleNamespace(id="price_1TALotBTGYNBUsYj2nFWe1UJ")
+                    )
+                ]
+            )
+        )
+
+        with patch("app.billing.router.get_settings") as mock_get_settings, patch(
+            "app.billing.stripe_client.retrieve_subscription",
+            return_value=stripe_sub,
+        ) as mock_retrieve, patch(
+            "app.billing.stripe_client.update_subscription_tier"
+        ) as mock_update:
+            mock_get_settings.return_value = Settings(
+                supabase_jwt_secret="test-secret",
+                database_url="sqlite+aiosqlite:///:memory:",
+                sentry_dsn="",
+                debug=False,
+                stripe_secret_key="sk_test_abc",
+            )
+            response = await authed_client.post(
+                "/billing/subscription/upgrade",
+                json={"tier": "hobby"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"tier": "hobby", "status": "active"}
+        mock_retrieve.assert_called_once_with("sub_test")
+        mock_update.assert_not_called()
+
+        subscription_response = await authed_client.get("/billing/subscription")
+        assert subscription_response.status_code == 200
+        assert subscription_response.json()["tier"] == "hobby"

@@ -45,6 +45,11 @@ def create_customer(email: str, metadata: Optional[dict] = None) -> str:
     return customer.id
 
 
+def get_price_id_for_tier(tier: str) -> Optional[str]:
+    """Return the configured Stripe price ID for a tier."""
+    return _PRICE_ID_MAP.get(tier)
+
+
 def create_subscription(
     customer_id: str,
     tier: str,
@@ -84,6 +89,17 @@ def _safe_get_value(obj, key: str):
         return getattr(obj, key)
     except Exception:
         return None
+
+
+def _get_subscription_price_id(subscription) -> Optional[str]:
+    items = _safe_get_value(subscription, "items")
+    data = _safe_get_value(items, "data")
+    if not data:
+        return None
+
+    first_item = data[0]
+    price = _safe_get_value(first_item, "price")
+    return _safe_get_value(price, "id")
 
 
 def get_client_secret_from_subscription(subscription) -> Optional[str]:
@@ -133,6 +149,23 @@ def get_client_secret_from_subscription(subscription) -> Optional[str]:
     except Exception as exc:
         logger.warning("Could not extract client_secret from subscription: %s", exc)
         return None
+
+
+def retrieve_subscription(stripe_subscription_id: str):
+    """Fetch a Stripe Subscription with enough fields for local sync decisions."""
+    stripe = _get_stripe()
+    return stripe.Subscription.retrieve(
+        stripe_subscription_id,
+        expand=["items.data.price"],
+    )
+
+
+def subscription_matches_tier(subscription, tier: str) -> bool:
+    """Return True when the Stripe subscription is already on the requested tier."""
+    requested_price_id = get_price_id_for_tier(tier)
+    if not requested_price_id:
+        raise ValueError(f"No Stripe price ID configured for tier '{tier}'")
+    return _get_subscription_price_id(subscription) == requested_price_id
 
 
 def update_subscription_tier(

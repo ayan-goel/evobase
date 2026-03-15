@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { createCheckoutSession, getBillingConfig } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createCheckoutSession, getBillingConfig, upgradePlan } from "@/lib/api";
 
 interface PaymentFormProps {
   selectedTier: string;
@@ -16,6 +16,8 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
   const [stripeInstance, setStripeInstance] = useState<unknown>(null);
   const [elements, setElements] = useState<unknown>(null);
   const [publishableKey, setPublishableKey] = useState<string>("");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     getBillingConfig()
@@ -37,13 +39,61 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
     });
   }, [publishableKey]);
 
+  useEffect(() => {
+    setClientSecret(null);
+    setElements(null);
+    setError(null);
+    if (containerRef.current) containerRef.current.innerHTML = "";
+  }, [selectedTier]);
+
+  useEffect(() => {
+    if (!stripeInstance || clientSecret) return;
+
+    let isActive = true;
+
+    void createCheckoutSession(selectedTier)
+      .then(({ client_secret }) => {
+        if (isActive) setClientSecret(client_secret);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        setError(err instanceof Error ? err.message : "Could not load payment form");
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [stripeInstance, clientSecret, selectedTier]);
+
+  useEffect(() => {
+    if (!clientSecret || !stripeInstance || !containerRef.current || elements) return;
+
+    const stripe = stripeInstance as {
+      elements: (opts: object) => {
+        create: (type: string, opts: object) => {
+          mount: (el: HTMLDivElement) => void;
+        };
+      };
+    };
+
+    const stripeElements = stripe.elements({
+      clientSecret: clientSecret,
+      appearance: {
+        theme: "night",
+        variables: { colorBackground: "#111", colorText: "#fff" },
+      },
+    });
+    const paymentElement = stripeElements.create("payment", {});
+    paymentElement.mount(containerRef.current);
+    setElements(stripeElements);
+  }, [clientSecret, stripeInstance, elements]);
+
   const handleSubmit = useCallback(async () => {
-    if (!stripeInstance || !elements) return;
+    if (!stripeInstance || !elements || !clientSecret) return;
     setIsLoading(true);
     setError(null);
 
     try {
-      const { client_secret } = await createCheckoutSession(selectedTier);
       const stripe = stripeInstance as {
         confirmPayment: (opts: object) => Promise<{ error?: { message: string } }>;
       };
@@ -57,7 +107,7 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
 
       const result = await stripe.confirmPayment({
         elements,
-        clientSecret: client_secret,
+        clientSecret: clientSecret,
         confirmParams: { return_url: window.location.href },
         redirect: "if_required",
       });
@@ -65,6 +115,7 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
       if (result.error) {
         setError(result.error.message ?? "Payment failed");
       } else {
+        await upgradePlan(selectedTier);
         onSuccess();
       }
     } catch (err) {
@@ -72,36 +123,7 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
     } finally {
       setIsLoading(false);
     }
-  }, [stripeInstance, elements, selectedTier, onSuccess]);
-
-  const handleMountElements = useCallback(
-    (container: HTMLDivElement | null) => {
-      if (!container || !stripeInstance || elements) return;
-      void (async () => {
-        try {
-          const { client_secret } = await createCheckoutSession(selectedTier);
-          const stripe = stripeInstance as {
-            elements: (opts: object) => {
-              create: (type: string, opts: object) => { mount: (el: HTMLDivElement) => void };
-            };
-          };
-          const elems = stripe.elements({
-            clientSecret: client_secret,
-            appearance: {
-              theme: "night",
-              variables: { colorBackground: "#111", colorText: "#fff" },
-            },
-          });
-          const paymentElement = elems.create("payment", {});
-          paymentElement.mount(container);
-          setElements(elems);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Could not load payment form");
-        }
-      })();
-    },
-    [stripeInstance, elements, selectedTier],
-  );
+  }, [stripeInstance, elements, clientSecret, selectedTier, onSuccess]);
 
   if (!publishableKey)
     return (
@@ -122,7 +144,7 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
           Loading payment form…
         </div>
       ) : (
-        <div ref={handleMountElements} className="min-h-[120px]" />
+        <div ref={containerRef} className="min-h-[120px]" />
       )}
 
       {error && (

@@ -159,7 +159,9 @@ async def upgrade_subscription(
     if settings.stripe_secret_key and sub.stripe_subscription_id:
         from app.billing import stripe_client
         stripe_client.configure(settings.stripe_secret_key)
-        stripe_client.update_subscription_tier(sub.stripe_subscription_id, body.tier)
+        stripe_sub = stripe_client.retrieve_subscription(sub.stripe_subscription_id)
+        if not stripe_client.subscription_matches_tier(stripe_sub, body.tier):
+            stripe_client.update_subscription_tier(sub.stripe_subscription_id, body.tier)
 
     await billing_service.apply_tier_upgrade(db, sub, body.tier)
     await db.commit()
