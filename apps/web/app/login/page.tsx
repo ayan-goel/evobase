@@ -26,21 +26,23 @@ export default function LoginPage() {
         aria-hidden="true"
       />
 
-      <main className="relative mx-auto w-full max-w-lg px-4 text-center">
+      <main className="relative mx-auto w-full max-w-sm px-4 text-center">
         {/* Logo above card */}
-        <div className="mb-10 flex justify-center">
-          <Image
-            src="/evobase-logo-cropped.png"
-            alt="Evobase"
-            width={872}
-            height={269}
-            className="w-full max-w-sm h-auto"
-            priority
-          />
+        <div className="mb-10">
+          <div className="w-full overflow-hidden rounded-2xl border border-white/[0.12] bg-white/[0.02] p-4 shadow-[0_0_40px_rgba(255,255,255,0.03)]">
+            <Image
+              src="/evobase-logo-cropped.png"
+              alt="Evobase"
+              width={936}
+              height={333}
+              className="w-full h-auto"
+              priority
+            />
+          </div>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-8 sm:p-10 shadow-[0_0_80px_rgba(96,165,250,0.03)]">
+        <div className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-8 sm:p-10 shadow-[0_0_80px_rgba(96,165,250,0.03)]">
           <p className="text-sm text-white/50 leading-relaxed">
             Autonomous code optimization.
             <br />
