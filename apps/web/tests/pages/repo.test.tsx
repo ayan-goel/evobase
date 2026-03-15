@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { RepoView } from "@/app/repos/[repoId]/page";
 import type { Proposal, Repository, Run } from "@/lib/types";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/repos/repo-1",
+}));
+
 vi.mock("@/lib/hooks/use-run-events", () => ({
   useRunEvents: () => ({
     events: [],

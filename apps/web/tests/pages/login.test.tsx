@@ -19,14 +19,14 @@ describe("LoginPage", () => {
   it("renders sign in with GitHub button", () => {
     render(<LoginPage />);
     const button = screen.getByRole("button", {
-      name: /sign in with github/i,
+      name: /continue with github/i,
     });
     expect(button).toBeInTheDocument();
   });
 
   it("renders app branding", () => {
     render(<LoginPage />);
-    expect(screen.getByText("Evobase")).toBeInTheDocument();
+    expect(screen.getByAltText("Evobase")).toBeInTheDocument();
   });
 
   it("does not show authenticated content", () => {

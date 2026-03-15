@@ -84,12 +84,21 @@ describe("PaymentForm", () => {
       />,
     );
 
+    // Wait until getBillingConfig resolves and the "Preparing..." state is shown
     expect(await screen.findByText("Preparing secure payment form…")).toBeInTheDocument();
+
+    // Wait until Stripe has initialized and called createCheckoutSession (meaning
+    // stripeInstance is set). Only then can resolving the session trigger element creation.
+    await waitFor(() => {
+      expect(createCheckoutSession).toHaveBeenCalled();
+    }, { timeout: 5000 });
+
+    expect(screen.getByText("Preparing secure payment form…")).toBeInTheDocument();
 
     resolveCheckoutSession?.({ client_secret: "cs_test_123" });
 
     await waitFor(() => {
       expect(screen.queryByText("Preparing secure payment form…")).not.toBeInTheDocument();
-    });
-  });
+    }, { timeout: 5000 });
+  }, 15000);
 });

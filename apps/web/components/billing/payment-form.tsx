@@ -1,5 +1,6 @@
 "use client";
 
+import { loadStripe } from "@stripe/stripe-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createCheckoutSession, getBillingConfig, upgradePlan } from "@/lib/api";
 
@@ -32,11 +33,9 @@ export function PaymentForm({ selectedTier, onSuccess, onCancel }: PaymentFormPr
 
   useEffect(() => {
     if (!publishableKey) return;
-    import("@stripe/stripe-js").then(({ loadStripe }) => {
-      loadStripe(publishableKey).then((stripe) => {
-        setStripeInstance(stripe);
-        setStripeLoaded(true);
-      });
+    loadStripe(publishableKey).then((stripe) => {
+      setStripeInstance(stripe);
+      setStripeLoaded(true);
     });
   }, [publishableKey]);
 
