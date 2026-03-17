@@ -246,19 +246,21 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
     const repoMap = new Map(repos.map((r) => [r.github_repo_id, r]));
 
     try {
-      for (const conn of connections) {
-        const repo = repoMap.get(conn.repoId);
-        if (!repo) continue;
-        const rawDir = conn.rootDir.trim();
-        await connectRepo({
-          github_repo_id: repo.github_repo_id,
-          github_full_name: repo.full_name,
-          org_id: orgId,
-          default_branch: repo.default_branch,
-          installation_id: installationId,
-          root_dir: rawDir || null,
-        });
-      }
+      await Promise.all(
+        connections.map((conn) => {
+          const repo = repoMap.get(conn.repoId);
+          if (!repo) return undefined;
+          const rawDir = conn.rootDir.trim();
+          return connectRepo({
+            github_repo_id: repo.github_repo_id,
+            github_full_name: repo.full_name,
+            org_id: orgId,
+            default_branch: repo.default_branch,
+            installation_id: installationId,
+            root_dir: rawDir || null,
+          });
+        }),
+      );
 
       setSuccess(true);
       setTimeout(() => router.push("/dashboard"), 1500);
