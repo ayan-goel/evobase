@@ -106,24 +106,22 @@ const ENTERPRISE: Tier = {
   ],
 };
 
-function CheckIcon() {
-  return (
-    <svg
-      className="h-4 w-4 shrink-0 text-white/50"
-      fill="none"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <path
-        d="M2.5 8.5l3.5 3.5 7-8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+const CHECK_ICON = (
+  <svg
+    className="h-4 w-4 shrink-0 text-white/50"
+    fill="none"
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+  >
+    <path
+      d="M2.5 8.5l3.5 3.5 7-8"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 function TierCard({ tier }: { tier: Tier }) {
   const isHighlighted = tier.highlight;
@@ -165,7 +163,7 @@ function TierCard({ tier }: { tier: Tier }) {
       <ul className="mb-8 flex flex-col gap-2.5 flex-1">
         {tier.features.map((feature) => (
           <li key={feature} className="flex items-start gap-2.5">
-            <CheckIcon />
+            {CHECK_ICON}
             <span className="text-sm text-white/70">{feature}</span>
           </li>
         ))}
@@ -200,7 +198,7 @@ function EnterpriseCard({ tier }: { tier: Tier }) {
       <ul className="grid grid-cols-2 gap-x-8 gap-y-2 flex-1">
         {tier.features.map((feature) => (
           <li key={feature} className="flex items-center gap-2">
-            <CheckIcon />
+            {CHECK_ICON}
             <span className="text-sm text-white/70">{feature}</span>
           </li>
         ))}
