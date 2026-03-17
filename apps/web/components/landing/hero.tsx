@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const TYPING_PHRASES = [
   "Wake up to bulletproof PRs",
@@ -12,36 +12,47 @@ const TYPING_PHRASES = [
 ];
 
 export function Hero() {
-  const [phraseIndex, setPhraseIndex] = useState(0);
   const [displayText, setDisplayText] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
+  const animState = useRef({
+    phraseIndex: 0,
+    currentText: "",
+    isDeleting: false,
+  });
 
   useEffect(() => {
-    const currentPhrase = TYPING_PHRASES[phraseIndex];
-    const typingSpeed = isDeleting ? 30 : 50;
-    const pauseTime = 2000;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    if (!isDeleting && displayText === currentPhrase) {
-      const timeout = setTimeout(() => setIsDeleting(true), pauseTime);
-      return () => clearTimeout(timeout);
-    }
+    const tick = () => {
+      const state = animState.current;
+      const currentPhrase = TYPING_PHRASES[state.phraseIndex];
 
-    if (isDeleting && displayText === "") {
-      setIsDeleting(false);
-      setPhraseIndex((prev) => (prev + 1) % TYPING_PHRASES.length);
-      return;
-    }
+      if (!state.isDeleting && state.currentText === currentPhrase) {
+        timeoutId = setTimeout(() => {
+          state.isDeleting = true;
+          tick();
+        }, 2000);
+        return;
+      }
 
-    const timeout = setTimeout(() => {
-      setDisplayText((prev) =>
-        isDeleting
-          ? prev.slice(0, -1)
-          : currentPhrase.slice(0, prev.length + 1)
-      );
-    }, typingSpeed);
+      if (state.isDeleting && state.currentText === "") {
+        state.isDeleting = false;
+        state.phraseIndex = (state.phraseIndex + 1) % TYPING_PHRASES.length;
+        tick();
+        return;
+      }
 
-    return () => clearTimeout(timeout);
-  }, [displayText, isDeleting, phraseIndex]);
+      state.currentText = state.isDeleting
+        ? state.currentText.slice(0, -1)
+        : currentPhrase.slice(0, state.currentText.length + 1);
+
+      setDisplayText(state.currentText);
+      timeoutId = setTimeout(tick, state.isDeleting ? 30 : 50);
+    };
+
+    tick();
+
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   return (
     <section className="relative flex min-h-[80vh] flex-col items-center justify-center px-6 pt-36 pb-12 overflow-hidden">

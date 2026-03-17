@@ -50,66 +50,66 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+  return res.json() as Promise<T>;
 }
 
-export async function getRepos(): Promise<Repository[]> {
+export const getRepos = cache(async (): Promise<Repository[]> => {
   const data = await apiFetch<{ repos: Repository[]; count: number }>("/repos");
   return data.repos;
-}
+});
 
-export async function getRepo(repoId: string): Promise<Repository> {
+export const getRepo = cache(async (repoId: string): Promise<Repository> => {
   return apiFetch<Repository>(`/repos/${repoId}`);
-}
+});
 
-export async function getRuns(repoId: string): Promise<Run[]> {
+export const getRuns = cache(async (repoId: string): Promise<Run[]> => {
   const data = await apiFetch<{ runs: Run[] }>(`/repos/${repoId}/runs`);
   return data.runs;
-}
+});
 
-export async function getProposalsByRun(runId: string): Promise<Proposal[]> {
+export const getProposalsByRun = cache(async (runId: string): Promise<Proposal[]> => {
   const data = await apiFetch<{ proposals: Proposal[]; count: number }>(
     `/proposals/by-run/${runId}`,
   );
   return data.proposals;
-}
+});
 
-export async function getProposal(proposalId: string): Promise<Proposal> {
+export const getProposal = cache(async (proposalId: string): Promise<Proposal> => {
   return apiFetch<Proposal>(`/proposals/${proposalId}`);
-}
+});
 
-export async function getArtifactSignedUrl(
+export const getArtifactSignedUrl = cache(async (
   artifactId: string,
-): Promise<{ signed_url: string; expires_in_seconds: number }> {
+): Promise<{ signed_url: string; expires_in_seconds: number }> => {
   return apiFetch(`/artifacts/${artifactId}/signed-url`);
-}
+});
 
-export async function getRun(runId: string): Promise<Run> {
+export const getRun = cache(async (runId: string): Promise<Run> => {
   return apiFetch<Run>(`/runs/${runId}`);
-}
+});
 
-export async function getRepoSettings(repoId: string): Promise<RepoSettings> {
+export const getRepoSettings = cache(async (repoId: string): Promise<RepoSettings> => {
   return apiFetch<RepoSettings>(`/repos/${repoId}/settings`);
-}
+});
 
-export async function getLLMModels(): Promise<LLMProvider[]> {
+export const getLLMModels = cache(async (): Promise<LLMProvider[]> => {
   const data = await apiFetch<{ providers: LLMProvider[] }>("/llm/models");
   return data.providers;
-}
+});
 
-export async function getMe(): Promise<{ user_id: string; org_id: string }> {
+export const getMe = cache(async (): Promise<{ user_id: string; org_id: string }> => {
   return apiFetch<{ user_id: string; org_id: string }>("/auth/me");
-}
+});
 
-export async function getInstallations(): Promise<Installation[]> {
+export const getInstallations = cache(async (): Promise<Installation[]> => {
   const data = await apiFetch<{ installations: Installation[]; count: number }>(
     "/github/installations",
   );
   return data.installations;
-}
+});
 
 export interface BillingSubscription {
   tier: string;
-  status: string;
   current_period_start: string;
   current_period_end: string;
   usage_pct: number;
@@ -135,12 +135,13 @@ export interface BillingUsage {
   included_api_budget_microdollars: number;
   usage_pct: number;
   runs: UsageRunRow[];
+  runs: UsageRunRow[];
 }
 
-export async function getBillingSubscription(): Promise<BillingSubscription> {
+export const getBillingSubscription = cache(async (): Promise<BillingSubscription> => {
   return apiFetch<BillingSubscription>("/billing/subscription");
-}
+});
 
-export async function getBillingUsage(): Promise<BillingUsage> {
+export const getBillingUsage = cache(async (): Promise<BillingUsage> => {
   return apiFetch<BillingUsage>("/billing/usage");
-}
+});

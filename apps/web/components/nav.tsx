@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -17,15 +17,15 @@ interface NavProps {
 }
 
 /** Glassy floating navigation bar shared across dashboard pages. */
-export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
+export const Nav = memo(function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  async function handleSignOut() {
+  const handleSignOut = useCallback(async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
-  }
+  }, [router]);
 
   return (
     <nav
@@ -60,10 +60,13 @@ export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
             {user ? (
               <div className="hidden sm:flex items-center gap-3">
                 {user.avatar_url && (
-                  <img
+                  <Image
                     src={user.avatar_url}
                     alt={user.github_login ?? "User avatar"}
-                    className="h-6 w-6 rounded-full ring-1 ring-white/10"
+                    width={24}
+                    height={24}
+                    className="rounded-full ring-1 ring-white/10"
+                    unoptimized
                   />
                 )}
                 {user.github_login && (
@@ -156,4 +159,4 @@ export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
       </div>
     </nav>
   );
-}
+});

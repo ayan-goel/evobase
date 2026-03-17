@@ -106,36 +106,38 @@ const ENTERPRISE: Tier = {
   ],
 };
 
-function CheckIcon() {
-  return (
-    <svg
-      className="h-4 w-4 shrink-0 text-white/50"
-      fill="none"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <path
-        d="M2.5 8.5l3.5 3.5 7-8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+const CARD_CLS_DEFAULT =
+  "relative flex flex-col rounded-2xl border p-6 transition-colors border-white/10 bg-white/[0.03]";
+const CARD_CLS_HIGHLIGHTED =
+  "relative flex flex-col rounded-2xl border p-6 transition-colors border-white/20 bg-white/[0.06]";
+const LINK_CLS_DEFAULT =
+  "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center border border-white/10 text-white font-medium hover:bg-white/[0.06]";
+const LINK_CLS_HIGHLIGHTED =
+  "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center bg-white text-black font-semibold hover:bg-white/90";
+
+const CHECK_ICON = (
+  <svg
+    className="h-4 w-4 shrink-0 text-white/50"
+    fill="none"
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+  >
+    <path
+      d="M2.5 8.5l3.5 3.5 7-8"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 function TierCard({ tier }: { tier: Tier }) {
   const isHighlighted = tier.highlight;
 
   return (
     <div
-      className={[
-        "relative flex flex-col rounded-2xl border p-6 transition-colors",
-        isHighlighted
-          ? "border-white/20 bg-white/[0.06]"
-          : "border-white/10 bg-white/[0.03]",
-      ].join(" ")}
+      className={isHighlighted ? CARD_CLS_HIGHLIGHTED : CARD_CLS_DEFAULT}
     >
       {isHighlighted && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -165,7 +167,7 @@ function TierCard({ tier }: { tier: Tier }) {
       <ul className="mb-8 flex flex-col gap-2.5 flex-1">
         {tier.features.map((feature) => (
           <li key={feature} className="flex items-start gap-2.5">
-            <CheckIcon />
+            {CHECK_ICON}
             <span className="text-sm text-white/70">{feature}</span>
           </li>
         ))}
@@ -173,12 +175,7 @@ function TierCard({ tier }: { tier: Tier }) {
 
       <Link
         href={tier.ctaHref}
-        className={[
-          "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center",
-          isHighlighted
-            ? "bg-white text-black font-semibold hover:bg-white/90"
-            : "border border-white/10 text-white font-medium hover:bg-white/[0.06]",
-        ].join(" ")}
+        className={isHighlighted ? LINK_CLS_HIGHLIGHTED : LINK_CLS_DEFAULT}
       >
         {tier.cta}
       </Link>
@@ -200,7 +197,7 @@ function EnterpriseCard({ tier }: { tier: Tier }) {
       <ul className="grid grid-cols-2 gap-x-8 gap-y-2 flex-1">
         {tier.features.map((feature) => (
           <li key={feature} className="flex items-center gap-2">
-            <CheckIcon />
+            {CHECK_ICON}
             <span className="text-sm text-white/70">{feature}</span>
           </li>
         ))}
