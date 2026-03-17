@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   connectRepo,
@@ -94,7 +94,7 @@ function DirSlot({
   );
 }
 
-function RepoRow({
+export const RepoRow = React.memo(function RepoRow({
   repo,
   installationId,
   entries,
@@ -178,7 +178,7 @@ function RepoRow({
       )}
     </div>
   );
-}
+});
 
 export function RepoPicker({ installationId }: RepoPickerProps) {
   const router = useRouter();
@@ -221,36 +221,36 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
       return [...prev, { id: crypto.randomUUID(), repoId, rootDir: "" }];
     });
   }
+    load();
+  }, [installationId]);
 
-  function addDir(repoId: number) {
+  const toggleRepo = useCallback((repoId: number) => {
+    setConnections((prev) => {
+      const hasRepo = prev.some((c) => c.repoId === repoId);
+      if (hasRepo) return prev.filter((c) => c.repoId !== repoId);
+      return [...prev, { id: crypto.randomUUID(), repoId, rootDir: "" }];
+    });
+  }, []);
+
+  const addDir = useCallback((repoId: number) => {
     setConnections((prev) => [
       ...prev,
       { id: crypto.randomUUID(), repoId, rootDir: "" },
     ]);
-  }
+  }, []);
 
-  function removeDir(id: string) {
+  const removeDir = useCallback((id: string) => {
     setConnections((prev) => prev.filter((c) => c.id !== id));
-  }
+  }, []);
 
-  function updateDir(id: string, rootDir: string) {
+  const updateDir = useCallback((id: string, rootDir: string) => {
     setConnections((prev) =>
       prev.map((c) => (c.id === id ? { ...c, rootDir } : c)),
     );
-  }
+  }, []);
 
   async function handleConnect() {
     if (!orgId) {
-      setError("Could not determine your organization. Please refresh and try again.");
-      return;
-    }
-
-    setIsConnecting(true);
-    setError(null);
-
-    const repoMap = new Map(repos.map((r) => [r.github_repo_id, r]));
-
-    try {
       await Promise.all(
         connections.map((conn) => {
           const repo = repoMap.get(conn.repoId);
