@@ -46,6 +46,7 @@ export function AccountClient({
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [spendLimitInput, setSpendLimitInput] = useState<string>("");
+  const [isRemovingSpendLimit, setIsRemovingSpendLimit] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -99,6 +100,20 @@ export function AccountClient({
       setSpendLimitInput("");
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to update spend limit");
+    }
+  }
+
+  async function handleRemoveSpendLimit() {
+    setIsRemovingSpendLimit(true);
+    setActionError(null);
+    try {
+      await updateSpendLimit(null);
+      setActionSuccess("Spend limit removed.");
+      setSpendLimitInput("");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to remove spend limit");
+    } finally {
+      setIsRemovingSpendLimit(false);
     }
   }
 
@@ -189,10 +204,11 @@ export function AccountClient({
               {subscription?.monthly_spend_limit_microdollars && (
                 <button
                   type="button"
-                  onClick={() => { setSpendLimitInput(""); updateSpendLimit(null); }}
-                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/40 hover:bg-white/[0.04] transition-colors"
+                  onClick={handleRemoveSpendLimit}
+                  disabled={isRemovingSpendLimit}
+                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/40 hover:bg-white/[0.04] disabled:opacity-50 transition-colors"
                 >
-                  Remove
+                  {isRemovingSpendLimit ? "Removing…" : "Remove"}
                 </button>
               )}
             </div>
