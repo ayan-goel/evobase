@@ -106,6 +106,15 @@ const ENTERPRISE: Tier = {
   ],
 };
 
+const CARD_CLS_DEFAULT =
+  "relative flex flex-col rounded-2xl border p-6 transition-colors border-white/10 bg-white/[0.03]";
+const CARD_CLS_HIGHLIGHTED =
+  "relative flex flex-col rounded-2xl border p-6 transition-colors border-white/20 bg-white/[0.06]";
+const LINK_CLS_DEFAULT =
+  "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center border border-white/10 text-white font-medium hover:bg-white/[0.06]";
+const LINK_CLS_HIGHLIGHTED =
+  "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center bg-white text-black font-semibold hover:bg-white/90";
+
 const CHECK_ICON = (
   <svg
     className="h-4 w-4 shrink-0 text-white/50"
@@ -128,12 +137,7 @@ function TierCard({ tier }: { tier: Tier }) {
 
   return (
     <div
-      className={[
-        "relative flex flex-col rounded-2xl border p-6 transition-colors",
-        isHighlighted
-          ? "border-white/20 bg-white/[0.06]"
-          : "border-white/10 bg-white/[0.03]",
-      ].join(" ")}
+      className={isHighlighted ? CARD_CLS_HIGHLIGHTED : CARD_CLS_DEFAULT}
     >
       {isHighlighted && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -171,12 +175,7 @@ function TierCard({ tier }: { tier: Tier }) {
 
       <Link
         href={tier.ctaHref}
-        className={[
-          "rounded-lg h-10 px-4 text-sm transition-colors inline-flex items-center justify-center",
-          isHighlighted
-            ? "bg-white text-black font-semibold hover:bg-white/90"
-            : "border border-white/10 text-white font-medium hover:bg-white/[0.06]",
-        ].join(" ")}
+        className={isHighlighted ? LINK_CLS_HIGHLIGHTED : LINK_CLS_DEFAULT}
       >
         {tier.cta}
       </Link>
