@@ -158,12 +158,14 @@ function _shortTitle(s: string | null): string {
   return s.length <= 72 ? s : s.slice(0, 69) + "…";
 }
 
+/** Matches bare internal confidence labels that should not be surfaced in the UI. */
+const _BARE_CONFIDENCE_RE = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+
 /**
  * Filter out bare confidence labels from selection_reason.
  * Returns null when the string is just an internal confidence label.
  */
 function _filterSelectionReason(reason: string | null | undefined): string | null {
   if (!reason) return null;
-  const bare = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
-  return bare.test(reason.trim()) ? null : reason;
+  return _BARE_CONFIDENCE_RE.test(reason.trim()) ? null : reason;
 }
