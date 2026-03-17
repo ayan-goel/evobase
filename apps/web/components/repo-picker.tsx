@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   connectRepo,
@@ -190,6 +190,16 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
   const [success, setSuccess] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
 
+  const connectionsByRepo = useMemo(() => {
+    const map = new Map<number, ConnectionEntry[]>();
+    for (const c of connections) {
+      const list = map.get(c.repoId) ?? [];
+      list.push(c);
+      map.set(c.repoId, list);
+    }
+    return map;
+  }, [connections]);
+
   useEffect(() => {
     async function load() {
       try {
@@ -318,7 +328,7 @@ export function RepoPicker({ installationId }: RepoPickerProps) {
             key={repo.github_repo_id}
             repo={repo}
             installationId={installationId}
-            entries={connections.filter((c) => c.repoId === repo.github_repo_id)}
+            entries={connectionsByRepo.get(repo.github_repo_id) ?? []}
             onToggle={() => toggleRepo(repo.github_repo_id)}
             onAddDir={() => addDir(repo.github_repo_id)}
             onRemoveDir={removeDir}
