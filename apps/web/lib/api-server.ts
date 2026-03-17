@@ -5,6 +5,7 @@
  * client components. Uses next/headers cookies via the Supabase server
  * client for authentication.
  */
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Installation,
@@ -17,7 +18,7 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+const getAuthHeaders = cache(async (): Promise<Record<string, string>> => {
   try {
     const supabase = await createClient();
     const {
@@ -30,7 +31,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     // No session available
   }
   return {};
-}
+});
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
