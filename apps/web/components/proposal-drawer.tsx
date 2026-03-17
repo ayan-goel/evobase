@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { DiffViewer } from "@/components/diff-viewer";
 import { PatchVariants } from "@/components/patch-variants";
@@ -18,6 +18,9 @@ interface ProposalDrawerProps {
  */
 export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
   const isOpen = proposal !== null;
+  // Track whether we're mounted on the client so createPortal is safe.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -39,25 +42,7 @@ export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
-  // Delegate portal rendering to a shell that owns the `mounted` guard so
-  // that the setMounted(true) re-render never touches ModalContent.
-  return <MountedPortal proposal={proposal} onClose={onClose} />;
-}
-
-/**
- * Owns the client-mount guard so that `createPortal` is only called after
- * hydration. Keeping this state here (rather than in ProposalDrawer) means
- * ModalContent is first mounted *after* `mounted` is already true — it is
- * never rendered with stale/identical props due to a setMounted flush.
- */
-function MountedPortal({ proposal, onClose }: { proposal: Proposal; onClose: () => void }) {
-  // Track whether we're mounted on the client so createPortal is safe.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-
-  if (!mounted) return null;
+  if (!isOpen || !mounted) return null;
 
   return createPortal(
     <>
@@ -168,19 +153,19 @@ function ModalSection({ title, children }: { title: string; children: React.Reac
 }
 
 /** Truncate a long summary to a brief fallback title for legacy proposals. */
-function _shortTitle(s: string | null): string {
-  if (!s) return "Optimization Proposal";
-  return s.length <= 72 ? s : s.slice(0, 69) + "…";
+  );
 }
 
-/** Matches bare internal confidence labels that should not be surfaced in the UI. */
-const _BARE_CONFIDENCE_RE = /^(high|medium|low) confidence(;\s*\d+ other approach(es)? rejected)?$/i;
+const ModalSection = memo(function ModalSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-3">
 
 /**
- * Filter out bare confidence labels from selection_reason.
- * Returns null when the string is just an internal confidence label.
- */
-function _filterSelectionReason(reason: string | null | undefined): string | null {
-  if (!reason) return null;
-  return _BARE_CONFIDENCE_RE.test(reason.trim()) ? null : reason;
-}
+      {children}
+    </section>
+  );
+});
+
+/** Truncate a long summary to a brief fallback title for legacy proposals. */
+function _shortTitle(s: string | null): string {
