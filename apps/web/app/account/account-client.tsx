@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo } from "react";
+import { useState, memo, useCallback } from "react";
 import Image from "next/image";
 import { PlanBadge } from "@/components/billing/plan-badge";
 import { UsageMeter } from "@/components/billing/usage-meter";
@@ -50,18 +50,28 @@ export function AccountClient({
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const tier = subscription?.tier ?? "free";
+  const tier = subscription?.tier ?? "free";
   const isPaid = tier !== "free";
 
-  function handleSelectTier(newTier: string) {
+  const handleSelectTier = useCallback((newTier: string) => {
     if (newTier === tier) return;
     setSelectedTier(newTier);
     setActionError(null);
     setActionSuccess(null);
-  }
+  }, [tier]);
+
+  const handlePaymentSuccess = useCallback(() => {
+    setSelectedTier(null);
+    setActionSuccess("Plan upgraded!");
+    window.location.reload();
+  }, []);
+
+  const handlePaymentCancel = useCallback(() => {
+    setSelectedTier(null);
+  }, []);
 
   async function handleDirectUpgrade() {
     if (!selectedTier) return;
-    setIsUpgrading(true);
     setActionError(null);
     try {
       await upgradePlan(selectedTier);
@@ -230,14 +240,14 @@ export function AccountClient({
               type="button"
               onClick={handleDirectUpgrade}
               disabled={isUpgrading}
-              className="rounded-lg bg-white px-5 py-2 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-50 transition-colors"
-            >
-              {isUpgrading ? "Upgrading…" : `Upgrade to ${selectedTier}`}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier(null)}
-              className="rounded-lg border border-white/10 px-5 py-2 text-sm text-white/70 hover:bg-white/[0.04] transition-colors"
+          <div className="mt-4">
+            <PaymentForm
+              selectedTier={selectedTier}
+              onSuccess={handlePaymentSuccess}
+              onCancel={handlePaymentCancel}
+            />
+          </div>
+        )}
             >
               Cancel
             </button>
