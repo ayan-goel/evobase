@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useCallback } from "react";
+import { useState, memo, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { PlanBadge } from "@/components/billing/plan-badge";
 import { UsageMeter } from "@/components/billing/usage-meter";
@@ -129,12 +129,21 @@ export function AccountClient({
           {avatarUrl ? (
             <Image
               src={avatarUrl}
-              alt={githubLogin ?? "Avatar"}
-              width={48}
-              height={48}
-              className="rounded-full"
-            />
-          ) : (
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  }
+
+  const recentRuns = useMemo(
+    () =>
+      usage?.runs.slice(0, 5).map((run) => ({
+        ...run,
+        dateLabel: new Date(run.created_at).toLocaleDateString(),
+      })) ?? [],
+    [usage]
+  );
+
+  const showPaymentForm = selectedTier && selectedTier !== "free" && !isPaid;
+  const showDirectUpgrade = selectedTier && selectedTier !== "free" && isPaid;
             <div className="h-12 w-12 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-lg font-semibold">
               {email.charAt(0).toUpperCase()}
             </div>
@@ -289,25 +298,25 @@ export function AccountClient({
                 </span>
                 <span className="text-xs text-white/50">
                   {new Date(run.created_at).toLocaleDateString()}
+      </SectionCard>
+
+      {/* Usage breakdown */}
+      {recentRuns.length > 0 && (
+        <SectionCard title="Recent Usage">
+          <div className="space-y-2">
+            {recentRuns.map((run) => (
+              <div
+                key={run.run_id}
+                className="flex items-center justify-between text-sm"
+      {/* Danger Zone */}
+      <SectionCard title="Danger Zone">
+                  {run.run_id.slice(0, 8)}…
+                </span>
+                <span className="text-xs text-white/50">
+                  {run.dateLabel}
                 </span>
                 <span className="text-xs text-white/60">
                   {run.call_count} LLM calls
-                </span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Danger Zone */}
-      <SectionCard title="Danger Zone">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-white/70">Sign out of your account</p>
-            <p className="text-xs text-white/40">You can sign back in at any time.</p>
-          </div>
-          <button
-            type="button"
             onClick={handleSignOut}
             className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
           >
