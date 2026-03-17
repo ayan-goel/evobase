@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -21,11 +21,11 @@ export const Nav = memo(function Nav({ user, maxWidthClass = "max-w-[54rem]" }: 
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  async function handleSignOut() {
+  const handleSignOut = useCallback(async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
-  }
+  }, [router]);
 
   return (
     <nav
