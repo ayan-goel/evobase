@@ -18,9 +18,6 @@ interface ProposalDrawerProps {
  */
 export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
   const isOpen = proposal !== null;
-  // Track whether we're mounted on the client so createPortal is safe.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -42,7 +39,25 @@ export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen) return null;
+
+  // Delegate portal rendering to a shell that owns the `mounted` guard so
+  // that the setMounted(true) re-render never touches ModalContent.
+  return <MountedPortal proposal={proposal} onClose={onClose} />;
+}
+
+/**
+ * Owns the client-mount guard so that `createPortal` is only called after
+ * hydration. Keeping this state here (rather than in ProposalDrawer) means
+ * ModalContent is first mounted *after* `mounted` is already true — it is
+ * never rendered with stale/identical props due to a setMounted flush.
+ */
+function MountedPortal({ proposal, onClose }: { proposal: Proposal; onClose: () => void }) {
+  // Track whether we're mounted on the client so createPortal is safe.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) return null;
 
   return createPortal(
     <>
