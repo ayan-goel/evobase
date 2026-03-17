@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { DiffViewer } from "@/components/diff-viewer";
 import { PatchVariants } from "@/components/patch-variants";
@@ -88,16 +88,19 @@ function ModalContent({ proposal, onClose }: { proposal: Proposal; onClose: () =
         <div className="min-w-0 flex-1">
           {(proposal.title || proposal.summary) && (
             <h2 className="text-base font-semibold text-white leading-snug">
-              {proposal.title ?? _shortTitle(proposal.summary)}
-            </h2>
-          )}
-        </div>
-        <button
-          onClick={onClose}
-          className="shrink-0 mt-0.5 rounded-md p-1.5 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
-          aria-label="Close"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
+function ModalContent({ proposal, onClose }: { proposal: Proposal; onClose: () => void }) {
+  const hasVariants = proposal.patch_variants && proposal.patch_variants.length > 1;
+
+  const { selectedVariant, verdictReason } = useMemo(() => {
+    const selectedVariant = proposal.patch_variants?.find(v => v.is_selected);
+    const verdictReason =
+      selectedVariant?.validation_result?.reason ||
+      _filterSelectionReason(proposal.selection_reason);
+    return { selectedVariant, verdictReason };
+  }, [proposal]);
+
+  return (
+    <>
             <path d="M2 2l12 12M14 2L2 14" strokeLinecap="round" />
           </svg>
         </button>
