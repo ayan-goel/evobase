@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -17,7 +17,7 @@ interface NavProps {
 }
 
 /** Glassy floating navigation bar shared across dashboard pages. */
-export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
+export const Nav = memo(function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -159,4 +159,4 @@ export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
       </div>
     </nav>
   );
-}
+});
