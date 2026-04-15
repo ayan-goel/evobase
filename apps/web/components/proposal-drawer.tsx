@@ -20,6 +20,7 @@ export function ProposalDrawer({ proposal, onClose }: ProposalDrawerProps) {
   const isOpen = proposal !== null;
   // Track whether we're mounted on the client so createPortal is safe.
   const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe mount flag for createPortal
   useEffect(() => { setMounted(true); }, []);
 
   // Close on Escape

@@ -39,6 +39,7 @@ export function TechStack() {
               key={`${framework.name}-${i}`}
               className="flex items-center gap-2 px-5"
             >
+              {/* eslint-disable-next-line @next/next/no-img-element -- 24px SVG icons in a scrolling marquee; next/image would require remotePatterns and adds no perceptible LCP benefit at this size */}
               <img
                 src={framework.icon}
                 alt={framework.name}

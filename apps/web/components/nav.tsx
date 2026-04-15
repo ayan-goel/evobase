@@ -60,10 +60,13 @@ export function Nav({ user, maxWidthClass = "max-w-[54rem]" }: NavProps) {
             {user ? (
               <div className="hidden sm:flex items-center gap-3">
                 {user.avatar_url && (
-                  <img
+                  <Image
                     src={user.avatar_url}
                     alt={user.github_login ?? "User avatar"}
+                    width={24}
+                    height={24}
                     className="h-6 w-6 rounded-full ring-1 ring-white/10"
+                    unoptimized
                   />
                 )}
                 {user.github_login && (

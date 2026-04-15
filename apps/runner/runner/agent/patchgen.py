@@ -382,6 +382,14 @@ def _strip_trailing_overlap(replace: str, after_search: str) -> str:
     content in the patched output.  This function detects the longest
     line-aligned suffix of *replace* that matches a prefix of *after_search*
     and strips it.
+
+    Safeguards:
+      - Never strip down to empty: if the entire replace block matches the
+        post-context, the LLM likely meant something different (a pure
+        deletion would have been written as ``replace: ""`` directly).
+      - Require ≥2 overlapping lines: a single line coincidence is more likely
+        legitimate than an accidental copy. Real LLM duplication almost
+        always spans several lines of pasted context.
     """
     if not replace or not after_search:
         return replace
@@ -399,7 +407,7 @@ def _strip_trailing_overlap(replace: str, after_search: str) -> str:
         if replace_lines[-overlap_len:] == after_lines[:overlap_len]:
             best_overlap = overlap_len
 
-    if best_overlap > 0:
+    if best_overlap >= 2 and best_overlap < len(replace_lines):
         logger.warning(
             "Stripped %d trailing overlap line(s) from replace block "
             "that duplicated text after the search block",
@@ -415,7 +423,9 @@ def _strip_leading_overlap(replace: str, before_search: str) -> str:
 
     Symmetric counterpart of :func:`_strip_trailing_overlap` — catches the
     case where the LLM copies lines from *above* the search block into the
-    start of its replace block.
+    start of its replace block. Applies the same ≥2-line and non-empty
+    safeguards to avoid stripping single-line coincidences or accidentally
+    turning the edit into a pure deletion.
     """
     if not replace or not before_search:
         return replace
@@ -433,7 +443,7 @@ def _strip_leading_overlap(replace: str, before_search: str) -> str:
         if replace_lines[:overlap_len] == before_lines[-overlap_len:]:
             best_overlap = overlap_len
 
-    if best_overlap > 0:
+    if best_overlap >= 2 and best_overlap < len(replace_lines):
         logger.warning(
             "Stripped %d leading overlap line(s) from replace block "
             "that duplicated text before the search block",

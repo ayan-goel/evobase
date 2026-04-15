@@ -49,7 +49,7 @@ const PHASE_LABELS: Record<string, string> = {
   run: "Run",
 };
 
-export function RunDetailView({ run: initialRun, repoId }: RunDetailViewProps) {
+export function RunDetailView({ run: initialRun, repoId: _repoId }: RunDetailViewProps) {
   const [run, setRun] = useState(initialRun);
   const isActive = run.status === "queued" || run.status === "running";
   const { events, currentPhase, isConnected, isDone } = useRunEvents(

@@ -105,7 +105,6 @@ function renderDetectionCompleted(event: RunEvent) {
 
 function renderBaselineAttemptStarted(event: RunEvent) {
   const attempt = event.data.attempt as number | undefined;
-  const mode = event.data.mode as string | undefined;
   return (
     <TimelineRow icon="▶" phase="Baseline" ts={event.ts}>
       Starting baseline attempt {attempt}
@@ -828,7 +827,7 @@ const EVENT_RENDERERS: Record<string, (e: RunEvent) => ReactElement> = {
 
 function TimelineRow({
   icon,
-  phase,
+  phase: _phase,
   ts,
   success,
   error,
@@ -869,7 +868,7 @@ function TimelineRow({
 
 function ExpandableRow({
   icon,
-  phase,
+  phase: _phase,
   ts,
   success,
   error,

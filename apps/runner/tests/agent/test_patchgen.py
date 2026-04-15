@@ -124,24 +124,62 @@ class TestApplySearchReplace:
             apply_search_replace("a\na\n", "a\n", "b\n")
 
     def test_strips_trailing_overlap(self) -> None:
-        """Replace block includes lines already after the search block."""
+        """Replace block includes multi-line tail already after the search block."""
+        content = "header\nold_code\nreturn 1;\nreturn 2;\nfooter\n"
+        result = apply_search_replace(
+            content,
+            "old_code\n",
+            "new_code\nreturn 1;\nreturn 2;\n",
+        )
+        assert result == "header\nnew_code\nreturn 1;\nreturn 2;\nfooter\n"
+
+    def test_single_line_trailing_overlap_not_stripped(self) -> None:
+        """A 1-line overlap is too likely to be coincidence — leave it alone."""
         content = "header\nold_code\nreturn 1;\nfooter\n"
         result = apply_search_replace(
             content,
             "old_code\n",
             "new_code\nreturn 1;\n",
         )
-        assert result == "header\nnew_code\nreturn 1;\nfooter\n"
+        # Not stripped: the LLM may genuinely want to duplicate `return 1;`
+        assert result == "header\nnew_code\nreturn 1;\nreturn 1;\nfooter\n"
 
     def test_strips_leading_overlap(self) -> None:
-        """Replace block includes lines already before the search block."""
+        """Replace block includes multi-line head already before the search block."""
+        content = "header\ncontext1\ncontext2\nold_code\nfooter\n"
+        result = apply_search_replace(
+            content,
+            "old_code\n",
+            "context1\ncontext2\nnew_code\n",
+        )
+        assert result == "header\ncontext1\ncontext2\nnew_code\nfooter\n"
+
+    def test_single_line_leading_overlap_not_stripped(self) -> None:
+        """A 1-line overlap on the leading side is also not stripped."""
         content = "header\ncontext\nold_code\nfooter\n"
         result = apply_search_replace(
             content,
             "old_code\n",
             "context\nnew_code\n",
         )
-        assert result == "header\ncontext\nnew_code\nfooter\n"
+        assert result == "header\ncontext\ncontext\nnew_code\nfooter\n"
+
+    def test_full_replace_overlap_not_stripped_to_empty(self) -> None:
+        """If every line of replace overlaps, we must not turn it into an empty deletion.
+
+        Pure deletions would have been written as replace="" directly, so when
+        a non-empty replace would be completely stripped, assume the LLM
+        intended the content and leave it alone.
+        """
+        content = "a\nb\nc\nd\ne\n"
+        # replace is "c\nd\n"; after search = "c\nd\ne\n" → full overlap of both lines
+        result = apply_search_replace(
+            content,
+            "b\n",
+            "c\nd\n",
+        )
+        # Not stripped because best_overlap == len(replace_lines)
+        assert result == "a\nc\nd\nc\nd\ne\n"
 
     def test_no_overlap_passthrough(self) -> None:
         """When there is no overlap, the replace is used as-is."""
@@ -185,8 +223,14 @@ class TestApplySearchReplace:
 # ---------------------------------------------------------------------------
 
 class TestStripTrailingOverlap:
-    def test_strips_matching_suffix(self) -> None:
+    def test_does_not_strip_single_line_suffix(self) -> None:
+        """Single-line overlaps are too likely coincidental to strip."""
         result = _strip_trailing_overlap("new\nreturn 1;\n", "return 1;\nfooter\n")
+        assert result == "new\nreturn 1;\n"
+
+    def test_strips_multi_line_suffix(self) -> None:
+        """Two or more overlapping lines are stripped."""
+        result = _strip_trailing_overlap("new\nreturn 1;\nreturn 2;\n", "return 1;\nreturn 2;\nfooter\n")
         assert result == "new\n"
 
     def test_returns_unchanged_when_no_overlap(self) -> None:
@@ -205,10 +249,21 @@ class TestStripTrailingOverlap:
         result = _strip_trailing_overlap("x\na\nb\n", "a\nb\nc\n")
         assert result == "x\n"
 
+    def test_does_not_strip_to_empty(self) -> None:
+        """When the entire replace would be stripped, leave it intact."""
+        result = _strip_trailing_overlap("a\nb\n", "a\nb\nc\n")
+        assert result == "a\nb\n"
+
 
 class TestStripLeadingOverlap:
-    def test_strips_matching_prefix(self) -> None:
+    def test_does_not_strip_single_line_prefix(self) -> None:
+        """Single-line overlaps are too likely coincidental to strip."""
         result = _strip_leading_overlap("header\nnew\n", "stuff\nheader\n")
+        assert result == "header\nnew\n"
+
+    def test_strips_multi_line_prefix(self) -> None:
+        """Two or more overlapping lines are stripped."""
+        result = _strip_leading_overlap("header1\nheader2\nnew\n", "stuff\nheader1\nheader2\n")
         assert result == "new\n"
 
     def test_returns_unchanged_when_no_overlap(self) -> None:
@@ -226,6 +281,11 @@ class TestStripLeadingOverlap:
     def test_longest_overlap_wins(self) -> None:
         result = _strip_leading_overlap("a\nb\nx\n", "z\na\nb\n")
         assert result == "x\n"
+
+    def test_does_not_strip_to_empty(self) -> None:
+        """When the entire replace would be stripped, leave it intact."""
+        result = _strip_leading_overlap("a\nb\n", "z\na\nb\n")
+        assert result == "a\nb\n"
 
 
 # ---------------------------------------------------------------------------

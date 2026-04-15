@@ -21,6 +21,7 @@ function GitHubCallbackContent() {
   useEffect(() => {
     if (!installationId || hasLinked.current) return;
     hasLinked.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fire-and-track async mutation on mount
     setLinking(true);
     setError(null);
 

@@ -147,6 +147,129 @@ class TestTypecheckGate:
         assert verdict.confidence == CONFIDENCE_MEDIUM
 
 
+class TestSourceSafetyGate:
+    """JS/TS files cannot be accepted without some compile-level verification.
+
+    When a patch touches .js/.jsx/.ts/.tsx/.mjs/.cjs/.mts/.cts files but the
+    repo has neither a build_cmd nor a typecheck_cmd configured, the pipeline
+    cannot detect syntactically broken output. Reject rather than silently
+    approve code that may not compile.
+    """
+
+    def test_ts_touched_without_compile_step_rejects(self):
+        candidate = _make_candidate(test_passes=True)  # test step only
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.ts"]
+        )
+        assert verdict.is_accepted is False
+        assert "source_safety_gate" in verdict.gates_failed
+
+    def test_tsx_touched_without_compile_step_rejects(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/Component.tsx"]
+        )
+        assert verdict.is_accepted is False
+        assert "source_safety_gate" in verdict.gates_failed
+
+    def test_jsx_touched_without_compile_step_rejects(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/Component.jsx"]
+        )
+        assert verdict.is_accepted is False
+        assert "source_safety_gate" in verdict.gates_failed
+
+    def test_js_touched_with_build_accepts(self):
+        candidate = _make_candidate(
+            test_passes=True, has_build=True, build_passes=True
+        )
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.js"]
+        )
+        assert verdict.is_accepted is True
+        assert "source_safety_gate" not in verdict.gates_failed
+
+    def test_ts_touched_with_typecheck_accepts(self):
+        candidate = _make_candidate(
+            test_passes=True, has_typecheck=True, typecheck_passes=True
+        )
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.ts"]
+        )
+        assert verdict.is_accepted is True
+        assert "source_safety_gate" not in verdict.gates_failed
+
+    def test_failed_typecheck_still_counts_as_verification(self):
+        """A typecheck that ran and found errors is still *some* verification.
+
+        typecheck_gate separately handles the failure (downgrade confidence).
+        source_safety_gate only requires that *some* compile-level tool was
+        applied to the touched files.
+        """
+        candidate = _make_candidate(
+            test_passes=True, has_typecheck=True, typecheck_passes=False
+        )
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.ts"]
+        )
+        assert "source_safety_gate" not in verdict.gates_failed
+
+    def test_non_js_files_skip_gate(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.py", "README.md"]
+        )
+        assert verdict.is_accepted is True
+        assert "source_safety_gate" not in verdict.gates_failed
+
+    def test_mixed_extensions_requires_compile_check(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.py", "src/app.tsx"]
+        )
+        assert verdict.is_accepted is False
+        assert "source_safety_gate" in verdict.gates_failed
+
+    def test_missing_touched_files_skips_gate(self):
+        """Backward compat: legacy callers without touched_files are not rejected."""
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline)  # no touched_files
+        assert verdict.is_accepted is True
+
+    def test_empty_touched_files_skips_gate(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(candidate, baseline, touched_files=[])
+        assert verdict.is_accepted is True
+
+    def test_reject_reason_mentions_compile(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/app.ts"]
+        )
+        assert "compile" in verdict.reason.lower() or "build" in verdict.reason.lower()
+
+    def test_case_insensitive_extension_matching(self):
+        candidate = _make_candidate(test_passes=True)
+        baseline = _make_baseline()
+        verdict = evaluate_acceptance(
+            candidate, baseline, touched_files=["src/App.TS"]
+        )
+        assert verdict.is_accepted is False
+        assert "source_safety_gate" in verdict.gates_failed
+
+
 class TestBenchmarkGate:
     def test_large_improvement_gives_high_confidence(self):
         candidate = _make_candidate(has_bench=True, bench_duration=0.9)

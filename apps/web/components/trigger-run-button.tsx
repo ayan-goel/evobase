@@ -22,6 +22,7 @@ export function TriggerRunButton({ repoId, onQueued, activeStatus }: TriggerRunB
   // local queued state so the action button reappears.
   useEffect(() => {
     if (activeStatus === null && state === "queued") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- external polling signal resets local state
       setState("idle");
     }
   }, [activeStatus, state]);

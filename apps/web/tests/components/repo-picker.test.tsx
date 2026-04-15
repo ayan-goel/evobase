@@ -8,13 +8,13 @@ const mockUseDetectFramework = vi.fn();
 const mockPush = vi.fn();
 
 vi.mock("@/lib/api", () => ({
-  getInstallationRepos: (...args: any[]) => mockGetInstallationRepos(...args),
-  getMe: (...args: any[]) => mockGetMe(...args),
-  connectRepo: (...args: any[]) => mockConnectRepo(...args),
+  getInstallationRepos: (...args: unknown[]) => mockGetInstallationRepos(...args),
+  getMe: (...args: unknown[]) => mockGetMe(...args),
+  connectRepo: (...args: unknown[]) => mockConnectRepo(...args),
 }));
 
 vi.mock("@/hooks/use-detect-framework", () => ({
-  useDetectFramework: (...args: any[]) => mockUseDetectFramework(...args),
+  useDetectFramework: (...args: unknown[]) => mockUseDetectFramework(...args),
 }));
 
 vi.mock("next/navigation", () => ({

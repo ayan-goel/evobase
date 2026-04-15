@@ -535,7 +535,7 @@ describe("EventCard", () => {
     render(
       <EventCard
         event={makeEvent({
-          type: "unknown.event" as any,
+          type: "unknown.event" as unknown as RunEvent["type"],
           phase: "run",
           data: {},
         })}

@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 const mockDetectFramework = vi.fn();
 
 vi.mock("@/lib/api", () => ({
-  detectFramework: (...args: any[]) => mockDetectFramework(...args),
+  detectFramework: (...args: unknown[]) => mockDetectFramework(...args),
 }));
 
 import { useDetectFramework } from "@/hooks/use-detect-framework";

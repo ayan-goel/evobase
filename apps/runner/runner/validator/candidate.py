@@ -134,10 +134,14 @@ def _run_single_attempt(
                     attempt_number, exc,
                 )
 
-    # Evaluate verdict from pipeline results
+    # Evaluate verdict from pipeline results.
+    # Pass touched_files so the acceptance evaluator can enforce the
+    # source-safety gate: JS/TS edits that were never compiled must reject.
     verdict = None
     if pipeline_result is not None:
-        verdict = evaluate_acceptance(pipeline_result, baseline)
+        verdict = evaluate_acceptance(
+            pipeline_result, baseline, touched_files=patch.touched_files
+        )
 
     return AttemptRecord(
         attempt_number=attempt_number,

@@ -11,7 +11,7 @@ const submit = vi.fn();
 const mount = vi.fn();
 const create = vi.fn(() => ({ mount }));
 const elementsFactory = vi.fn(() => ({ create, submit }));
-const loadStripe = vi.fn(async () => ({
+const loadStripe = vi.fn(async (..._args: unknown[]) => ({
   elements: elementsFactory,
   confirmPayment,
 }));

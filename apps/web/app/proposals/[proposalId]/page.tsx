@@ -204,7 +204,7 @@ function MetricsCard({
   );
 }
 
-function _extractTraceAttempts(proposal: Proposal): TraceAttempt[] {
+function _extractTraceAttempts(_proposal: Proposal): TraceAttempt[] {
   // The trace timeline is stored as an artifact (trace.json).
   // For MVP, we reconstruct attempts from the proposal's metrics as a
   // single-attempt summary. The full trace is available via the evidence link.

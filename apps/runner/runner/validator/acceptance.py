@@ -1,13 +1,21 @@
 """Acceptance logic for candidate patches.
 
 Gates (in order of application):
-  1. test_gate     — candidate tests must pass (always required)
-  2. build_gate    — if a build_cmd ran, it must succeed (hard rejection;
-                     a patch that breaks the build must never become a proposal)
-  3. typecheck_gate — candidate typecheck must pass (if available; failure
-                      downgrades confidence to "low" but does not reject)
-  4. benchmark_gate — if baseline has bench data, candidate must show
-                      ≥3% improvement beyond noise (rejects if it regresses)
+  1. test_gate         — candidate tests must pass (always required)
+  2. build_gate        — if a build_cmd ran, it must succeed (hard rejection;
+                          a patch that breaks the build must never become a
+                          proposal)
+  3. source_safety_gate — if JS/TS source files were touched, some compile-
+                          level tool (build OR typecheck) must have run. A
+                          patch that produces syntactically broken output
+                          would otherwise slip through when the repo has no
+                          build step configured.
+  4. typecheck_gate     — candidate typecheck must pass (if available;
+                          failure downgrades confidence to "low" but does
+                          not reject)
+  5. benchmark_gate     — if baseline has bench data, candidate must show
+                          ≥3% improvement beyond noise (rejects if it
+                          regresses)
 
 Confidence levels:
   high   — tests pass + benchmark shows ≥3% improvement
@@ -16,6 +24,7 @@ Confidence levels:
 """
 
 import logging
+from pathlib import PurePosixPath
 from typing import Optional
 
 from runner.validator.types import (
@@ -30,6 +39,22 @@ from runner.validator.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# File extensions that require a compile-level check (build or typecheck)
+# before the patch can be accepted. Source files in these languages can be
+# syntactically broken in ways that runtime tests do not always catch.
+_COMPILE_REQUIRED_EXTENSIONS = frozenset({
+    ".js", ".jsx", ".mjs", ".cjs",
+    ".ts", ".tsx", ".mts", ".cts",
+})
+
+
+def _requires_compile_check(touched_files: list[str]) -> bool:
+    """Return True if any touched file has an extension that requires compile verification."""
+    return any(
+        PurePosixPath(path).suffix.lower() in _COMPILE_REQUIRED_EXTENSIONS
+        for path in touched_files
+    )
 
 
 def compare_benchmarks(
@@ -70,13 +95,20 @@ def compare_benchmarks(
 def evaluate_acceptance(
     candidate_result: BaselineResult,
     baseline_result: BaselineResult,
+    touched_files: Optional[list[str]] = None,
 ) -> AcceptanceVerdict:
     """Apply all acceptance gates and return the final verdict.
 
-    Gate 1 (test_gate) is hard: failure rejects immediately.
-    Gate 2 (typecheck_gate) is soft: failure downgrades confidence.
-    Gate 3 (benchmark_gate) is conditional: only applied when both runs
-      have bench data. A regression (negative improvement) rejects.
+    test_gate is hard: failure rejects immediately.
+    build_gate is hard when it ran: a failing build rejects immediately.
+    source_safety_gate is hard when ``touched_files`` contains JS/TS sources
+      and neither build nor typecheck ran (no compile verification).
+    typecheck_gate is soft: failure downgrades confidence.
+    benchmark_gate is conditional: only applied when both runs have bench
+      data. A regression (negative improvement) rejects.
+
+    ``touched_files`` is optional for backward compatibility; when omitted
+    the source_safety_gate is skipped and legacy callers continue to work.
     """
     gates_passed: list[str] = []
     gates_failed: list[str] = []
@@ -114,8 +146,34 @@ def evaluate_acceptance(
     if build_step is not None:
         gates_passed.append("build_gate")
 
-    # --- Gate 3: typecheck (soft gate) ---
+    # --- Source-safety gate: JS/TS patches need a compile-level check ---
+    # Runtime tests can miss broken JSX/TS that would fail `next build` or
+    # `tsc --noEmit`. If the candidate touches JS/TS files and neither a
+    # build nor a typecheck actually ran, we have no evidence the patched
+    # output even parses — reject to avoid shipping uncompilable code.
     typecheck_step = _find_step(candidate_result, "typecheck")
+    if touched_files and _requires_compile_check(touched_files):
+        if build_step is None and typecheck_step is None:
+            gates_failed.append("source_safety_gate")
+            logger.warning(
+                "Rejecting candidate: touched %d JS/TS file(s) but no build "
+                "or typecheck step verified they compile",
+                sum(1 for f in touched_files if _requires_compile_check([f])),
+            )
+            return AcceptanceVerdict(
+                is_accepted=False,
+                confidence=CONFIDENCE_LOW,
+                reason=(
+                    "JS/TS files touched but no build or typecheck step "
+                    "verified they compile — cannot accept without a "
+                    "compile-level check"
+                ),
+                gates_passed=gates_passed,
+                gates_failed=gates_failed,
+            )
+        gates_passed.append("source_safety_gate")
+
+    # --- Gate 3: typecheck (soft gate) ---
     typecheck_ok = typecheck_step is None or typecheck_step.is_success
     if not typecheck_ok:
         gates_failed.append("typecheck_gate")

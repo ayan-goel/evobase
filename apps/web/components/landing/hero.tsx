@@ -27,6 +27,7 @@ export function Hero() {
     }
 
     if (isDeleting && displayText === "") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- typing-animation state machine transition
       setIsDeleting(false);
       setPhraseIndex((prev) => (prev + 1) % TYPING_PHRASES.length);
       return;

@@ -12,17 +12,6 @@ interface UseRunEventsResult {
   isDone: boolean;
 }
 
-const PHASE_ORDER: RunPhase[] = [
-  "clone",
-  "detection",
-  "baseline",
-  "discovery",
-  "patching",
-  "validation",
-  "selection",
-  "run",
-];
-
 export function useRunEvents(
   runId: string,
   isActive: boolean,
@@ -33,8 +22,10 @@ export function useRunEvents(
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<string>("0");
   const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const connectRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local stream state when the runId identity changes
     setEvents([]);
     setIsConnected(false);
     setIsDone(false);
@@ -85,11 +76,16 @@ export function useRunEvents(
       setIsConnected(false);
       es.close();
       // Only auto-reconnect for active runs; completed runs read from Redis once.
+      // Go through connectRef so reconnects always call the latest callback.
       if (isActive && !isDone) {
-        setTimeout(() => connect(), 3000);
+        setTimeout(() => { void connectRef.current(); }, 3000);
       }
     };
   }, [runId, isActive, isDone]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     if (!isDone) {

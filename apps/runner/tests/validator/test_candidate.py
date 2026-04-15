@@ -52,8 +52,13 @@ def _make_patch(diff: str = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n") -> Pa
 
 
 def _make_passing_pipeline(has_bench: bool = False) -> BaselineResult:
+    # Include a passing build step so the source_safety_gate is satisfied
+    # for the default _make_patch() whose touched_files contains "src/f.ts".
     r = BaselineResult()
-    r.steps = [StepResult("test", "npm test", 0, 0.5, "ok", "")]
+    r.steps = [
+        StepResult("build", "npm run build", 0, 0.5, "ok", ""),
+        StepResult("test", "npm test", 0, 0.5, "ok", ""),
+    ]
     r.is_success = True
     if has_bench:
         r.bench_result = {"command": "bench", "duration_seconds": 0.9, "stdout": ""}
@@ -62,7 +67,10 @@ def _make_passing_pipeline(has_bench: bool = False) -> BaselineResult:
 
 def _make_failing_pipeline() -> BaselineResult:
     r = BaselineResult()
-    r.steps = [StepResult("test", "npm test", 1, 0.5, "", "FAIL")]
+    r.steps = [
+        StepResult("build", "npm run build", 0, 0.5, "ok", ""),
+        StepResult("test", "npm test", 1, 0.5, "", "FAIL"),
+    ]
     r.is_success = False
     return r
 
@@ -262,6 +270,74 @@ class TestPatchAlwaysReverted:
 
         assert revert_mock.call_count >= 1
         assert result.is_accepted is False
+
+
+class TestSourceSafetyWiring:
+    """Verify touched_files flows from PatchResult into evaluate_acceptance."""
+
+    def test_js_ts_patch_without_compile_step_rejects_end_to_end(self, tmp_path):
+        """A .tsx edit with only a test step must be rejected by the pipeline."""
+        pipeline_without_build = BaselineResult()
+        pipeline_without_build.steps = [
+            StepResult("test", "npm test", 0, 0.5, "ok", ""),
+        ]
+        pipeline_without_build.is_success = True
+
+        with (
+            patch("runner.validator.candidate.apply_diff"),
+            patch("runner.validator.candidate.revert_diff"),
+            patch(
+                "runner.validator.candidate._run_candidate_pipeline",
+                return_value=pipeline_without_build,
+            ),
+        ):
+            result = run_candidate_validation(
+                repo_dir=tmp_path,
+                config=_make_config(),
+                patch=PatchResult(
+                    diff="--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n",
+                    explanation="",
+                    touched_files=["src/Component.tsx"],
+                    template_name="t",
+                    lines_changed=2,
+                ),
+                baseline=_make_baseline(),
+            )
+
+        assert result.is_accepted is False
+        assert result.final_verdict is not None
+        assert "source_safety_gate" in result.final_verdict.gates_failed
+
+    def test_python_patch_without_compile_step_accepts(self, tmp_path):
+        """Python files don't need a JS/TS compile step."""
+        pipeline_without_build = BaselineResult()
+        pipeline_without_build.steps = [
+            StepResult("test", "pytest", 0, 0.5, "ok", ""),
+        ]
+        pipeline_without_build.is_success = True
+
+        with (
+            patch("runner.validator.candidate.apply_diff"),
+            patch("runner.validator.candidate.revert_diff"),
+            patch(
+                "runner.validator.candidate._run_candidate_pipeline",
+                return_value=pipeline_without_build,
+            ),
+        ):
+            result = run_candidate_validation(
+                repo_dir=tmp_path,
+                config=_make_config(),
+                patch=PatchResult(
+                    diff="--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n",
+                    explanation="",
+                    touched_files=["src/app.py"],
+                    template_name="t",
+                    lines_changed=2,
+                ),
+                baseline=_make_baseline(),
+            )
+
+        assert result.is_accepted is True
 
 
 class TestAttemptRecordSerialization:
